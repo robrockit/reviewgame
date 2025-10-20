@@ -16,7 +16,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@supabase/ssr": "0.8.0-rc.2",
-    "@supabase/supabase-js": "^2.75.1",
+    "@supabase/supabase-js": "^2.51.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/qrcode.react": "^1.0.5",
@@ -28,6 +28,7 @@
     "eslint-config-next": "15.5.6",
     "next-pwa": "latest",
     "qrcode.react": "^4.2.0",
+    "supabase": "^2.51.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "use-sound": "^5.0.0",
