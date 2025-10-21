@@ -1,8 +1,47 @@
-import { createClient } from '@supabase/supabase-js';
+import { stripe } from "@/lib/stripe/server";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
-// Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set in your environment variables
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+export const createOrRetrieveCustomer = async (
+  supabase: any,
+  {
+    email,
+    uuid,
+  }: {
+    email: string;
+    uuid: string;
+  }
+) => {
 
-export const createServerClient = () =>
-  createClient(supabaseUrl, supabaseServiceRoleKey);
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("stripe_customer_id")
+    .eq("id", uuid)
+    .single();
+
+  if (error || !data?.stripe_customer_id) {
+    const customerData: { metadata: { supabaseUUID: string }; email?: string } =
+      {
+        metadata: {
+          supabaseUUID: uuid,
+        },
+      };
+
+    if (email) customerData.email = email;
+
+    const customer = await stripe.customers.create(customerData);
+    const { error: supabaseError } = await supabase
+      .from("profiles")
+      .update({ stripe_customer_id: customer.id })
+      .eq("id", uuid);
+
+    if (supabaseError) {
+      throw supabaseError;
+    }
+
+    console.log(`New customer created and inserted for ${uuid}.`);
+    return customer.id;
+  }
+
+  return data.stripe_customer_id;
+};
