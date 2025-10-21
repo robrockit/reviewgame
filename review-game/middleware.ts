@@ -1,28 +1,30 @@
-import { type NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/client';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(req: NextRequest) {
-  const supabase = createClient();
+  const res = NextResponse.next();
 
-  // Refresh the session so that the user is logged in
-  const { data: { session } } = await supabase.auth.getSession();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return req.cookies.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          res.cookies.set({ name, value, ...options });
+        },
+        remove(name: string, options: CookieOptions) {
+          res.cookies.delete({ name, ...options });
+        },
+      },
+    }
+  );
 
-  // If there's no session, we can proceed without doing anything specific
-  // or redirect to login if the route requires authentication.
-  // For now, we'll just let the request continue.
+  await supabase.auth.getSession();
 
-  // If you need to protect routes, you would add logic here:
-  // if (req.nextUrl.pathname.startsWith('/dashboard') && !session) {
-  //   const url = req.nextUrl.clone();
-  //   url.pathname = '/login';
-  //   return NextResponse.redirect(url);
-  // }
-
-  // For session refresh, the getSession() call itself might be enough
-  // if the underlying client handles token refresh automatically.
-  // The @supabase/ssr package's createBrowserClient is designed to handle this.
-
-  return NextResponse.next();
+  return res;
 }
 
 export const config = {
@@ -32,6 +34,6 @@ export const config = {
      * starting with a root folder (e.g. /dashboard).
      * Exclude static files and API routes.
      */
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|auth/callback).*)',
   ],
 };
