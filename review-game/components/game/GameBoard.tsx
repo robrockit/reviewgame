@@ -1,22 +1,7 @@
 import React from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import { QuestionCard } from './QuestionCard';
-
-
-// Define the structure for a category and its questions
-interface Category {
-  id: string;
-  name: string;
-  questions: Question[];
-}
-
-interface Question {
-  id: string;
-  value: number;
-  text: string;
-  isUsed: boolean;
-  isDailyDouble?: boolean; // For teacher view
-}
+import { Category, Question } from '../../types/game';
 
 export const GameBoard = () => {
   const { allTeams, currentGameData, selectedQuestions, markQuestionUsed, setCurrentQuestion } = useGameStore();
@@ -106,14 +91,9 @@ export const GameBoard = () => {
   // Function to handle question selection
   const handleQuestionSelect = (question: Question) => {
     if (!question.isUsed) {
-      // In a real app, this would likely involve setting the current question
-      // and potentially navigating to a question display view.
-      // For now, we'll just mark it as used and set it as current.
+      // Mark the question as used and set it as the current question
       markQuestionUsed(question.id);
       setCurrentQuestion(question);
-      console.log(`Selected question: ${question.text} (${question.value})`);
-    } else {
-      console.log(`Question ${question.text} has already been used.`);
     }
   };
 
@@ -121,11 +101,11 @@ export const GameBoard = () => {
     <div className="game-board">
       <h2 className="text-2xl font-bold mb-4">Game Board</h2>
       <div className="grid grid-cols-7 gap-2">
-        {/* Render Categories */}
+        {/* Render Categories - each category is a column */}
         {mockCategories.map((category) => (
-          <React.Fragment key={category.id}>
+          <div key={category.id} className="flex flex-col gap-2">
             {/* Category Header */}
-            <div className="category-header p-2 bg-blue-500 text-white font-bold flex items-center justify-center">
+            <div className="category-header p-2 bg-blue-500 text-white font-bold flex items-center justify-center min-h-[60px] rounded">
               {category.name}
             </div>
             {/* Render Questions for this Category */}
@@ -136,7 +116,7 @@ export const GameBoard = () => {
                 onSelect={handleQuestionSelect}
               />
             ))}
-          </React.Fragment>
+          </div>
         ))}
       </div>
     </div>

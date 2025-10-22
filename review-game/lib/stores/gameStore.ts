@@ -1,19 +1,20 @@
 import { create } from 'zustand';
+import { GameData, Team, Question, BuzzEntry } from '../../types/game';
 
 // Define types for state and actions
 interface GameState {
-  currentGameData: object | null;
-  allTeams: object[];
-  currentQuestion: object | null;
-  buzzQueue: { teamId: string; timestamp: number }[];
+  currentGameData: GameData | null;
+  allTeams: Team[];
+  currentQuestion: Question | null;
+  buzzQueue: BuzzEntry[];
   selectedQuestions: string[];
   scoreUpdates: Record<string, number>; // More specific type for scoreUpdates
 }
 
 interface GameActions {
-  setGame: (data: object | null) => void;
-  setTeams: (teams: object[]) => void;
-  setCurrentQuestion: (question: object | null) => void;
+  setGame: (data: GameData | null) => void;
+  setTeams: (teams: Team[]) => void;
+  setCurrentQuestion: (question: Question | null) => void;
   addBuzz: (teamId: string, timestamp: number) => void;
   clearBuzzQueue: () => void;
   markQuestionUsed: (questionId: string) => void;
