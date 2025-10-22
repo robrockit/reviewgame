@@ -1,3 +1,4 @@
+"use client";
 import React from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import { QuestionCard } from './QuestionCard';

@@ -24,7 +24,8 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     }
 
     const channelName = `game:${gameId}`;
-    const supabaseClient = createClient(); // Use the created client
+    // Create a single Supabase client instance for the hook's lifecycle
+    const supabaseClient = createClient();
     const channel = supabaseClient.channel(channelName);
 
     // Subscribe to 'buzz' events
@@ -54,7 +55,7 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
 
     // Cleanup subscription on component unmount
     return () => {
-      supabaseClient.removeChannel(channel); // Use the created client
+      supabaseClient.removeChannel(channel);
       console.log(`Unsubscribed from channel: ${channelName}`);
     };
   }, [gameId, addBuzz, clearBuzzQueue]); // Dependencies for useEffect
@@ -69,7 +70,7 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     const buzzEvent: BuzzEvent = { teamId, timestamp };
 
     // Broadcast the buzz event
-    supabaseClient.channel(`game:${gameId}`).send({ // Use the created client
+    supabaseClient.channel(`game:${gameId}`).send({
       type: 'broadcast',
       event: 'buzz',
       payload: buzzEvent,
@@ -86,7 +87,7 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     }
 
     // Broadcast the clear-buzzes event
-    supabaseClient.channel(`game:${gameId}`).send({ // Use the created client
+    supabaseClient.channel(`game:${gameId}`).send({
       type: 'broadcast',
       event: 'clear-buzzes',
       payload: {}, // No payload needed for clear-buzzes
