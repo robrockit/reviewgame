@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useGameStore } from '../lib/stores/gameStore';
 import { createClient } from '../lib/supabase/client';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 // Define the structure of a buzz event
 interface BuzzEvent {
@@ -17,16 +18,23 @@ interface BuzzerHook {
 export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
   const { addBuzz, clearBuzzQueue } = useGameStore();
 
+  // Store the Supabase client in a ref so it can be accessed across renders
+  // and in functions outside the useEffect scope
+  const supabaseClientRef = useRef<SupabaseClient | null>(null);
+
+  // Initialize the client on first render
+  if (supabaseClientRef.current === null) {
+    supabaseClientRef.current = createClient();
+  }
+
   useEffect(() => {
-    if (!gameId) {
+    if (!gameId || !supabaseClientRef.current) {
       console.warn('useBuzzer: gameId is not provided, not subscribing to channel.');
       return;
     }
 
     const channelName = `game:${gameId}`;
-    // Create a single Supabase client instance for the hook's lifecycle
-    const supabaseClient = createClient();
-    const channel = supabaseClient.channel(channelName);
+    const channel = supabaseClientRef.current.channel(channelName);
 
     // Subscribe to 'buzz' events
     channel.on('broadcast', { event: 'buzz' }, ({ payload }: { payload: BuzzEvent }) => {
@@ -55,14 +63,16 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
 
     // Cleanup subscription on component unmount
     return () => {
-      supabaseClient.removeChannel(channel);
-      console.log(`Unsubscribed from channel: ${channelName}`);
+      if (supabaseClientRef.current) {
+        supabaseClientRef.current.removeChannel(channel);
+        console.log(`Unsubscribed from channel: ${channelName}`);
+      }
     };
   }, [gameId, addBuzz, clearBuzzQueue]); // Dependencies for useEffect
 
   const sendBuzz = (teamId: string) => {
-    if (!gameId) {
-      console.warn('useBuzzer: Cannot send buzz, gameId is not provided.');
+    if (!gameId || !supabaseClientRef.current) {
+      console.warn('useBuzzer: Cannot send buzz, gameId is not provided or client not initialized.');
       return;
     }
 
@@ -70,7 +80,7 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     const buzzEvent: BuzzEvent = { teamId, timestamp };
 
     // Broadcast the buzz event
-    supabaseClient.channel(`game:${gameId}`).send({
+    supabaseClientRef.current.channel(`game:${gameId}`).send({
       type: 'broadcast',
       event: 'buzz',
       payload: buzzEvent,
@@ -81,13 +91,13 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
   };
 
   const clearBuzzes = () => {
-    if (!gameId) {
-      console.warn('useBuzzer: Cannot clear buzzes, gameId is not provided.');
+    if (!gameId || !supabaseClientRef.current) {
+      console.warn('useBuzzer: Cannot clear buzzes, gameId is not provided or client not initialized.');
       return;
     }
 
     // Broadcast the clear-buzzes event
-    supabaseClient.channel(`game:${gameId}`).send({
+    supabaseClientRef.current.channel(`game:${gameId}`).send({
       type: 'broadcast',
       event: 'clear-buzzes',
       payload: {}, // No payload needed for clear-buzzes
