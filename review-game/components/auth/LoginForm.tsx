@@ -26,8 +26,10 @@ export default function LoginForm() {
       setError(loginError.message);
       setIsLoading(false);
     } else {
+      // Refresh the router to ensure session cookies are recognized
+      router.refresh();
       // Redirect to dashboard on success
-      router.push('/dashboard'); // Assuming a dashboard route exists
+      router.push('/dashboard');
     }
   };
 
