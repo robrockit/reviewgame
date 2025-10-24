@@ -4,8 +4,6 @@ import { createClient } from '@supabase/supabase-js';
 
 // Initialize Stripe with your secret key
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  // Using the specific API version required by the installed Stripe library
-  apiVersion: '2025-09-30.clover',
   typescript: true,
 });
 
@@ -71,7 +69,7 @@ export async function POST(req: NextRequest) {
                 subscription_status: subscription.status,
                 stripe_subscription_id: subscription.id,
                 trial_end_date: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-                current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+                current_period_end: new Date((subscription as any).current_period_end * 1000).toISOString(),
               })
               .eq('id', profile.id);
 
@@ -111,7 +109,7 @@ export async function POST(req: NextRequest) {
                 subscription_status: subscription.status,
                 stripe_subscription_id: subscription.id,
                 trial_end_date: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-                current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+                current_period_end: new Date((subscription as any).current_period_end * 1000).toISOString(),
               })
               .eq('id', profile.id);
 

@@ -1,7 +1,8 @@
 // reviewgame/reviewgame/app/pricing/page.tsx
 
+'use client';
+
 import React from 'react';
-import { useRouter } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 
 // Assume these are defined elsewhere or will be defined
@@ -14,11 +15,14 @@ const PricingPage = () => {
   const [error, setError] = React.useState<string | null>(null);
 
   const router = useRouter();
-  const searchParams = new URLSearchParams(window.location.search);
-  const paymentSuccess = searchParams.get('payment') === 'success';
+  const [paymentSuccess, setPaymentSuccess] = React.useState(false);
 
   React.useEffect(() => {
-    if (paymentSuccess) {
+    const searchParams = new URLSearchParams(window.location.search);
+    const success = searchParams.get('payment') === 'success';
+    setPaymentSuccess(success);
+
+    if (success) {
       console.log('Payment successful, user returned to pricing page.');
       // Optionally, clear the query param to avoid showing the message again on refresh
       // This might require a more complex state management or URL manipulation depending on the exact routing setup.
@@ -26,22 +30,7 @@ const PricingPage = () => {
       // For app router, you might need to use router.push or router.replace with a new URL without the param
       // For simplicity, we'll just display the message for now.
     }
-  }, [paymentSuccess, router]);
-
-  const router = useRouter();
-  const searchParams = new URLSearchParams(window.location.search);
-  const paymentSuccess = searchParams.get('payment') === 'success';
-
-  React.useEffect(() => {
-    if (paymentSuccess) {
-      console.log('Payment successful, user returned to pricing page.');
-      // Optionally, clear the query param to avoid showing the message again on refresh
-      // This might require a more complex state management or URL manipulation depending on the exact routing setup.
-      // For example, using router.replace('/pricing', undefined, { shallow: true }); for pages router
-      // For app router, you might need to use router.push or router.replace with a new URL without the param
-      // For simplicity, we'll just display the message for now.
-    }
-  }, [paymentSuccess, router]);
+  }, [router]);
 
   const basicFeatures = [
     'Feature A',
@@ -108,17 +97,13 @@ const PricingPage = () => {
   };
 
   return (
-    {paymentSuccess && !isLoading && (
-      <div className="mt-8 text-center text-green-600">
-        Payment successful! Thank you for your purchase.
-      </div>
-    )}
-    {paymentSuccess && !isLoading && (
-      <div className="mt-8 text-center text-green-600">
-        Payment successful! Thank you for your purchase.
-      </div>
-    )}
-    <div className="container mx-auto px-4 py-16">
+    <>
+      {paymentSuccess && !isLoading && (
+        <div className="mt-8 text-center text-green-600">
+          Payment successful! Thank you for your purchase.
+        </div>
+      )}
+      <div className="container mx-auto px-4 py-16">
       <h1 className="text-4xl font-bold text-center mb-12">Choose Your Plan</h1>
 
       <div className="flex flex-col md:flex-row justify-center items-center gap-8">
@@ -215,7 +200,8 @@ const PricingPage = () => {
           {error}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 
