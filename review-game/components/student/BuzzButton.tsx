@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import useSound from 'use-sound';
 
 /**
@@ -49,6 +49,7 @@ export const BuzzButton: React.FC<BuzzButtonProps> = ({
   disableHaptic = false,
 }) => {
   const [isPressed, setIsPressed] = useState(false);
+  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load buzz sound effect
   // Note: Sound file should be placed at public/sounds/buzz.mp3
@@ -57,17 +58,42 @@ export const BuzzButton: React.FC<BuzzButtonProps> = ({
     soundEnabled: !disableSound,
   });
 
+  // Cleanup timeout on unmount or state change
+  useEffect(() => {
+    return () => {
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+      }
+    };
+  }, []);
+
   /**
    * Triggers haptic feedback if available (mobile devices)
    * Uses the Vibration API with a short pulse
+   * Includes proper type casting and error handling
    */
   const triggerHaptic = () => {
     if (disableHaptic) return;
 
     // Check if Vibration API is available
-    if (typeof window !== 'undefined' && window.navigator && 'vibrate' in window.navigator) {
-      // Short vibration pulse (50ms)
-      window.navigator.vibrate(50);
+    if (
+      typeof window !== 'undefined' &&
+      window.navigator &&
+      'vibrate' in window.navigator
+    ) {
+      try {
+        // Type cast to support vibrate API
+        const nav = window.navigator as Navigator & {
+          vibrate: (pattern: number | number[]) => boolean;
+        };
+        // Short vibration pulse (50ms)
+        // Returns true if successful, false if not supported
+        nav.vibrate(50);
+      } catch (error) {
+        // Silently fail if vibration is not supported
+        // This is expected on many desktop browsers
+        console.debug('Haptic feedback not supported:', error);
+      }
     }
   };
 
@@ -76,15 +102,23 @@ export const BuzzButton: React.FC<BuzzButtonProps> = ({
    * - Plays sound effect
    * - Triggers haptic feedback
    * - Calls onBuzz callback
-   * - Provides visual feedback
+   * - Provides visual feedback with proper cleanup
    */
   const handlePress = () => {
     // Only allow press when active
     if (state !== 'active') return;
 
+    // Clear any existing timer to prevent race conditions
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+    }
+
     // Visual feedback
     setIsPressed(true);
-    setTimeout(() => setIsPressed(false), 200);
+    pressTimerRef.current = setTimeout(() => {
+      setIsPressed(false);
+      pressTimerRef.current = null;
+    }, 200);
 
     // Sound effect
     playBuzz();
@@ -94,6 +128,20 @@ export const BuzzButton: React.FC<BuzzButtonProps> = ({
 
     // Callback
     onBuzz();
+  };
+
+  /**
+   * Handles keyboard events for accessibility
+   * Supports Space and Enter keys
+   */
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    // Only handle Space and Enter when button is active
+    if (state !== 'active') return;
+
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault(); // Prevent default scrolling on Space
+      handlePress();
+    }
   };
 
   /**
@@ -160,6 +208,7 @@ export const BuzzButton: React.FC<BuzzButtonProps> = ({
     <div className="flex flex-col items-center gap-4">
       <button
         onClick={handlePress}
+        onKeyDown={handleKeyDown}
         disabled={state !== 'active'}
         className={getButtonStyle()}
         style={{
