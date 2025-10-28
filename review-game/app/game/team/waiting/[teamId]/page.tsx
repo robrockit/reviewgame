@@ -101,14 +101,26 @@ export default function WaitingRoomPage({ params }: WaitingRoomProps) {
   }, [teamId, router]);
 
   // Update last_seen timestamp periodically
+  // Only run when team is in pending state to avoid memory leaks
   useEffect(() => {
+    // Don't run interval if team is not pending or if there's an error
+    if (!team || team.connection_status !== 'pending' || error) {
+      return;
+    }
+
     const supabase = createClient();
 
     const updateLastSeen = async () => {
-      await supabase
+      const { error: updateError } = await supabase
         .from('teams')
         .update({ last_seen: new Date().toISOString() })
         .eq('id', teamId);
+
+      if (updateError) {
+        console.error('Failed to update last_seen:', updateError);
+        // Don't show error to user as this is a background operation
+        // Teacher will see stale last_seen timestamp if this fails repeatedly
+      }
     };
 
     // Update immediately
@@ -118,7 +130,7 @@ export default function WaitingRoomPage({ params }: WaitingRoomProps) {
     const interval = setInterval(updateLastSeen, 10000);
 
     return () => clearInterval(interval);
-  }, [teamId]);
+  }, [teamId, team, error]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-yellow-50 to-yellow-100 flex items-center justify-center p-4">

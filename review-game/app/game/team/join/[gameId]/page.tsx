@@ -94,13 +94,22 @@ export default function JoinGamePage({ params }: JoinPageProps) {
 
   /**
    * Generates a unique device ID using crypto.randomUUID()
-   * Falls back to timestamp-based ID if crypto is unavailable
+   * Falls back to cryptographically secure random bytes if crypto.randomUUID is unavailable
    */
   const generateDeviceId = (): string => {
-    if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
-      return window.crypto.randomUUID();
+    if (typeof window !== 'undefined' && window.crypto) {
+      // Prefer crypto.randomUUID() if available
+      if (window.crypto.randomUUID) {
+        return window.crypto.randomUUID();
+      }
+      // Fallback to crypto.getRandomValues() for better security
+      const array = new Uint8Array(16);
+      window.crypto.getRandomValues(array);
+      return `device_${Date.now()}_${Array.from(array)
+        .map((b) => b.toString(36).padStart(2, '0'))
+        .join('')}`;
     }
-    // Fallback for browsers without crypto.randomUUID
+    // Last resort fallback (should rarely happen in modern browsers)
     return `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   };
 
@@ -144,19 +153,26 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         localStorage.setItem('deviceId', deviceId);
       }
 
-      // Get the next team number
-      const { count, error: countError } = await supabase
+      // Get the next team number using MAX to reduce race condition risk
+      // Query for the highest team_number and increment it
+      const { data: maxTeamData, error: maxError } = await supabase
         .from('teams')
-        .select('*', { count: 'exact', head: true })
-        .eq('game_id', gameId);
+        .select('team_number')
+        .eq('game_id', gameId)
+        .order('team_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (countError) {
+      if (maxError) {
+        console.error('Error determining team number:', maxError);
         throw new Error('Failed to determine team number');
       }
 
-      const teamNumber = (count || 0) + 1;
+      const teamNumber = (maxTeamData?.team_number || 0) + 1;
 
       // Create team record with pending status
+      // Note: In a high-concurrency scenario, consider adding a unique constraint
+      // on (game_id, team_number) and implementing retry logic
       const { data: team, error: createError } = await supabase
         .from('teams')
         .insert({
@@ -172,6 +188,8 @@ export default function JoinGamePage({ params }: JoinPageProps) {
 
       if (createError || !team) {
         console.error('Error creating team:', createError);
+        // If error is a unique constraint violation, it might be a race condition
+        // User can retry by clicking the button again
         throw new Error('Failed to join game. Please try again.');
       }
 
