@@ -32,7 +32,7 @@ export default function GameBoardPage() {
   const [error, setError] = useState<string | null>(null);
   const [game, setGame] = useState<GameWithBank | null>(null);
 
-  const { setGame: setStoreGame, setTeams } = useGameStore();
+  const { setGame: setStoreGame, setTeams, allTeams } = useGameStore();
 
   // Fetch game data and questions
   useEffect(() => {
@@ -195,17 +195,21 @@ export default function GameBoardPage() {
           console.log('Game updated:', payload);
           const updatedGame = payload.new as Game;
 
-          // Update local game state
-          if (game) {
-            setGame({
-              ...game,
+          // Update local game state using callback form to avoid stale closure
+          setGame((prevGame) => {
+            if (!prevGame) return prevGame;
+            return {
+              ...prevGame,
               ...updatedGame,
-            });
-          }
+            };
+          });
         }
       )
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         console.log('Game board subscription status:', status);
+        if (err) {
+          console.error('Game subscription error:', err);
+        }
       });
 
     // Subscribe to team score updates
@@ -219,29 +223,26 @@ export default function GameBoardPage() {
           table: 'teams',
           filter: `game_id=eq.${gameId}`,
         },
-        async (payload) => {
+        (payload) => {
           console.log('Team updated:', payload);
+          const updatedTeam = payload.new as DatabaseTeam;
 
-          // Refetch teams to get latest scores
-          const { data: teamsData } = await supabase
-            .from('teams')
-            .select('*')
-            .eq('game_id', gameId)
-            .eq('connection_status', 'connected')
-            .order('team_number');
+          // Update only the specific team to avoid race conditions
+          const teamForStore: Team = {
+            id: updatedTeam.id,
+            name: updatedTeam.team_name || `Team ${updatedTeam.team_number}`,
+            score: updatedTeam.score || 0,
+          };
 
-          if (teamsData) {
-            const teamsForStore: Team[] = teamsData.map((t: DatabaseTeam) => ({
-              id: t.id,
-              name: t.team_name || `Team ${t.team_number}`,
-              score: t.score || 0,
-            }));
-            setTeams(teamsForStore);
-          }
+          // Update only the changed team in store
+          setTeams(allTeams.map((t) => (t.id === teamForStore.id ? teamForStore : t)));
         }
       )
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         console.log('Teams subscription status:', status);
+        if (err) {
+          console.error('Teams subscription error:', err);
+        }
       });
 
     // Cleanup
@@ -250,7 +251,7 @@ export default function GameBoardPage() {
       supabase.removeChannel(gameChannel);
       supabase.removeChannel(teamsChannel);
     };
-  }, [gameId, game, supabase, setTeams]);
+  }, [gameId, supabase, setTeams, allTeams]);
 
   if (loading) {
     return (
