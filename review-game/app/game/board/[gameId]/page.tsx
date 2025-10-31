@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { GameBoard } from '@/components/game/GameBoard';
@@ -24,14 +24,14 @@ interface GameWithBank extends Game {
 export default function GameBoardPage() {
   const params = useParams();
   const router = useRouter();
-  // Memoize supabase client to ensure stable reference across renders
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = createClient();
 
   const gameId = params?.gameId as string;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [game, setGame] = useState<GameWithBank | null>(null);
+  const [teacherId, setTeacherId] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
 
@@ -78,6 +78,9 @@ export default function GameBoardPage() {
           setLoading(false);
           return;
         }
+
+        // Cache the teacher ID for authorization checks in subscriptions
+        setTeacherId(user.id);
 
         // Fetch questions and teams in parallel to prevent race conditions
         const [questionsResult, teamsResult] = await Promise.all([
@@ -197,28 +200,32 @@ export default function GameBoardPage() {
           table: 'games',
           filter: `id=eq.${gameId}`,
         },
-        async (payload) => {
-          console.log('Game updated:', payload);
-          const updatedGame = payload.new as Game;
+        (payload) => {
+          try {
+            console.log('Game updated:', payload);
+            const updatedGame = payload.new as Game;
 
-          // Verify authorization hasn't changed
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user || updatedGame.teacher_id !== user.id) {
-            setError('You no longer have permission to access this game.');
-            setConnectionStatus('disconnected');
-            return;
+            // Verify authorization using cached teacher ID
+            if (!teacherId || updatedGame.teacher_id !== teacherId) {
+              setError('You no longer have permission to access this game.');
+              setConnectionStatus('disconnected');
+              return;
+            }
+
+            // Update local game state using callback form to avoid stale closure
+            setGame((prevGame) => {
+              if (!prevGame) return prevGame;
+              return {
+                ...prevGame,
+                ...updatedGame,
+                // Preserve nested question_banks object from initial fetch
+                question_banks: prevGame.question_banks,
+              };
+            });
+          } catch (error) {
+            console.error('Error in game update handler:', error);
+            setSubscriptionError('Failed to process game update');
           }
-
-          // Update local game state using callback form to avoid stale closure
-          setGame((prevGame) => {
-            if (!prevGame) return prevGame;
-            return {
-              ...prevGame,
-              ...updatedGame,
-              // Preserve nested question_banks object from initial fetch
-              question_banks: prevGame.question_banks,
-            };
-          });
         }
       )
       .subscribe((status, err) => {
@@ -248,20 +255,33 @@ export default function GameBoardPage() {
           filter: `game_id=eq.${gameId}`,
         },
         (payload) => {
-          console.log('Team updated:', payload);
-          const updatedTeam = payload.new as DatabaseTeam;
+          try {
+            console.log('Team updated:', payload);
+            const updatedTeam = payload.new as DatabaseTeam;
 
-          // Update only the specific team to avoid race conditions
-          const teamForStore: Team = {
-            id: updatedTeam.id,
-            name: updatedTeam.team_name || `Team ${updatedTeam.team_number}`,
-            score: updatedTeam.score || 0,
-          };
+            // Update only the specific team to avoid race conditions
+            const teamForStore: Team = {
+              id: updatedTeam.id,
+              name: updatedTeam.team_name || `Team ${updatedTeam.team_number}`,
+              score: updatedTeam.score || 0,
+            };
 
-          // Update only the changed team using callback form to prevent memory leak
-          setTeams((prevTeams: Team[]) =>
-            prevTeams.map((t: Team) => (t.id === teamForStore.id ? teamForStore : t))
-          );
+            // Update only the changed team using callback form to prevent memory leak
+            // Defensive check: only update if team exists, otherwise add it
+            setTeams((prevTeams: Team[]) => {
+              const teamExists = prevTeams.some((t) => t.id === teamForStore.id);
+              if (teamExists) {
+                return prevTeams.map((t: Team) => (t.id === teamForStore.id ? teamForStore : t));
+              } else {
+                // Team doesn't exist yet (update arrived before initial fetch completed)
+                // Add it to the list
+                return [...prevTeams, teamForStore];
+              }
+            });
+          } catch (error) {
+            console.error('Error in team update handler:', error);
+            setSubscriptionError('Failed to process team update');
+          }
         }
       )
       .subscribe((status, err) => {
@@ -285,7 +305,7 @@ export default function GameBoardPage() {
       supabase.removeChannel(gameChannel);
       supabase.removeChannel(teamsChannel);
     };
-  }, [gameId, supabase, setTeams, setGame]);
+  }, [gameId, supabase, setTeams, setGame, teacherId]);
 
   if (loading) {
     return (
