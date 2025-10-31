@@ -62,6 +62,7 @@ export default function NewGamePage() {
         setUser(currentUser);
 
         // Fetch user profile
+        // Note: Profile should be automatically created by database trigger when user signs up
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('*')
@@ -70,9 +71,21 @@ export default function NewGamePage() {
 
         if (profileError) {
           console.error('Error fetching profile:', profileError);
-        } else {
-          setProfile(profileData);
+
+          // If profile doesn't exist, it means the database trigger hasn't run yet or failed
+          if (profileError.code === 'PGRST116') {
+            setError(
+              'Your profile has not been created yet. Please sign out and sign back in, or contact support if the issue persists.'
+            );
+          } else {
+            setError('Failed to load user profile. Please try again.');
+          }
+
+          setLoading(false);
+          return;
         }
+
+        setProfile(profileData);
 
         // Fetch question banks (public + user's custom if premium)
         const isPremiumUser = profileData?.subscription_status === 'active' || profileData?.subscription_status === 'trial';
