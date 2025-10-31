@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { GameBoard } from '@/components/game/GameBoard';
@@ -24,13 +24,16 @@ interface GameWithBank extends Game {
 export default function GameBoardPage() {
   const params = useParams();
   const router = useRouter();
-  const supabase = createClient();
+  // Memoize supabase client to ensure stable reference across renders
+  const supabase = useMemo(() => createClient(), []);
 
   const gameId = params?.gameId as string;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [game, setGame] = useState<GameWithBank | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
 
   const { setGame: setStoreGame, setTeams } = useGameStore();
 
@@ -38,6 +41,13 @@ export default function GameBoardPage() {
   useEffect(() => {
     const fetchGameData = async () => {
       try {
+        // Validate gameId parameter
+        if (!gameId || typeof gameId !== 'string' || gameId.length === 0) {
+          setError('Invalid game ID');
+          setLoading(false);
+          return;
+        }
+
         // Check authentication
         const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -187,9 +197,17 @@ export default function GameBoardPage() {
           table: 'games',
           filter: `id=eq.${gameId}`,
         },
-        (payload) => {
+        async (payload) => {
           console.log('Game updated:', payload);
           const updatedGame = payload.new as Game;
+
+          // Verify authorization hasn't changed
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user || updatedGame.teacher_id !== user.id) {
+            setError('You no longer have permission to access this game.');
+            setConnectionStatus('disconnected');
+            return;
+          }
 
           // Update local game state using callback form to avoid stale closure
           setGame((prevGame) => {
@@ -197,6 +215,8 @@ export default function GameBoardPage() {
             return {
               ...prevGame,
               ...updatedGame,
+              // Preserve nested question_banks object from initial fetch
+              question_banks: prevGame.question_banks,
             };
           });
         }
@@ -205,6 +225,14 @@ export default function GameBoardPage() {
         console.log('Game board subscription status:', status);
         if (err) {
           console.error('Game subscription error:', err);
+          setSubscriptionError('Lost connection to game updates. Attempting to reconnect...');
+          setConnectionStatus('disconnected');
+        } else if (status === 'SUBSCRIBED') {
+          setConnectionStatus('connected');
+          setSubscriptionError(null);
+        } else if (status === 'CHANNEL_ERROR') {
+          setConnectionStatus('disconnected');
+          setSubscriptionError('Connection error. Attempting to reconnect...');
         }
       });
 
@@ -240,6 +268,14 @@ export default function GameBoardPage() {
         console.log('Teams subscription status:', status);
         if (err) {
           console.error('Teams subscription error:', err);
+          setSubscriptionError('Lost connection to team updates. Attempting to reconnect...');
+          setConnectionStatus('disconnected');
+        } else if (status === 'SUBSCRIBED') {
+          setConnectionStatus('connected');
+          setSubscriptionError(null);
+        } else if (status === 'CHANNEL_ERROR') {
+          setConnectionStatus('disconnected');
+          setSubscriptionError('Connection error. Attempting to reconnect...');
         }
       });
 
@@ -294,6 +330,29 @@ export default function GameBoardPage() {
             Back to Control Panel
           </button>
         </div>
+
+        {/* Connection Status Indicator */}
+        {connectionStatus !== 'connected' && (
+          <div className={`mb-4 p-4 rounded-lg ${
+            connectionStatus === 'disconnected'
+              ? 'bg-red-900/50 border border-red-700'
+              : 'bg-yellow-900/50 border border-yellow-700'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`w-3 h-3 rounded-full ${
+                connectionStatus === 'disconnected' ? 'bg-red-500' : 'bg-yellow-500'
+              } animate-pulse`}></div>
+              <div>
+                <p className="font-semibold">
+                  {connectionStatus === 'disconnected' ? 'Disconnected' : 'Connecting...'}
+                </p>
+                {subscriptionError && (
+                  <p className="text-sm text-gray-300">{subscriptionError}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Game Board */}
         <GameBoard />
