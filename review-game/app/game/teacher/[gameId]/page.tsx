@@ -210,11 +210,8 @@ export default function TeacherControlPage() {
         started_at: new Date().toISOString()
       });
 
-      // Show success message
-      alert('Game started! Students can now see their buzz buttons.');
-
-      // TODO: Navigate to the game board view when it's implemented in Phase 7
-      // router.push(`/game/board/${gameId}`);
+      // Navigate to the game board
+      router.push(`/game/board/${gameId}`);
     } catch (err) {
       console.error('Error starting game:', err);
       alert('Failed to start game. Please try again.');
