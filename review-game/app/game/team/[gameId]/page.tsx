@@ -162,13 +162,41 @@ export default function StudentJoinPage() {
         .select()
         .single();
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        // Check for unique constraint violation (race condition)
+        // Error code 23505 means duplicate key value violates unique constraint
+        if ('code' in insertError && insertError.code === '23505') {
+          // Another student joined this team at the same time
+          setError(`Team ${selectedTeamNumber} was just taken by another student. Please select a different team.`);
+          setJoinState('select');
+
+          // Refetch teams to update the UI with latest data
+          const { data: updatedTeams } = await supabase
+            .from('teams')
+            .select('*')
+            .eq('game_id', gameId);
+
+          if (updatedTeams) {
+            setExistingTeams(updatedTeams);
+          }
+          return;
+        }
+        throw insertError;
+      }
 
       setCurrentTeam(newTeam);
       setJoinState('waiting');
     } catch (err) {
       console.error('Error joining game:', err);
-      const message = err instanceof Error ? err.message : 'Failed to join game';
+
+      // Provide user-friendly error messages
+      let message = 'Failed to join game';
+      if (err && typeof err === 'object' && 'message' in err) {
+        message = (err as { message: string }).message;
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
+
       setError(message);
       setJoinState('select');
     }

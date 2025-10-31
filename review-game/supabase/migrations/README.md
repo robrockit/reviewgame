@@ -312,3 +312,222 @@ ALTER PUBLICATION supabase_realtime DROP TABLE public.games;
 - ❌ No "Team change detected" or "Game updated" console logs
 - ❌ Real-time subscriptions not firing
 - ❌ Must manually refresh to see updates
+
+---
+
+## Migration: add_teacher_update_policy.sql
+
+**Purpose:** Allow teachers to update their own games (start games, change status, etc.)
+
+**Why it's needed:**
+- Teachers couldn't start games without this UPDATE policy
+- The policy was added during debugging but never committed to a migration file
+- Without this, teachers get RLS policy violations when trying to update game status
+
+**The Problem:**
+When teachers click "Start Game", they get error:
+```
+new row violates row-level security policy for table "games"
+UPDATE operation blocked
+```
+
+**Changes:**
+- Adds RLS policy: "Teachers can update their own games"
+- Allows UPDATE operations where teacher_id = auth.uid()
+- Required for starting games (status: 'setup' → 'active')
+
+**Security Notes:**
+- Only authenticated teachers can update games
+- Teachers can only update their own games (verified by teacher_id)
+- Anonymous users cannot update games
+
+**To Apply:**
+
+1. Go to Supabase Dashboard → SQL Editor
+2. Copy contents of `add_teacher_update_policy.sql`
+3. Run the query
+
+**After applying:**
+- Teachers can start games successfully
+- Game status updates work correctly
+- No more RLS policy violations on game updates
+
+**Rollback:**
+
+```sql
+DROP POLICY IF EXISTS "Teachers can update their own games" ON public.games;
+```
+
+**Related Errors This Fixes:**
+- ❌ "new row violates row-level security policy for table 'games'"
+- ❌ "UPDATE operation blocked" when starting games
+- ❌ Teachers unable to change game status
+
+---
+
+## Migration: fix_team_security_policies.sql
+
+**Purpose:** Fix security vulnerabilities in team management (deletion authorization and restrictive updates)
+
+**Why it's needed:**
+- **Security Issue #1**: Teachers can delete any team without verifying they own the game
+- **Security Issue #2**: Anonymous users can update ANY team field (scores, names, etc.) not just connection_status
+- Both issues identified in code review as MEDIUM severity security vulnerabilities
+
+**The Problems:**
+
+**Problem 1 - Unauthorized Team Deletion:**
+```typescript
+// Teacher can delete ANY team, even from other teachers' games
+const { error } = await supabase
+  .from('teams')
+  .delete()
+  .eq('id', teamId);  // No game ownership verification!
+```
+
+**Problem 2 - Overly Permissive UPDATE Policy:**
+```sql
+-- Old policy allowed updating ALL columns
+CREATE POLICY "Anyone can update team presence"
+WITH CHECK (connection_status IN ('pending', 'connected', 'disconnected'));
+-- Only validates connection_status but allows updating team_name, score, etc.!
+```
+
+**Changes:**
+
+1. **Adds DELETE policy for teachers:**
+   - Teachers can only delete teams from games they own
+   - Verifies teacher_id matches game owner via JOIN
+
+2. **Replaces broad UPDATE policy with restrictive one:**
+   - Drops old "Anyone can update team presence" policy
+   - Creates new "Anyone can update team connection status" policy
+   - Only allows updating connection_status field
+   - Prevents modification of scores, team names, or other critical fields
+
+3. **Adds separate UPDATE policy for teachers:**
+   - "Teachers can update team scores" policy
+   - Allows teachers full UPDATE access to teams in their own games
+   - Required for scoring during gameplay
+
+**Security Notes:**
+- DELETE operations now verify game ownership
+- Anonymous users limited to connection_status updates only
+- Teachers have full control over teams in their games
+- Scores cannot be modified by anonymous users
+
+**To Apply:**
+
+1. Go to Supabase Dashboard → SQL Editor
+2. Copy contents of `fix_team_security_policies.sql`
+3. Run the query
+
+**After applying:**
+- Teachers can only delete teams from their own games
+- Anonymous users cannot modify scores or team names
+- Team management is properly authorized
+- Security vulnerabilities closed
+
+**Rollback:**
+
+```sql
+DROP POLICY IF EXISTS "Teachers can delete teams from their own games" ON public.teams;
+DROP POLICY IF EXISTS "Anyone can update team connection status" ON public.teams;
+DROP POLICY IF EXISTS "Teachers can update team scores" ON public.teams;
+
+-- Restore old policy if needed
+CREATE POLICY "Anyone can update team presence"
+ON public.teams
+FOR UPDATE
+USING (...)
+WITH CHECK (connection_status IN ('pending', 'connected', 'disconnected'));
+```
+
+**Related Security Issues This Fixes:**
+- ❌ MEDIUM: Team deletion without proper authorization
+- ❌ MEDIUM: Broad anonymous UPDATE policy allowing score manipulation
+- ❌ Unauthorized access to other teachers' game teams
+
+---
+
+## Migration: add_team_number_unique_constraint.sql
+
+**Purpose:** Prevent race condition where multiple students select the same team number simultaneously
+
+**Why it's needed:**
+- **Security Issue**: TOCTOU (Time-of-check to Time-of-use) vulnerability
+- Students can join the same team at the exact same time
+- Client-side check happens BEFORE database INSERT
+- Database-level constraint prevents race condition
+
+**The Problem:**
+
+**Race Condition Flow:**
+```
+Time: 0ms
+Student A: Checks if Team 1 exists → NOT FOUND ✓
+Student B: Checks if Team 1 exists → NOT FOUND ✓
+
+Time: 100ms
+Student A: INSERT Team 1 → SUCCESS ✓
+Student B: INSERT Team 1 → SUCCESS ✓  ❌ DUPLICATE!
+```
+
+**Current code:**
+```typescript
+// app/game/team/[gameId]/page.tsx:139
+const existingTeam = existingTeams.find(t => t.team_number === selectedTeamNumber);
+if (existingTeam) {
+  setError(`Team ${selectedTeamNumber} is already taken`);
+  return;
+}
+// INSERT happens here - gap between check and insert!
+```
+
+**Changes:**
+
+1. **Adds unique constraint:**
+   ```sql
+   ALTER TABLE public.teams
+   ADD CONSTRAINT unique_game_team_number
+   UNIQUE (game_id, team_number);
+   ```
+
+2. **Database-level enforcement:**
+   - No two teams can have same team_number within a game
+   - Constraint violation returns error code `23505`
+   - Second student gets clear error message
+
+**Client-Side Update:**
+The client code now handles constraint violations gracefully:
+```typescript
+if ('code' in insertError && insertError.code === '23505') {
+  setError(`Team ${selectedTeamNumber} was just taken by another student`);
+  // Refetch teams to update UI
+}
+```
+
+**To Apply:**
+
+1. Go to Supabase Dashboard → SQL Editor
+2. Copy contents of `add_team_number_unique_constraint.sql`
+3. Run the query
+
+**After applying:**
+- Race condition prevented at database level
+- Only one student can successfully join each team number
+- Second student gets clear "Team just taken" error
+- UI automatically refreshes to show latest team availability
+
+**Rollback:**
+
+```sql
+ALTER TABLE public.teams
+DROP CONSTRAINT IF EXISTS unique_game_team_number;
+```
+
+**Related Errors This Fixes:**
+- ❌ MEDIUM: Race condition in team number selection
+- ❌ Multiple students joining same team simultaneously
+- ❌ TOCTOU vulnerability in team join flow
+- ❌ Duplicate team numbers within same game
