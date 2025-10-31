@@ -7,7 +7,7 @@ import { GameBoard } from '@/components/game/GameBoard';
 import { TeamScoreboard } from '@/components/game/TeamScoreboard';
 import { useGameStore } from '@/lib/stores/gameStore';
 import type { Tables } from '@/types/database.types';
-import type { Category, Question, GameData, Team } from '@/types/game';
+import type { Category, Question, Team } from '@/types/game';
 
 type Game = Tables<'games'>;
 type DatabaseTeam = Tables<'teams'>;
@@ -32,7 +32,7 @@ export default function GameBoardPage() {
   const [error, setError] = useState<string | null>(null);
   const [game, setGame] = useState<GameWithBank | null>(null);
 
-  const { setGame: setStoreGame, setTeams, allTeams } = useGameStore();
+  const { setGame: setStoreGame, setTeams } = useGameStore();
 
   // Fetch game data and questions
   useEffect(() => {
@@ -69,48 +69,44 @@ export default function GameBoardPage() {
           return;
         }
 
-        setGame(gameData as GameWithBank);
+        // Fetch questions and teams in parallel to prevent race conditions
+        const [questionsResult, teamsResult] = await Promise.all([
+          supabase
+            .from('questions')
+            .select('*')
+            .eq('bank_id', gameData.bank_id)
+            .order('category')
+            .order('position'),
+          supabase
+            .from('teams')
+            .select('*')
+            .eq('game_id', gameId)
+            .eq('connection_status', 'connected')
+            .order('team_number'),
+        ]);
 
-        // Fetch all questions for this question bank
-        const { data: questionsData, error: questionsError } = await supabase
-          .from('questions')
-          .select('*')
-          .eq('bank_id', gameData.bank_id)
-          .order('category')
-          .order('position');
-
-        if (questionsError) throw questionsError;
+        if (questionsResult.error) throw questionsResult.error;
+        if (teamsResult.error) throw teamsResult.error;
 
         // Transform questions into game board format
         const categories = transformQuestionsToCategories(
-          questionsData,
+          questionsResult.data,
           gameData.selected_questions || []
         );
 
-        // Set game data in store
-        const gameDataForStore: GameData = {
-          id: gameData.id,
-          categories,
-        };
-        setStoreGame(gameDataForStore);
-
-        // Fetch teams
-        const { data: teamsData, error: teamsError } = await supabase
-          .from('teams')
-          .select('*')
-          .eq('game_id', gameId)
-          .eq('connection_status', 'connected')
-          .order('team_number');
-
-        if (teamsError) throw teamsError;
-
         // Transform teams for store
-        const teamsForStore: Team[] = (teamsData || []).map((t: DatabaseTeam) => ({
+        const teamsForStore: Team[] = (teamsResult.data || []).map((t: DatabaseTeam) => ({
           id: t.id,
           name: t.team_name || `Team ${t.team_number}`,
           score: t.score || 0,
         }));
 
+        // Set all state together to prevent partial renders
+        setGame(gameData as GameWithBank);
+        setStoreGame({
+          id: gameData.id,
+          categories,
+        });
         setTeams(teamsForStore);
         setLoading(false);
       } catch (err) {
@@ -234,8 +230,10 @@ export default function GameBoardPage() {
             score: updatedTeam.score || 0,
           };
 
-          // Update only the changed team in store
-          setTeams(allTeams.map((t) => (t.id === teamForStore.id ? teamForStore : t)));
+          // Update only the changed team using callback form to prevent memory leak
+          setTeams((prevTeams: Team[]) =>
+            prevTeams.map((t: Team) => (t.id === teamForStore.id ? teamForStore : t))
+          );
         }
       )
       .subscribe((status, err) => {
@@ -251,7 +249,7 @@ export default function GameBoardPage() {
       supabase.removeChannel(gameChannel);
       supabase.removeChannel(teamsChannel);
     };
-  }, [gameId, supabase, setTeams, allTeams]);
+  }, [gameId, supabase, setTeams, setGame]);
 
   if (loading) {
     return (

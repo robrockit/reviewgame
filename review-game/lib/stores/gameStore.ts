@@ -13,7 +13,7 @@ interface GameState {
 
 interface GameActions {
   setGame: (data: GameData | null) => void;
-  setTeams: (teams: Team[]) => void;
+  setTeams: (teams: Team[] | ((prevTeams: Team[]) => Team[])) => void;
   setCurrentQuestion: (question: Question | null) => void;
   addBuzz: (teamId: string, timestamp: number) => void;
   clearBuzzQueue: () => void;
@@ -35,13 +35,16 @@ const initialState: GameState = {
   scoreUpdates: {}, // Initialize as an empty object
 };
 
-export const useGameStore = create<GameStore>((set, get) => ({
+export const useGameStore = create<GameStore>((set) => ({
   // State
   ...initialState,
 
   // Actions
   setGame: (data) => set({ currentGameData: data }),
-  setTeams: (teams) => set({ allTeams: teams }),
+  setTeams: (teams) =>
+    set((state) => ({
+      allTeams: typeof teams === 'function' ? teams(state.allTeams) : teams,
+    })),
   setCurrentQuestion: (question) => set({ currentQuestion: question }),
   addBuzz: (teamId, timestamp) =>
     set((state) => ({
