@@ -16,6 +16,7 @@ interface GameActions {
   setTeams: (teams: Team[] | ((prevTeams: Team[]) => Team[])) => void;
   setCurrentQuestion: (question: Question | null) => void;
   addBuzz: (teamId: string, timestamp: number) => void;
+  removeBuzz: (teamId: string) => void;
   clearBuzzQueue: () => void;
   markQuestionUsed: (questionId: string) => void;
   updateTeamScore: (teamId: string, scoreChange: number) => void;
@@ -51,6 +52,10 @@ export const useGameStore = create<GameStore>((set) => ({
       buzzQueue: [...state.buzzQueue, { teamId, timestamp }].sort(
         (a, b) => a.timestamp - b.timestamp
       ),
+    })),
+  removeBuzz: (teamId) =>
+    set((state) => ({
+      buzzQueue: state.buzzQueue.filter((buzz) => buzz.teamId !== teamId),
     })),
   clearBuzzQueue: () => set({ buzzQueue: [] }),
   markQuestionUsed: (questionId) =>

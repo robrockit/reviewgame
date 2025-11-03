@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { GameBoard } from '@/components/game/GameBoard';
 import { TeamScoreboard } from '@/components/game/TeamScoreboard';
+import { QuestionModal } from '@/components/game/QuestionModal';
 import { useGameStore } from '@/lib/stores/gameStore';
 import type { Tables } from '@/types/database.types';
 import type { Category, Question, Team } from '@/types/game';
@@ -176,6 +177,7 @@ export default function GameBoardPage() {
             text: q.question_text,
             isUsed: usedQuestions.includes(q.id),
             isDailyDouble,
+            categoryName, // Include category name for modal display
           };
         });
 
@@ -422,6 +424,9 @@ export default function GameBoardPage() {
           <TeamScoreboard />
         </div>
       </div>
+
+      {/* Question Display Modal */}
+      <QuestionModal gameId={gameId} />
     </div>
   );
 }

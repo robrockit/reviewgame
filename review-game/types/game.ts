@@ -6,6 +6,7 @@ export interface Question {
   text: string;
   isUsed: boolean;
   isDailyDouble?: boolean;
+  categoryName?: string; // Category context for display in modal
 }
 
 export interface Category {
