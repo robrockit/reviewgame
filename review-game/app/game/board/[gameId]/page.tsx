@@ -39,6 +39,10 @@ export default function GameBoardPage() {
 
   // Fetch game data and questions
   useEffect(() => {
+    // Reset error state when gameId changes
+    setError(null);
+    setLoading(true);
+
     const fetchGameData = async () => {
       try {
         // Validate gameId parameter
@@ -83,6 +87,9 @@ export default function GameBoardPage() {
         setTeacherId(user.id);
 
         // Fetch questions and teams in parallel to prevent race conditions
+        // NOTE: Questions are fetched once at game start and do not update in real-time.
+        // This is intentional - question bank changes during active gameplay could cause
+        // inconsistencies. Teachers should modify questions before starting the game.
         const [questionsResult, teamsResult] = await Promise.all([
           supabase
             .from('questions')
@@ -185,7 +192,8 @@ export default function GameBoardPage() {
 
   // Set up real-time subscriptions
   useEffect(() => {
-    if (!gameId) return;
+    // Don't set up subscriptions until we have gameId and teacherId
+    if (!gameId || !teacherId) return;
 
     console.log('Setting up real-time subscriptions for game board');
 
@@ -259,6 +267,15 @@ export default function GameBoardPage() {
             console.log('Team updated:', payload);
             const updatedTeam = payload.new as DatabaseTeam;
 
+            // Filter to only process connected teams (matches initial fetch filter)
+            if (updatedTeam.connection_status !== 'connected') {
+              // Team is no longer connected - remove from list
+              setTeams((prevTeams: Team[]) =>
+                prevTeams.filter((t) => t.id !== updatedTeam.id)
+              );
+              return;
+            }
+
             // Update only the specific team to avoid race conditions
             const teamForStore: Team = {
               id: updatedTeam.id,
@@ -281,6 +298,29 @@ export default function GameBoardPage() {
           } catch (error) {
             console.error('Error in team update handler:', error);
             setSubscriptionError('Failed to process team update');
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'teams',
+          filter: `game_id=eq.${gameId}`,
+        },
+        (payload) => {
+          try {
+            console.log('Team deleted:', payload);
+            const deletedTeam = payload.old as DatabaseTeam;
+
+            // Remove the team from the list
+            setTeams((prevTeams: Team[]) =>
+              prevTeams.filter((t) => t.id !== deletedTeam.id)
+            );
+          } catch (error) {
+            console.error('Error in team delete handler:', error);
+            setSubscriptionError('Failed to process team deletion');
           }
         }
       )
