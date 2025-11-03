@@ -33,12 +33,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
     ? allTeams.find(team => team.id === firstBuzzTeam.teamId)
     : null;
 
-  // Find the category name for the current question
-  const getCategoryName = (): string => {
-    // This will be improved once we have category context
-    // For now, return a placeholder
-    return 'Category';
-  };
+  // Get category name from current question
+  const categoryName = currentQuestion?.categoryName || 'Category';
 
   // Set mounted flag on mount and clean up on unmount
   useEffect(() => {
@@ -59,16 +55,22 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
   const handleCorrect = async () => {
     if (isProcessing || !currentQuestion || !firstBuzzTeam || !firstTeamData) return;
 
+    // IMPORTANT: Snapshot values before any async operations to prevent race conditions
+    const teamIdToUpdate = firstTeamData.id;
+    const scoreToAward = currentQuestion.value;
+    const currentScore = firstTeamData.score;
+    const questionId = currentQuestion.id;
+
     setIsProcessing(true);
     try {
       // Award points to the first team in the buzz queue
-      const newScore = firstTeamData.score + currentQuestion.value;
+      const newScore = currentScore + scoreToAward;
 
       // CRITICAL: Update the team score first (most important operation)
       const { error: scoreError } = await supabase
         .from('teams')
         .update({ score: newScore })
-        .eq('id', firstTeamData.id);
+        .eq('id', teamIdToUpdate);
 
       if (scoreError) {
         console.error('Error updating team score:', scoreError);
@@ -86,11 +88,11 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
 
         if (!gameError && gameData) {
           const selectedQuestions = gameData.selected_questions || [];
-          if (!selectedQuestions.includes(currentQuestion.id)) {
+          if (!selectedQuestions.includes(questionId)) {
             const { error: updateError } = await supabase
               .from('games')
               .update({
-                selected_questions: [...selectedQuestions, currentQuestion.id]
+                selected_questions: [...selectedQuestions, questionId]
               })
               .eq('id', gameId);
 
@@ -127,25 +129,31 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
   const handleIncorrect = async () => {
     if (isProcessing || !currentQuestion || !firstBuzzTeam || !firstTeamData) return;
 
+    // IMPORTANT: Snapshot team ID before any async operations to prevent race conditions
+    // The buzz queue could change during async operations (especially with real-time updates)
+    const teamIdToRemove = firstTeamData.id;
+    const scoreToDeduct = currentQuestion.value;
+    const currentScore = firstTeamData.score;
+
     setIsProcessing(true);
     try {
       // Deduct points from the first team in the buzz queue
-      const newScore = firstTeamData.score - currentQuestion.value;
+      const newScore = currentScore - scoreToDeduct;
 
       // Update the team score in the database
       const { error: scoreError } = await supabase
         .from('teams')
         .update({ score: newScore })
-        .eq('id', firstTeamData.id);
+        .eq('id', teamIdToRemove);
 
       if (scoreError) {
         console.error('Error updating team score:', scoreError);
         throw scoreError;
       }
 
-      // Remove the first team from the buzz queue
+      // Remove the team from buzz queue using the snapshot, not current state
       if (isMountedRef.current) {
-        removeBuzz(firstTeamData.id);
+        removeBuzz(teamIdToRemove);
       }
 
       // If no more teams in queue after removal, modal stays open
@@ -202,7 +210,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
         <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex items-center justify-between">
           <div className="flex-1">
             <h2 className="text-2xl font-bold text-white mb-1">
-              {getCategoryName()}
+              {categoryName}
             </h2>
             <div className="text-3xl font-bold text-blue-400">
               {currentQuestion.value} Points
