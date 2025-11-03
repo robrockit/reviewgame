@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import { createClient } from '@/lib/supabase/client';
 
@@ -21,6 +21,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const supabase = createClient();
 
+  // Track if component is mounted to prevent state updates after unmount
+  const isMountedRef = useRef(true);
+
   // Modal is open when currentQuestion is not null
   const isOpen = currentQuestion !== null;
 
@@ -36,6 +39,14 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
     // For now, return a placeholder
     return 'Category';
   };
+
+  // Set mounted flag on mount and clean up on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Close modal handler
   const handleClose = useCallback(() => {
@@ -53,46 +64,62 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
       // Award points to the first team in the buzz queue
       const newScore = firstTeamData.score + currentQuestion.value;
 
-      // Update the team score in the database
-      const { error } = await supabase
+      // CRITICAL: Update the team score first (most important operation)
+      const { error: scoreError } = await supabase
         .from('teams')
         .update({ score: newScore })
         .eq('id', firstTeamData.id);
 
-      if (error) {
-        console.error('Error updating team score:', error);
-        throw error;
+      if (scoreError) {
+        console.error('Error updating team score:', scoreError);
+        throw scoreError;
       }
 
-      // Update the game's selected_questions array
-      const { data: gameData, error: gameError } = await supabase
-        .from('games')
-        .select('selected_questions')
-        .eq('id', gameId)
-        .single();
-
-      if (gameError) throw gameError;
-
-      const selectedQuestions = gameData.selected_questions || [];
-      if (!selectedQuestions.includes(currentQuestion.id)) {
-        const { error: updateError } = await supabase
+      // Try to mark question as used in database (less critical)
+      // Note: Question is already marked in local state via markQuestionUsed() in GameBoard
+      try {
+        const { data: gameData, error: gameError } = await supabase
           .from('games')
-          .update({
-            selected_questions: [...selectedQuestions, currentQuestion.id]
-          })
-          .eq('id', gameId);
+          .select('selected_questions')
+          .eq('id', gameId)
+          .single();
 
-        if (updateError) throw updateError;
+        if (!gameError && gameData) {
+          const selectedQuestions = gameData.selected_questions || [];
+          if (!selectedQuestions.includes(currentQuestion.id)) {
+            const { error: updateError } = await supabase
+              .from('games')
+              .update({
+                selected_questions: [...selectedQuestions, currentQuestion.id]
+              })
+              .eq('id', gameId);
+
+            if (updateError) {
+              // Log but don't fail - question is marked locally
+              console.warn('Failed to mark question in DB (will sync later):', updateError);
+            }
+          }
+        }
+      } catch (markError) {
+        // Non-critical failure - log and continue
+        console.warn('Failed to mark question as used in DB:', markError);
       }
 
-      // Clear buzz queue and close modal
-      clearBuzzQueue();
-      setCurrentQuestion(null);
+      // Success - clear buzz queue and close modal
+      if (isMountedRef.current) {
+        clearBuzzQueue();
+        setCurrentQuestion(null);
+      }
     } catch (error) {
       console.error('Error handling correct answer:', error);
-      alert('Failed to update score. Please try again.');
+      if (isMountedRef.current) {
+        alert('Failed to update score. Please try again.');
+      }
     } finally {
-      setIsProcessing(false);
+      // Only update state if component is still mounted
+      if (isMountedRef.current) {
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -106,27 +133,34 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
       const newScore = firstTeamData.score - currentQuestion.value;
 
       // Update the team score in the database
-      const { error } = await supabase
+      const { error: scoreError } = await supabase
         .from('teams')
         .update({ score: newScore })
         .eq('id', firstTeamData.id);
 
-      if (error) {
-        console.error('Error updating team score:', error);
-        throw error;
+      if (scoreError) {
+        console.error('Error updating team score:', scoreError);
+        throw scoreError;
       }
 
       // Remove the first team from the buzz queue
-      removeBuzz(firstTeamData.id);
+      if (isMountedRef.current) {
+        removeBuzz(firstTeamData.id);
+      }
 
       // If no more teams in queue after removal, modal stays open
       // Teacher can close manually or wait for more buzzes
 
     } catch (error) {
       console.error('Error handling incorrect answer:', error);
-      alert('Failed to update score. Please try again.');
+      if (isMountedRef.current) {
+        alert('Failed to update score. Please try again.');
+      }
     } finally {
-      setIsProcessing(false);
+      // Only update state if component is still mounted
+      if (isMountedRef.current) {
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -214,7 +248,17 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
             <h3 className="text-xl font-bold text-white mb-4">Buzz Queue</h3>
             {buzzQueue.length === 0 ? (
               <div className="bg-gray-700 rounded-lg p-6 text-center">
-                <p className="text-gray-400">No teams have buzzed in yet...</p>
+                <p className="text-gray-400">
+                  {isProcessing
+                    ? "Processing answer..."
+                    : "No teams have buzzed in yet..."}
+                </p>
+                {!isProcessing && (
+                  <p className="text-yellow-400 text-sm mt-3 flex items-center justify-center gap-2">
+                    <span>💡</span>
+                    <span>Waiting for teams to buzz in, or close this question to continue.</span>
+                  </p>
+                )}
               </div>
             ) : (
               <div className="space-y-2">
