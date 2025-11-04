@@ -7,48 +7,48 @@ import { SCORE_ANIMATION_DURATION, easeOutQuad } from '../../lib/constants/anima
 const useAnimatedScore = (targetScore: number, duration: number = SCORE_ANIMATION_DURATION) => {
   const [displayScore, setDisplayScore] = useState(targetScore);
   const animationRef = useRef<number | undefined>(undefined);
-  const startTimeRef = useRef<number | undefined>(undefined);
-  const startScoreRef = useRef(targetScore);
+  const previousTargetRef = useRef(targetScore);
 
   useEffect(() => {
-    // Cancel any existing animation first to prevent race conditions
+    // Only animate if target actually changed
+    if (previousTargetRef.current === targetScore) return;
+
+    // Cancel any existing animation
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
-      animationRef.current = undefined;
     }
 
-    // If score changed, animate to new value
-    if (displayScore !== targetScore) {
-      const startScore = displayScore;
-      startScoreRef.current = startScore;
-      startTimeRef.current = Date.now();
+    const startScore = displayScore;
+    const startTime = Date.now();
 
-      const animate = () => {
-        const now = Date.now();
-        const elapsed = now - (startTimeRef.current || now);
-        const progress = Math.min(elapsed / duration, 1);
+    // Update target ref immediately
+    previousTargetRef.current = targetScore;
 
-        const easedProgress = easeOutQuad(progress);
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easedProgress = easeOutQuad(progress);
 
-        const current = Math.round(
-          startScore + (targetScore - startScore) * easedProgress
-        );
-        setDisplayScore(current);
+      const current = Math.round(
+        startScore + (targetScore - startScore) * easedProgress
+      );
+      setDisplayScore(current);
 
-        if (progress < 1) {
-          animationRef.current = requestAnimationFrame(animate);
-        }
-      };
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animate);
+      }
+    };
 
-      animationRef.current = requestAnimationFrame(animate);
+    animationRef.current = requestAnimationFrame(animate);
 
-      return () => {
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current);
-        }
-      };
-    }
-  }, [targetScore, displayScore, duration]);
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+    // displayScore is intentionally excluded to prevent re-running during animation
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetScore, duration]);
 
   return displayScore;
 };
@@ -76,14 +76,13 @@ const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
         setFlashClass('animate-flash-red');
       }
 
+      // Update prevScoreRef immediately after detecting change
+      prevScoreRef.current = team.score;
+
       // Remove flash class after animation completes
       const timer = setTimeout(() => setFlashClass(''), SCORE_ANIMATION_DURATION);
 
-      return () => {
-        clearTimeout(timer);
-        // Update prevScoreRef in cleanup to ensure it's set even if component unmounts
-        prevScoreRef.current = team.score;
-      };
+      return () => clearTimeout(timer);
     }
   }, [team.score]);
 

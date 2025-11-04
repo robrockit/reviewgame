@@ -28,46 +28,50 @@ export const TeamScore: React.FC<TeamScoreProps> = ({
   const [scoreChangeAmount, setScoreChangeAmount] = useState<number | null>(null);
   const prevScoreRef = useRef(currentScore);
   const animationRef = useRef<number | undefined>(undefined);
+  const previousTargetRef = useRef(currentScore);
 
   // Animate score changes
   useEffect(() => {
-    // Cancel any existing animation first to prevent race conditions
+    // Only animate if target actually changed
+    if (previousTargetRef.current === currentScore) return;
+
+    // Cancel any existing animation
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
-      animationRef.current = undefined;
     }
 
-    if (displayScore !== currentScore) {
-      const startScore = displayScore;
-      const startTime = Date.now();
-      const duration = SCORE_ANIMATION_DURATION;
+    const startScore = displayScore;
+    const startTime = Date.now();
+    const duration = SCORE_ANIMATION_DURATION;
 
-      const animate = () => {
-        const now = Date.now();
-        const elapsed = now - startTime;
-        const progress = Math.min(elapsed / duration, 1);
+    // Update target ref immediately
+    previousTargetRef.current = currentScore;
 
-        const easedProgress = easeOutQuad(progress);
+    const animate = () => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easedProgress = easeOutQuad(progress);
 
-        const current = Math.round(
-          startScore + (currentScore - startScore) * easedProgress
-        );
-        setDisplayScore(current);
+      const current = Math.round(
+        startScore + (currentScore - startScore) * easedProgress
+      );
+      setDisplayScore(current);
 
-        if (progress < 1) {
-          animationRef.current = requestAnimationFrame(animate);
-        }
-      };
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animate);
+      }
+    };
 
-      animationRef.current = requestAnimationFrame(animate);
+    animationRef.current = requestAnimationFrame(animate);
 
-      return () => {
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current);
-        }
-      };
-    }
-  }, [currentScore, displayScore]);
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+    // displayScore is intentionally excluded to prevent re-running during animation
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentScore]);
 
   // Detect score changes and trigger flash effect
   useEffect(() => {
@@ -84,17 +88,16 @@ export const TeamScore: React.FC<TeamScoreProps> = ({
         setFlashClass('animate-flash-red');
       }
 
+      // Update prevScoreRef immediately after detecting change
+      prevScoreRef.current = currentScore;
+
       // Remove flash class and score change indicator after animation
       const timer = setTimeout(() => {
         setFlashClass('');
         setScoreChangeAmount(null);
       }, SCORE_ANIMATION_DURATION);
 
-      return () => {
-        clearTimeout(timer);
-        // Update prevScoreRef in cleanup to ensure it's set even if component unmounts
-        prevScoreRef.current = currentScore;
-      };
+      return () => clearTimeout(timer);
     }
   }, [currentScore]);
 
