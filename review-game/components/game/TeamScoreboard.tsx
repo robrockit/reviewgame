@@ -1,57 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import type { Team } from '../../types/game';
-import { SCORE_ANIMATION_DURATION, easeOutQuad } from '../../lib/constants/animations';
-
-// Helper function to animate score changes
-const useAnimatedScore = (targetScore: number, duration: number = SCORE_ANIMATION_DURATION) => {
-  const [displayScore, setDisplayScore] = useState(targetScore);
-  const animationRef = useRef<number | undefined>(undefined);
-  const previousTargetRef = useRef(targetScore);
-
-  useEffect(() => {
-    // Only animate if target actually changed
-    if (previousTargetRef.current === targetScore) return;
-
-    // Cancel any existing animation
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-
-    const startScore = displayScore;
-    const startTime = Date.now();
-
-    // Update target ref immediately
-    previousTargetRef.current = targetScore;
-
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const easedProgress = easeOutQuad(progress);
-
-      const current = Math.round(
-        startScore + (targetScore - startScore) * easedProgress
-      );
-      setDisplayScore(current);
-
-      if (progress < 1) {
-        animationRef.current = requestAnimationFrame(animate);
-      }
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-    // displayScore is intentionally excluded to prevent re-running during animation
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetScore, duration]);
-
-  return displayScore;
-};
+import { SCORE_ANIMATION_DURATION } from '../../lib/constants/animations';
+import { useAnimatedScore } from '../../lib/hooks/useAnimatedScore';
 
 // Individual team card component with animations
 interface TeamCardProps {
@@ -63,11 +14,17 @@ const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
   const animatedScore = useAnimatedScore(team.score);
   const [flashClass, setFlashClass] = useState('');
   const prevScoreRef = useRef(team.score);
+  const flashTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   // Detect score changes and trigger flash effect
   useEffect(() => {
     if (prevScoreRef.current !== team.score) {
       const scoreChange = team.score - prevScoreRef.current;
+
+      // Clear any existing flash timer to prevent overlapping animations
+      if (flashTimerRef.current) {
+        clearTimeout(flashTimerRef.current);
+      }
 
       // Determine flash color based on positive/negative change
       if (scoreChange > 0) {
@@ -80,9 +37,13 @@ const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
       prevScoreRef.current = team.score;
 
       // Remove flash class after animation completes
-      const timer = setTimeout(() => setFlashClass(''), SCORE_ANIMATION_DURATION);
+      flashTimerRef.current = setTimeout(() => setFlashClass(''), SCORE_ANIMATION_DURATION);
 
-      return () => clearTimeout(timer);
+      return () => {
+        if (flashTimerRef.current) {
+          clearTimeout(flashTimerRef.current);
+        }
+      };
     }
   }, [team.score]);
 

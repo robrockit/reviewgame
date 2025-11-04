@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { SCORE_ANIMATION_DURATION, easeOutQuad } from '../../lib/constants/animations';
+import { SCORE_ANIMATION_DURATION } from '../../lib/constants/animations';
+import { useAnimatedScore } from '../../lib/hooks/useAnimatedScore';
 
 interface TeamScoreProps {
   teamName: string;
@@ -23,60 +24,21 @@ export const TeamScore: React.FC<TeamScoreProps> = ({
   currentScore,
   teamColor = '#3b82f6' // Default blue
 }) => {
-  const [displayScore, setDisplayScore] = useState(currentScore);
+  const displayScore = useAnimatedScore(currentScore);
   const [flashClass, setFlashClass] = useState('');
   const [scoreChangeAmount, setScoreChangeAmount] = useState<number | null>(null);
   const prevScoreRef = useRef(currentScore);
-  const animationRef = useRef<number | undefined>(undefined);
-  const previousTargetRef = useRef(currentScore);
-
-  // Animate score changes
-  useEffect(() => {
-    // Only animate if target actually changed
-    if (previousTargetRef.current === currentScore) return;
-
-    // Cancel any existing animation
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-
-    const startScore = displayScore;
-    const startTime = Date.now();
-    const duration = SCORE_ANIMATION_DURATION;
-
-    // Update target ref immediately
-    previousTargetRef.current = currentScore;
-
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const easedProgress = easeOutQuad(progress);
-
-      const current = Math.round(
-        startScore + (currentScore - startScore) * easedProgress
-      );
-      setDisplayScore(current);
-
-      if (progress < 1) {
-        animationRef.current = requestAnimationFrame(animate);
-      }
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-    // displayScore is intentionally excluded to prevent re-running during animation
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentScore]);
+  const flashTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
   // Detect score changes and trigger flash effect
   useEffect(() => {
     if (prevScoreRef.current !== currentScore) {
       const scoreChange = currentScore - prevScoreRef.current;
+
+      // Clear any existing flash timer to prevent overlapping animations
+      if (flashTimerRef.current) {
+        clearTimeout(flashTimerRef.current);
+      }
 
       // Set the score change amount for display
       setScoreChangeAmount(scoreChange);
@@ -92,12 +54,16 @@ export const TeamScore: React.FC<TeamScoreProps> = ({
       prevScoreRef.current = currentScore;
 
       // Remove flash class and score change indicator after animation
-      const timer = setTimeout(() => {
+      flashTimerRef.current = setTimeout(() => {
         setFlashClass('');
         setScoreChangeAmount(null);
       }, SCORE_ANIMATION_DURATION);
 
-      return () => clearTimeout(timer);
+      return () => {
+        if (flashTimerRef.current) {
+          clearTimeout(flashTimerRef.current);
+        }
+      };
     }
   }, [currentScore]);
 
