@@ -61,7 +61,7 @@ export const useAnimatedScore = (
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [targetScore, duration, displayScore]);
+  }, [targetScore, duration]);
 
   return displayScore;
 };
