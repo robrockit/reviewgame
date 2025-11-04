@@ -122,11 +122,19 @@ export default function GameBoardPage() {
           score: t.score || 0,
         }));
 
+        // Validate and set timer settings
+        const timerSeconds = gameData.timer_seconds ?? 10;
+        if (timerSeconds <= 0) {
+          console.warn(`Invalid timer_seconds value: ${timerSeconds}, using default 10`);
+        }
+
         // Set all state together to prevent partial renders
         setGame(gameData as GameWithBank);
         setStoreGame({
           id: gameData.id,
           categories,
+          timerEnabled: gameData.timer_enabled ?? false,
+          timerSeconds: Math.max(1, timerSeconds), // Ensure at least 1 second
         });
         setTeams(teamsForStore);
         setLoading(false);
