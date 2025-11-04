@@ -18,6 +18,8 @@ export interface Category {
 export interface GameData {
   id: string;
   categories: Category[];
+  timerEnabled?: boolean;
+  timerSeconds?: number;
   // Add other game properties as needed
 }
 

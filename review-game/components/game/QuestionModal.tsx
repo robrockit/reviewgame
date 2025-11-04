@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import { createClient } from '@/lib/supabase/client';
+import { Timer } from './Timer';
 
 interface QuestionModalProps {
   gameId: string;
@@ -16,6 +17,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
     removeBuzz,
     clearBuzzQueue,
     allTeams,
+    currentGameData,
   } = useGameStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -23,6 +25,14 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
 
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef(true);
+
+  // Memoized timer expiration handler
+  const handleTimerExpire = useCallback(() => {
+    if (currentQuestion) {
+      console.log('Timer expired for question:', currentQuestion.id);
+      // TODO: Consider auto-closing modal or preventing new buzzes
+    }
+  }, [currentQuestion]);
 
   // Modal is open when currentQuestion is not null
   const isOpen = currentQuestion !== null;
@@ -207,7 +217,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
     >
       <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         {/* Header Section */}
-        <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex items-center justify-between">
+        <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex items-center justify-between gap-6">
           <div className="flex-1">
             <h2 className="text-2xl font-bold text-white mb-1">
               {categoryName}
@@ -221,10 +231,26 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
               </span>
             )}
           </div>
+
+          {/* Timer Component */}
+          {currentGameData?.timerEnabled &&
+           currentGameData?.timerSeconds !== undefined &&
+           currentGameData.timerSeconds > 0 && (
+            <div className="flex-shrink-0">
+              <Timer
+                key={currentQuestion.id}
+                duration={currentGameData.timerSeconds}
+                enabled={true}
+                autoStart={true}
+                onExpire={handleTimerExpire}
+              />
+            </div>
+          )}
+
           <button
             onClick={handleClose}
             disabled={isProcessing}
-            className="text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+            className="text-gray-400 hover:text-white transition-colors disabled:opacity-50 flex-shrink-0"
             aria-label="Close modal"
           >
             <svg
