@@ -58,13 +58,14 @@ export const TeamScore: React.FC<TeamScoreProps> = ({
         setFlashClass('');
         setScoreChangeAmount(null);
       }, SCORE_ANIMATION_DURATION);
-
-      return () => {
-        if (flashTimerRef.current) {
-          clearTimeout(flashTimerRef.current);
-        }
-      };
     }
+
+    // Cleanup should ALWAYS be returned to prevent memory leaks
+    return () => {
+      if (flashTimerRef.current) {
+        clearTimeout(flashTimerRef.current);
+      }
+    };
   }, [currentScore]);
 
   return (

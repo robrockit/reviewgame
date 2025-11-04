@@ -38,13 +38,14 @@ const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
 
       // Remove flash class after animation completes
       flashTimerRef.current = setTimeout(() => setFlashClass(''), SCORE_ANIMATION_DURATION);
-
-      return () => {
-        if (flashTimerRef.current) {
-          clearTimeout(flashTimerRef.current);
-        }
-      };
     }
+
+    // Cleanup should ALWAYS be returned to prevent memory leaks
+    return () => {
+      if (flashTimerRef.current) {
+        clearTimeout(flashTimerRef.current);
+      }
+    };
   }, [team.score]);
 
   // Determine rank styling
