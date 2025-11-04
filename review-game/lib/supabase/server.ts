@@ -1,9 +1,8 @@
 import { stripe } from "@/lib/stripe/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const createOrRetrieveCustomer = async (
-  supabase: any,
+  supabase: SupabaseClient,
   {
     email,
     uuid,
