@@ -1,15 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import type { Team } from '../../types/game';
+import { SCORE_ANIMATION_DURATION, easeOutQuad } from '../../lib/constants/animations';
 
 // Helper function to animate score changes
-const useAnimatedScore = (targetScore: number, duration: number = 500) => {
+const useAnimatedScore = (targetScore: number, duration: number = SCORE_ANIMATION_DURATION) => {
   const [displayScore, setDisplayScore] = useState(targetScore);
   const animationRef = useRef<number | undefined>(undefined);
   const startTimeRef = useRef<number | undefined>(undefined);
   const startScoreRef = useRef(targetScore);
 
   useEffect(() => {
+    // Cancel any existing animation first to prevent race conditions
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = undefined;
+    }
+
     // If score changed, animate to new value
     if (displayScore !== targetScore) {
       const startScore = displayScore;
@@ -21,8 +28,6 @@ const useAnimatedScore = (targetScore: number, duration: number = 500) => {
         const elapsed = now - (startTimeRef.current || now);
         const progress = Math.min(elapsed / duration, 1);
 
-        // Easing function for smooth animation
-        const easeOutQuad = (t: number) => t * (2 - t);
         const easedProgress = easeOutQuad(progress);
 
         const current = Math.round(
@@ -71,11 +76,14 @@ const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
         setFlashClass('animate-flash-red');
       }
 
-      // Remove flash class after animation
-      const timer = setTimeout(() => setFlashClass(''), 600);
-      prevScoreRef.current = team.score;
+      // Remove flash class after animation completes
+      const timer = setTimeout(() => setFlashClass(''), SCORE_ANIMATION_DURATION);
 
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        // Update prevScoreRef in cleanup to ensure it's set even if component unmounts
+        prevScoreRef.current = team.score;
+      };
     }
   }, [team.score]);
 

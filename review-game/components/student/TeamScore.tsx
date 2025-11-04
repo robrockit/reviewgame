@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
+import { SCORE_ANIMATION_DURATION, easeOutQuad } from '../../lib/constants/animations';
 
 interface TeamScoreProps {
   teamName: string;
@@ -24,23 +25,28 @@ export const TeamScore: React.FC<TeamScoreProps> = ({
 }) => {
   const [displayScore, setDisplayScore] = useState(currentScore);
   const [flashClass, setFlashClass] = useState('');
+  const [scoreChangeAmount, setScoreChangeAmount] = useState<number | null>(null);
   const prevScoreRef = useRef(currentScore);
   const animationRef = useRef<number | undefined>(undefined);
 
   // Animate score changes
   useEffect(() => {
+    // Cancel any existing animation first to prevent race conditions
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = undefined;
+    }
+
     if (displayScore !== currentScore) {
       const startScore = displayScore;
       const startTime = Date.now();
-      const duration = 500; // Animation duration in ms
+      const duration = SCORE_ANIMATION_DURATION;
 
       const animate = () => {
         const now = Date.now();
         const elapsed = now - startTime;
         const progress = Math.min(elapsed / duration, 1);
 
-        // Easing function for smooth animation
-        const easeOutQuad = (t: number) => t * (2 - t);
         const easedProgress = easeOutQuad(progress);
 
         const current = Math.round(
@@ -68,6 +74,9 @@ export const TeamScore: React.FC<TeamScoreProps> = ({
     if (prevScoreRef.current !== currentScore) {
       const scoreChange = currentScore - prevScoreRef.current;
 
+      // Set the score change amount for display
+      setScoreChangeAmount(scoreChange);
+
       // Trigger appropriate flash effect
       if (scoreChange > 0) {
         setFlashClass('animate-flash-green');
@@ -75,11 +84,17 @@ export const TeamScore: React.FC<TeamScoreProps> = ({
         setFlashClass('animate-flash-red');
       }
 
-      // Remove flash class after animation
-      const timer = setTimeout(() => setFlashClass(''), 600);
-      prevScoreRef.current = currentScore;
+      // Remove flash class and score change indicator after animation
+      const timer = setTimeout(() => {
+        setFlashClass('');
+        setScoreChangeAmount(null);
+      }, SCORE_ANIMATION_DURATION);
 
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        // Update prevScoreRef in cleanup to ensure it's set even if component unmounts
+        prevScoreRef.current = currentScore;
+      };
     }
   }, [currentScore]);
 
@@ -105,14 +120,14 @@ export const TeamScore: React.FC<TeamScoreProps> = ({
         </div>
 
         {/* Score change indicator */}
-        {prevScoreRef.current !== currentScore && (
+        {scoreChangeAmount !== null && (
           <div className={`text-sm font-semibold ${
-            currentScore - prevScoreRef.current > 0
+            scoreChangeAmount > 0
               ? 'text-green-300'
               : 'text-red-300'
           }`}>
-            {currentScore - prevScoreRef.current > 0 ? '+' : ''}
-            {currentScore - prevScoreRef.current}
+            {scoreChangeAmount > 0 ? '+' : ''}
+            {scoreChangeAmount}
           </div>
         )}
       </div>
