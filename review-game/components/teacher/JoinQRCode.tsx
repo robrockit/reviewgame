@@ -22,6 +22,14 @@ export const JoinQRCode: React.FC<JoinQRCodeProps> = ({ gameId }) => {
   // Validate required environment variable
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
+  // Memoize URL construction for performance (must be called before any returns)
+  // Format: {APP_URL}/game/team/join/{gameId}
+  // URL encode gameId to prevent injection and handle special characters
+  const joinUrl = useMemo(
+    () => appUrl ? `${appUrl}/game/team/join/${encodeURIComponent(gameId || '')}` : '',
+    [appUrl, gameId]
+  );
+
   if (!appUrl) {
     console.error('NEXT_PUBLIC_APP_URL environment variable is not configured');
     return (
@@ -57,14 +65,6 @@ export const JoinQRCode: React.FC<JoinQRCodeProps> = ({ gameId }) => {
       </div>
     );
   }
-
-  // Memoize URL construction for performance
-  // Format: {APP_URL}/game/team/join/{gameId}
-  // URL encode gameId to prevent injection and handle special characters
-  const joinUrl = useMemo(
-    () => `${appUrl}/game/team/join/${encodeURIComponent(gameId)}`,
-    [appUrl, gameId]
-  );
 
   return (
     <div className="flex flex-col items-center gap-4 p-6 bg-white rounded-lg shadow-md">

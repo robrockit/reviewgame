@@ -28,7 +28,7 @@ const generateDailyDoublePositions = (): { category: number; position: number }[
 };
 
 export default function NewGamePage() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{ id: string } | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [questionBanks, setQuestionBanks] = useState<QuestionBank[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +90,7 @@ export default function NewGamePage() {
         // Fetch question banks (public + user's custom if premium)
         const isPremiumUser = profileData?.subscription_status === 'active' || profileData?.subscription_status === 'trial';
 
-        let query = supabase
+        const query = supabase
           .from('question_banks')
           .select('*')
           .eq('is_public', true);
@@ -121,7 +121,7 @@ export default function NewGamePage() {
         }
 
         setLoading(false);
-      } catch (err: any) {
+      } catch (err) {
         console.error('Initialization error:', err);
         setError('Failed to load page. Please try again.');
         setLoading(false);
@@ -200,9 +200,9 @@ export default function NewGamePage() {
 
       // Redirect to teacher control page
       router.push(`/game/teacher/${newGame.id}`);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error creating game:', err);
-      setError(err.message || 'Failed to create game. Please try again.');
+      setError(err instanceof Error ? err.message : 'Failed to create game. Please try again.');
       setIsCreating(false);
     }
   };

@@ -63,7 +63,7 @@ const PricingPage = () => {
       }
       const session = await response.json();
       window.location.href = session.url;
-    } catch (err: any) {
+    } catch (err) {
       setError('Failed to initiate purchase. Please try again.');
       console.error(err);
     } finally {
@@ -88,7 +88,7 @@ const PricingPage = () => {
       }
       const session = await response.json();
       window.location.href = session.url;
-    } catch (err: any) {
+    } catch (err) {
       setError('Failed to start trial. Please try again.');
       console.error(err);
     } finally {
