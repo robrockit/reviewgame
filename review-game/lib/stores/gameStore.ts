@@ -9,6 +9,9 @@ interface GameState {
   buzzQueue: BuzzEntry[];
   selectedQuestions: string[];
   scoreUpdates: Record<string, number>; // More specific type for scoreUpdates
+  // Daily Double wager state
+  currentWager: number | null;
+  isWagerSubmitted: boolean;
 }
 
 interface GameActions {
@@ -20,6 +23,10 @@ interface GameActions {
   clearBuzzQueue: () => void;
   markQuestionUsed: (questionId: string) => void;
   updateTeamScore: (teamId: string, scoreChange: number) => void;
+  // Daily Double wager actions
+  setCurrentWager: (wager: number | null) => void;
+  setWagerSubmitted: (submitted: boolean) => void;
+  clearWager: () => void;
   reset: () => void;
 }
 
@@ -34,6 +41,8 @@ const initialState: GameState = {
   buzzQueue: [],
   selectedQuestions: [],
   scoreUpdates: {}, // Initialize as an empty object
+  currentWager: null,
+  isWagerSubmitted: false,
 };
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -72,5 +81,9 @@ export const useGameStore = create<GameStore>((set) => ({
         },
       };
     }),
+  // Daily Double wager actions
+  setCurrentWager: (wager) => set({ currentWager: wager }),
+  setWagerSubmitted: (submitted) => set({ isWagerSubmitted: submitted }),
+  clearWager: () => set({ currentWager: null, isWagerSubmitted: false }),
   reset: () => set(initialState),
 }));

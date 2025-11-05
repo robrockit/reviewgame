@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { GameBoard } from '@/components/game/GameBoard';
 import { TeamScoreboard } from '@/components/game/TeamScoreboard';
 import { QuestionModal } from '@/components/game/QuestionModal';
+import { DailyDoubleModal } from '@/components/game/DailyDoubleModal';
 import { useGameStore } from '@/lib/stores/gameStore';
 import type { Tables } from '@/types/database.types';
 import type { Category, Question, Team } from '@/types/game';
@@ -112,7 +113,8 @@ export default function GameBoardPage() {
         // Transform questions into game board format
         const categories = transformQuestionsToCategories(
           questionsResult.data,
-          gameData.selected_questions || []
+          gameData.selected_questions || [],
+          gameData.daily_double_positions || []
         );
 
         // Transform teams for store
@@ -154,8 +156,8 @@ export default function GameBoardPage() {
   // Transform database questions into Category[] format
   const transformQuestionsToCategories = (
     questions: DatabaseQuestion[],
-    usedQuestions: string[]
-    // dailyDoublePositions will be added later for Daily Double logic
+    usedQuestions: string[],
+    dailyDoublePositions: { category: number; position: number }[]
   ): Category[] => {
     // Group questions by category
     const categoriesMap = new Map<string, DatabaseQuestion[]>();
@@ -169,15 +171,16 @@ export default function GameBoardPage() {
 
     // Convert to array and sort
     const categories: Category[] = Array.from(categoriesMap.entries())
-      .map(([categoryName, categoryQuestions]) => {
+      .map(([categoryName, categoryQuestions], categoryIndex) => {
         // Sort by point_value (100, 200, 300, 400, 500)
         const sortedQuestions = categoryQuestions.sort((a, b) => a.point_value - b.point_value);
 
         // Transform to Question type
-        const questions: Question[] = sortedQuestions.map((q) => {
-          // For now, Daily Doubles will be marked later
-          // TODO: Implement proper Daily Double selection logic
-          const isDailyDouble = false;
+        const questions: Question[] = sortedQuestions.map((q, questionIndex) => {
+          // Check if this question is a Daily Double by comparing category and position
+          const isDailyDouble = dailyDoublePositions.some(
+            (dd) => dd.category === categoryIndex && dd.position === questionIndex
+          );
 
           return {
             id: q.id,
@@ -435,6 +438,9 @@ export default function GameBoardPage() {
 
       {/* Question Display Modal */}
       <QuestionModal gameId={gameId} />
+
+      {/* Daily Double Modal */}
+      <DailyDoubleModal gameId={gameId} />
     </div>
   );
 }
