@@ -202,8 +202,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
     };
   }, [isOpen, isProcessing, handleClose]);
 
-  // Don't render if not open
-  if (!isOpen || !currentQuestion) return null;
+  // Don't render if not open or if it's a Daily Double (DailyDoubleModal handles those)
+  if (!isOpen || !currentQuestion || currentQuestion.isDailyDouble) return null;
 
   return (
     <div

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { BuzzButton, BuzzButtonState } from '@/components/student/BuzzButton';
+import { useBuzzer } from '@/hooks/useBuzzer';
 import type { Tables } from '@/types/database.types';
 
 type Game = Tables<'games'>;
@@ -22,6 +23,9 @@ export default function StudentGamePage() {
   const [game, setGame] = useState<Game | null>(null);
   const [team, setTeam] = useState<Team | null>(null);
   const [buzzButtonState, setBuzzButtonState] = useState<BuzzButtonState>('waiting');
+
+  // Use buzzer hook for real-time buzz events
+  const { sendBuzz } = useBuzzer(gameId);
 
   // Fetch game and team data
   useEffect(() => {
@@ -146,14 +150,22 @@ export default function StudentGamePage() {
   const handleBuzz = async () => {
     console.log('Buzz button pressed!');
 
-    // TODO: In Phase 9, this will create a buzz_event record
-    // For now, just provide visual feedback
+    if (!teamId) {
+      console.error('Cannot buzz: teamId is not available');
+      return;
+    }
+
+    // Send buzz event via Supabase broadcast channel
+    sendBuzz(teamId);
+
+    // Update local state to provide immediate visual feedback
     setBuzzButtonState('buzzed');
 
-    // Simulate waiting for teacher response
+    // Reset to active after delay (in case teacher doesn't respond)
+    // This allows the student to buzz again if needed
     setTimeout(() => {
       setBuzzButtonState('active');
-    }, 3000);
+    }, 5000);
   };
 
   // Render loading state

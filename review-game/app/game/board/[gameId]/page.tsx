@@ -6,7 +6,9 @@ import { createClient } from '@/lib/supabase/client';
 import { GameBoard } from '@/components/game/GameBoard';
 import { TeamScoreboard } from '@/components/game/TeamScoreboard';
 import { QuestionModal } from '@/components/game/QuestionModal';
+import { DailyDoubleModal } from '@/components/game/DailyDoubleModal';
 import { useGameStore } from '@/lib/stores/gameStore';
+import { useBuzzer } from '@/hooks/useBuzzer';
 import type { Tables } from '@/types/database.types';
 import type { Category, Question, Team } from '@/types/game';
 
@@ -37,6 +39,10 @@ export default function GameBoardPage() {
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
 
   const { setGame: setStoreGame, setTeams } = useGameStore();
+
+  // Subscribe to buzz events from students
+  // This hook automatically adds buzzes to the game store's buzz queue
+  useBuzzer(gameId);
 
   // Fetch game data and questions
   useEffect(() => {
@@ -87,6 +93,13 @@ export default function GameBoardPage() {
         // Cache the teacher ID for authorization checks in subscriptions
         setTeacherId(user.id);
 
+        // Debug: Log game data to verify bank_id
+        console.log('Game data:', {
+          gameId: gameData.id,
+          bankId: gameData.bank_id,
+          bankName: gameData.question_banks?.title,
+        });
+
         // Fetch questions and teams in parallel to prevent race conditions
         // NOTE: Questions are fetched once at game start and do not update in real-time.
         // This is intentional - question bank changes during active gameplay could cause
@@ -106,13 +119,32 @@ export default function GameBoardPage() {
             .order('team_number'),
         ]);
 
+        // Debug: Log query results
+        console.log('Questions query result:', {
+          count: questionsResult.data?.length || 0,
+          error: questionsResult.error,
+          data: questionsResult.data,
+        });
+        console.log('Teams query result:', {
+          count: teamsResult.data?.length || 0,
+          error: teamsResult.error,
+        });
+
         if (questionsResult.error) throw questionsResult.error;
         if (teamsResult.error) throw teamsResult.error;
+
+        // Check if no questions were returned
+        if (!questionsResult.data || questionsResult.data.length === 0) {
+          setError(`No questions found for question bank "${gameData.question_banks?.title || 'Unknown'}". Please add questions to this bank before starting a game.`);
+          setLoading(false);
+          return;
+        }
 
         // Transform questions into game board format
         const categories = transformQuestionsToCategories(
           questionsResult.data,
-          gameData.selected_questions || []
+          gameData.selected_questions || [],
+          gameData.daily_double_positions || []
         );
 
         // Transform teams for store
@@ -154,8 +186,8 @@ export default function GameBoardPage() {
   // Transform database questions into Category[] format
   const transformQuestionsToCategories = (
     questions: DatabaseQuestion[],
-    usedQuestions: string[]
-    // dailyDoublePositions will be added later for Daily Double logic
+    usedQuestions: string[],
+    dailyDoublePositions: { category: number; position: number }[]
   ): Category[] => {
     // Group questions by category
     const categoriesMap = new Map<string, DatabaseQuestion[]>();
@@ -169,15 +201,16 @@ export default function GameBoardPage() {
 
     // Convert to array and sort
     const categories: Category[] = Array.from(categoriesMap.entries())
-      .map(([categoryName, categoryQuestions]) => {
+      .map(([categoryName, categoryQuestions], categoryIndex) => {
         // Sort by point_value (100, 200, 300, 400, 500)
         const sortedQuestions = categoryQuestions.sort((a, b) => a.point_value - b.point_value);
 
         // Transform to Question type
-        const questions: Question[] = sortedQuestions.map((q) => {
-          // For now, Daily Doubles will be marked later
-          // TODO: Implement proper Daily Double selection logic
-          const isDailyDouble = false;
+        const questions: Question[] = sortedQuestions.map((q, questionIndex) => {
+          // Check if this question is a Daily Double by comparing category and position
+          const isDailyDouble = dailyDoublePositions.some(
+            (dd) => dd.category === categoryIndex && dd.position === questionIndex
+          );
 
           return {
             id: q.id,
@@ -435,6 +468,9 @@ export default function GameBoardPage() {
 
       {/* Question Display Modal */}
       <QuestionModal gameId={gameId} />
+
+      {/* Daily Double Modal */}
+      <DailyDoubleModal gameId={gameId} />
     </div>
   );
 }

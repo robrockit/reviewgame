@@ -33,15 +33,21 @@ export const GameBoard = () => {
 
   return (
     <div className="game-board">
-      <div className="grid grid-cols-7 gap-3">
-        {/* Render Categories - each category is a column */}
+      {/* Use CSS Grid with auto rows to ensure all headers have equal height */}
+      <div className="grid grid-cols-7 gap-3 auto-rows-auto">
+        {/* Render Category Headers in first row */}
         {categories.map((category) => (
-          <div key={category.id} className="flex flex-col gap-3">
-            {/* Category Header */}
-            <div className="category-header p-4 bg-blue-600 text-white font-bold text-center flex items-center justify-center min-h-[80px] rounded-lg shadow-lg text-lg">
-              {category.name}
-            </div>
-            {/* Render Questions for this Category */}
+          <div
+            key={`header-${category.id}`}
+            className="category-header p-4 bg-blue-600 text-white font-bold text-center flex items-center justify-center rounded-lg shadow-lg text-lg break-words"
+          >
+            {category.name}
+          </div>
+        ))}
+
+        {/* Render Questions - each column of questions follows */}
+        {categories.map((category) => (
+          <div key={`questions-${category.id}`} className="flex flex-col gap-3">
             {category.questions.map((question) => (
               <QuestionCard
                 key={question.id}

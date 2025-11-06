@@ -9,6 +9,10 @@ interface GameState {
   buzzQueue: BuzzEntry[];
   selectedQuestions: string[];
   scoreUpdates: Record<string, number>; // More specific type for scoreUpdates
+  // Daily Double wager state
+  currentWager: number | null;
+  isWagerSubmitted: boolean;
+  controllingTeamId: string | null; // The team that controls the Daily Double
 }
 
 interface GameActions {
@@ -20,6 +24,11 @@ interface GameActions {
   clearBuzzQueue: () => void;
   markQuestionUsed: (questionId: string) => void;
   updateTeamScore: (teamId: string, scoreChange: number) => void;
+  // Daily Double wager actions
+  setCurrentWager: (wager: number | null) => void;
+  setWagerSubmitted: (submitted: boolean) => void;
+  setControllingTeam: (teamId: string | null) => void;
+  clearWager: () => void;
   reset: () => void;
 }
 
@@ -34,6 +43,9 @@ const initialState: GameState = {
   buzzQueue: [],
   selectedQuestions: [],
   scoreUpdates: {}, // Initialize as an empty object
+  currentWager: null,
+  isWagerSubmitted: false,
+  controllingTeamId: null,
 };
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -59,9 +71,28 @@ export const useGameStore = create<GameStore>((set) => ({
     })),
   clearBuzzQueue: () => set({ buzzQueue: [] }),
   markQuestionUsed: (questionId) =>
-    set((state) => ({
-      selectedQuestions: [...state.selectedQuestions, questionId],
-    })),
+    set((state) => {
+      // Update selectedQuestions array
+      const updatedSelectedQuestions = [...state.selectedQuestions, questionId];
+
+      // Update the isUsed flag on the actual question object in categories
+      const updatedGameData = state.currentGameData ? {
+        ...state.currentGameData,
+        categories: state.currentGameData.categories.map((category) => ({
+          ...category,
+          questions: category.questions.map((question) =>
+            question.id === questionId
+              ? { ...question, isUsed: true }
+              : question
+          ),
+        })),
+      } : null;
+
+      return {
+        selectedQuestions: updatedSelectedQuestions,
+        currentGameData: updatedGameData,
+      };
+    }),
   updateTeamScore: (teamId, scoreChange) =>
     set((state) => {
       const currentScore = state.scoreUpdates[teamId] || 0;
@@ -72,5 +103,10 @@ export const useGameStore = create<GameStore>((set) => ({
         },
       };
     }),
+  // Daily Double wager actions
+  setCurrentWager: (wager) => set({ currentWager: wager }),
+  setWagerSubmitted: (submitted) => set({ isWagerSubmitted: submitted }),
+  setControllingTeam: (teamId) => set({ controllingTeamId: teamId }),
+  clearWager: () => set({ currentWager: null, isWagerSubmitted: false, controllingTeamId: null }),
   reset: () => set(initialState),
 }));

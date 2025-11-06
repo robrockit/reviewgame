@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../lib/stores/gameStore';
 import { createClient } from '../lib/supabase/client';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 
 // Define the structure of a buzz event
 interface BuzzEvent {
@@ -22,6 +22,10 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
   // and in functions outside the useEffect scope
   const supabaseClientRef = useRef<SupabaseClient | null>(null);
 
+  // Store the channel reference to ensure we use the same subscribed channel
+  // for both receiving and sending events (prevents race conditions)
+  const channelRef = useRef<RealtimeChannel | null>(null);
+
   // Initialize the client on first render
   if (supabaseClientRef.current === null) {
     supabaseClientRef.current = createClient();
@@ -35,6 +39,9 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
 
     const channelName = `game:${gameId}`;
     const channel = supabaseClientRef.current.channel(channelName);
+
+    // Store channel reference for use in sendBuzz/clearBuzzes
+    channelRef.current = channel;
 
     // Subscribe to 'buzz' events
     channel.on('broadcast', { event: 'buzz' }, ({ payload }: { payload: BuzzEvent }) => {
@@ -67,20 +74,23 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
         supabaseClientRef.current.removeChannel(channel);
         console.log(`Unsubscribed from channel: ${channelName}`);
       }
+      // Clear the channel ref
+      channelRef.current = null;
     };
   }, [gameId, addBuzz, clearBuzzQueue]); // Dependencies for useEffect
 
   const sendBuzz = (teamId: string) => {
-    if (!gameId || !supabaseClientRef.current) {
-      console.warn('useBuzzer: Cannot send buzz, gameId is not provided or client not initialized.');
+    if (!gameId || !channelRef.current) {
+      console.warn('useBuzzer: Cannot send buzz, gameId is not provided or channel not initialized.');
       return;
     }
 
     const timestamp = Date.now();
     const buzzEvent: BuzzEvent = { teamId, timestamp };
 
-    // Broadcast the buzz event
-    supabaseClientRef.current.channel(`game:${gameId}`).send({
+    // Broadcast the buzz event using the stored channel reference
+    // This ensures we use the same subscribed channel, preventing race conditions
+    channelRef.current.send({
       type: 'broadcast',
       event: 'buzz',
       payload: buzzEvent,
@@ -91,13 +101,13 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
   };
 
   const clearBuzzes = () => {
-    if (!gameId || !supabaseClientRef.current) {
-      console.warn('useBuzzer: Cannot clear buzzes, gameId is not provided or client not initialized.');
+    if (!gameId || !channelRef.current) {
+      console.warn('useBuzzer: Cannot clear buzzes, gameId is not provided or channel not initialized.');
       return;
     }
 
-    // Broadcast the clear-buzzes event
-    supabaseClientRef.current.channel(`game:${gameId}`).send({
+    // Broadcast the clear-buzzes event using the stored channel reference
+    channelRef.current.send({
       type: 'broadcast',
       event: 'clear-buzzes',
       payload: {}, // No payload needed for clear-buzzes
