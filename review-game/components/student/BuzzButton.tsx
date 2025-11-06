@@ -19,6 +19,8 @@ interface BuzzButtonProps {
   disableSound?: boolean;
   /** Optional: Disable haptic feedback */
   disableHaptic?: boolean;
+  /** Optional: Position in buzz queue (1 = first, 2 = second, etc.) */
+  queuePosition?: number | null;
 }
 
 /**
@@ -47,6 +49,7 @@ export const BuzzButton: React.FC<BuzzButtonProps> = ({
   size = 250,
   disableSound = false,
   disableHaptic = false,
+  queuePosition = null,
 }) => {
   const [isPressed, setIsPressed] = useState(false);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -229,7 +232,15 @@ export const BuzzButton: React.FC<BuzzButtonProps> = ({
       <div className="text-center">
         <p className="text-sm text-gray-600 font-medium">
           {state === 'active' && '🎯 Ready to buzz in'}
-          {state === 'buzzed' && '⏳ You buzzed in!'}
+          {state === 'buzzed' && queuePosition && (
+            <>
+              {queuePosition === 1 && '🥇 Position: 1st'}
+              {queuePosition === 2 && '🥈 Position: 2nd'}
+              {queuePosition === 3 && '🥉 Position: 3rd'}
+              {queuePosition > 3 && `🏅 Position: ${queuePosition}th`}
+            </>
+          )}
+          {state === 'buzzed' && !queuePosition && '⏳ You buzzed in!'}
           {state === 'answering' && '✨ Your turn to answer!'}
           {state === 'waiting' && '💤 Waiting for question...'}
         </p>
