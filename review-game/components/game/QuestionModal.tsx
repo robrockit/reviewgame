@@ -23,10 +23,18 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [srAnnouncement, setSrAnnouncement] = useState('');
+  const [previousBuzzQueueLength, setPreviousBuzzQueueLength] = useState(0);
   const supabase = createClient();
 
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef(true);
+
+  // Refs for focus management
+  const modalRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
+  const focusableElementsRef = useRef<HTMLElement[]>([]);
 
   // Memoized timer expiration handler
   const handleTimerExpire = useCallback(() => {
@@ -55,6 +63,114 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       isMountedRef.current = false;
     };
   }, []);
+
+  // Focus management: Save previous focus and set initial focus
+  useEffect(() => {
+    if (isOpen) {
+      // Save the currently focused element
+      previousActiveElementRef.current = document.activeElement as HTMLElement;
+
+      // Focus the close button when modal opens
+      setTimeout(() => {
+        closeButtonRef.current?.focus();
+      }, 100);
+
+      // Announce modal opened
+      setSrAnnouncement(`Question modal opened. ${categoryName} for ${currentQuestion?.value} points. ${currentQuestion?.text}`);
+    } else if (previousActiveElementRef.current) {
+      // Restore focus when modal closes
+      previousActiveElementRef.current.focus();
+      previousActiveElementRef.current = null;
+
+      // Announce modal closed
+      setSrAnnouncement('Question modal closed');
+    }
+  }, [isOpen, categoryName, currentQuestion?.value, currentQuestion?.text]);
+
+  // Focus trap: Keep focus within modal
+  useEffect(() => {
+    if (!isOpen || !modalRef.current) return;
+
+    const updateFocusableElements = () => {
+      if (!modalRef.current) return;
+
+      const focusableSelectors = [
+        'button:not([disabled])',
+        'a[href]',
+        'input:not([disabled])',
+        'select:not([disabled])',
+        'textarea:not([disabled])',
+        '[tabindex]:not([tabindex="-1"])'
+      ].join(', ');
+
+      focusableElementsRef.current = Array.from(
+        modalRef.current.querySelectorAll(focusableSelectors)
+      ) as HTMLElement[];
+    };
+
+    updateFocusableElements();
+
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = focusableElementsRef.current;
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (e.shiftKey) {
+        // Shift + Tab: Moving backwards
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement.focus();
+        }
+      } else {
+        // Tab: Moving forwards
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleTabKey);
+
+    // Update focusable elements when buzz queue changes
+    const observer = new MutationObserver(updateFocusableElements);
+    observer.observe(modalRef.current, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['disabled']
+    });
+
+    return () => {
+      document.removeEventListener('keydown', handleTabKey);
+      observer.disconnect();
+    };
+  }, [isOpen]);
+
+  // Announce buzz queue changes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const currentLength = buzzQueue.length;
+
+    if (currentLength > previousBuzzQueueLength) {
+      // New buzz added
+      const latestBuzz = buzzQueue[currentLength - 1];
+      const team = allTeams.find(t => t.id === latestBuzz.teamId);
+      if (team) {
+        setSrAnnouncement(`${team.name} buzzed in. Position ${currentLength} in queue.`);
+      }
+    } else if (currentLength < previousBuzzQueueLength && currentLength === 0) {
+      // Queue became empty
+      setSrAnnouncement('Buzz queue is now empty. Waiting for teams to buzz in.');
+    }
+
+    setPreviousBuzzQueueLength(currentLength);
+  }, [buzzQueue, previousBuzzQueueLength, allTeams, isOpen]);
 
   // Close modal handler
   const handleClose = useCallback(() => {
@@ -126,6 +242,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
 
       // Success - clear buzz queue and close modal
       if (isMountedRef.current) {
+        // Announce score update
+        setSrAnnouncement(`Correct! ${firstTeamData.name} earned ${scoreToAward} points. New score: ${newScore} points.`);
         onClearBuzzes();
         setCurrentQuestion(null);
       }
@@ -178,6 +296,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
 
       // Remove the team from buzz queue using the snapshot, not current state
       if (isMountedRef.current) {
+        // Announce score update
+        setSrAnnouncement(`Incorrect. ${firstTeamData.name} lost ${scoreToDeduct} points. New score: ${newScore} points.`);
         removeBuzz(teamIdToRemove);
       }
 
@@ -232,12 +352,21 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
           handleClose();
         }
       }}
+      role="presentation"
     >
-      <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-category"
+        aria-describedby="modal-question"
+        aria-busy={isProcessing}
+        className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+      >
         {/* Header Section */}
         <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex items-center justify-between gap-6">
           <div className="flex-1">
-            <h2 className="text-2xl font-bold text-white mb-1">
+            <h2 id="modal-category" className="text-2xl font-bold text-white mb-1">
               {categoryName}
             </h2>
             <div className="text-3xl font-bold text-blue-400">
@@ -266,10 +395,12 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
           )}
 
           <button
+            ref={closeButtonRef}
             onClick={handleClose}
             disabled={isProcessing}
+            aria-disabled={isProcessing}
             className="text-gray-400 hover:text-white transition-colors disabled:opacity-50 flex-shrink-0"
-            aria-label="Close modal"
+            aria-label={isProcessing ? "Close modal (processing, please wait)" : "Close question modal"}
           >
             <svg
               className="w-8 h-8"
@@ -290,9 +421,19 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         {/* Main Content Area */}
         <div className="p-8">
           <div className="text-center mb-8">
-            <p className="text-2xl md:text-3xl lg:text-4xl text-white font-medium leading-relaxed">
+            <p id="modal-question" className="text-2xl md:text-3xl lg:text-4xl text-white font-medium leading-relaxed">
               {currentQuestion.text}
             </p>
+          </div>
+
+          {/* Screen Reader Announcements */}
+          <div
+            role="status"
+            aria-live="assertive"
+            aria-atomic="true"
+            className="sr-only"
+          >
+            {srAnnouncement}
           </div>
 
           {/* Buzz Queue Section */}
@@ -306,21 +447,29 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
                       setIsClearing(true);
                       try {
                         onClearBuzzes();
+                        setSrAnnouncement('All buzzes cleared from queue');
                       } finally {
                         setIsClearing(false);
                       }
                     }
                   }}
                   disabled={isProcessing || isClearing}
-                  className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                  aria-label="Clear all buzzes from the queue"
+                  aria-disabled={isProcessing || isClearing}
+                  aria-busy={isClearing}
+                  className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
+                  aria-label={isClearing ? 'Clearing all buzzes from queue' : `Clear all ${buzzQueue.length} buzzes from the queue`}
                 >
                   {isClearing ? 'Clearing...' : 'Clear Queue'}
                 </button>
               )}
             </div>
             {buzzQueue.length === 0 ? (
-              <div className="bg-gray-700 rounded-lg p-6 text-center">
+              <div
+                className="bg-gray-700 rounded-lg p-6 text-center"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
                 <p className="text-gray-400">
                   {isProcessing
                     ? "Processing answer..."
@@ -328,13 +477,17 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
                 </p>
                 {!isProcessing && (
                   <p className="text-yellow-400 text-sm mt-3 flex items-center justify-center gap-2">
-                    <span>💡</span>
+                    <span aria-hidden="true">💡</span>
                     <span>Waiting for teams to buzz in, or close this question to continue.</span>
                   </p>
                 )}
               </div>
             ) : (
-              <div className="space-y-2" role="list" aria-label="Buzz queue">
+              <div
+                className="space-y-2"
+                role="list"
+                aria-label={`Buzz queue with ${buzzQueue.length} ${buzzQueue.length === 1 ? 'team' : 'teams'}`}
+              >
                 {buzzQueue.map((buzz, index) => {
                   const team = allTeams.find(t => t.id === buzz.teamId);
                   const isFirst = index === 0;
@@ -385,25 +538,45 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
           </div>
 
           {/* Teacher Controls Section */}
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-4" role="group" aria-label="Question scoring controls">
             <button
               onClick={handleCorrect}
               disabled={isProcessing || buzzQueue.length === 0}
-              className="flex-1 py-4 px-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg shadow-lg transition-colors"
+              aria-disabled={isProcessing || buzzQueue.length === 0}
+              aria-busy={isProcessing}
+              aria-label={
+                isProcessing
+                  ? 'Processing answer, please wait'
+                  : buzzQueue.length === 0
+                  ? 'Mark answer as correct (no teams in queue)'
+                  : `Award ${currentQuestion.value} points to ${firstTeamData?.name || 'first team'} for correct answer`
+              }
+              className="flex-1 py-4 px-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg shadow-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800"
             >
               {isProcessing ? 'Processing...' : '✓ Correct'}
             </button>
             <button
               onClick={handleIncorrect}
               disabled={isProcessing || buzzQueue.length === 0}
-              className="flex-1 py-4 px-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg shadow-lg transition-colors"
+              aria-disabled={isProcessing || buzzQueue.length === 0}
+              aria-busy={isProcessing}
+              aria-label={
+                isProcessing
+                  ? 'Processing answer, please wait'
+                  : buzzQueue.length === 0
+                  ? 'Mark answer as incorrect (no teams in queue)'
+                  : `Deduct ${currentQuestion.value} points from ${firstTeamData?.name || 'first team'} for incorrect answer`
+              }
+              className="flex-1 py-4 px-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg shadow-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-800"
             >
               {isProcessing ? 'Processing...' : '✗ Incorrect'}
             </button>
             <button
               onClick={handleClose}
               disabled={isProcessing}
-              className="sm:flex-none px-6 py-4 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold text-lg rounded-lg transition-colors"
+              aria-disabled={isProcessing}
+              aria-label={isProcessing ? 'Close modal (processing, please wait)' : 'Close question modal without scoring'}
+              className="sm:flex-none px-6 py-4 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold text-lg rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-800"
             >
               Close
             </button>
