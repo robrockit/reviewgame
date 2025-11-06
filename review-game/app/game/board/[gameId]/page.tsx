@@ -88,6 +88,13 @@ export default function GameBoardPage() {
         // Cache the teacher ID for authorization checks in subscriptions
         setTeacherId(user.id);
 
+        // Debug: Log game data to verify bank_id
+        console.log('Game data:', {
+          gameId: gameData.id,
+          bankId: gameData.bank_id,
+          bankName: gameData.question_banks?.title,
+        });
+
         // Fetch questions and teams in parallel to prevent race conditions
         // NOTE: Questions are fetched once at game start and do not update in real-time.
         // This is intentional - question bank changes during active gameplay could cause
@@ -107,8 +114,26 @@ export default function GameBoardPage() {
             .order('team_number'),
         ]);
 
+        // Debug: Log query results
+        console.log('Questions query result:', {
+          count: questionsResult.data?.length || 0,
+          error: questionsResult.error,
+          data: questionsResult.data,
+        });
+        console.log('Teams query result:', {
+          count: teamsResult.data?.length || 0,
+          error: teamsResult.error,
+        });
+
         if (questionsResult.error) throw questionsResult.error;
         if (teamsResult.error) throw teamsResult.error;
+
+        // Check if no questions were returned
+        if (!questionsResult.data || questionsResult.data.length === 0) {
+          setError(`No questions found for question bank "${gameData.question_banks?.title || 'Unknown'}". Please add questions to this bank before starting a game.`);
+          setLoading(false);
+          return;
+        }
 
         // Transform questions into game board format
         const categories = transformQuestionsToCategories(
