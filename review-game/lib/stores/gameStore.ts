@@ -12,6 +12,7 @@ interface GameState {
   // Daily Double wager state
   currentWager: number | null;
   isWagerSubmitted: boolean;
+  controllingTeamId: string | null; // The team that controls the Daily Double
 }
 
 interface GameActions {
@@ -26,6 +27,7 @@ interface GameActions {
   // Daily Double wager actions
   setCurrentWager: (wager: number | null) => void;
   setWagerSubmitted: (submitted: boolean) => void;
+  setControllingTeam: (teamId: string | null) => void;
   clearWager: () => void;
   reset: () => void;
 }
@@ -43,6 +45,7 @@ const initialState: GameState = {
   scoreUpdates: {}, // Initialize as an empty object
   currentWager: null,
   isWagerSubmitted: false,
+  controllingTeamId: null,
 };
 
 export const useGameStore = create<GameStore>((set) => ({
@@ -103,6 +106,7 @@ export const useGameStore = create<GameStore>((set) => ({
   // Daily Double wager actions
   setCurrentWager: (wager) => set({ currentWager: wager }),
   setWagerSubmitted: (submitted) => set({ isWagerSubmitted: submitted }),
-  clearWager: () => set({ currentWager: null, isWagerSubmitted: false }),
+  setControllingTeam: (teamId) => set({ controllingTeamId: teamId }),
+  clearWager: () => set({ currentWager: null, isWagerSubmitted: false, controllingTeamId: null }),
   reset: () => set(initialState),
 }));

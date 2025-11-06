@@ -8,18 +8,21 @@ interface DailyDoubleModalProps {
   gameId: string;
 }
 
+// Daily Double constants
+const DAILY_DOUBLE_MAX_WAGER = 1000;
+const DAILY_DOUBLE_MIN_WAGER = 5;
+
 export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) => {
   const {
     currentQuestion,
     setCurrentQuestion,
-    buzzQueue,
-    removeBuzz,
-    clearBuzzQueue,
     allTeams,
     currentWager,
     setCurrentWager,
     isWagerSubmitted,
     setWagerSubmitted,
+    controllingTeamId,
+    setControllingTeam,
     clearWager,
     markQuestionUsed,
   } = useGameStore();
@@ -35,10 +38,9 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
   // Modal is open when currentQuestion is a Daily Double and not null
   const isOpen = currentQuestion !== null && currentQuestion.isDailyDouble === true;
 
-  // Get the first team in the buzz queue
-  const firstBuzzTeam = buzzQueue.length > 0 ? buzzQueue[0] : null;
-  const firstTeamData = firstBuzzTeam
-    ? allTeams.find(team => team.id === firstBuzzTeam.teamId)
+  // Get the controlling team data
+  const controllingTeam = controllingTeamId
+    ? allTeams.find(team => team.id === controllingTeamId)
     : null;
 
   // Get category name from current question
@@ -61,17 +63,23 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
     }
   }, [isOpen, clearWager]);
 
+  // Calculate max wager for the selected team
+  const getMaxWager = useCallback(() => {
+    if (!controllingTeamId) return DAILY_DOUBLE_MAX_WAGER;
+
+    const team = allTeams.find(t => t.id === controllingTeamId);
+    const teamScore = team?.score || 0;
+
+    // Max wager is the higher of team's score or the fixed maximum
+    return Math.max(teamScore, DAILY_DOUBLE_MAX_WAGER);
+  }, [controllingTeamId, allTeams]);
+
   // Validate wager amount
-  const validateWager = useCallback((amount: number, teamScore: number): string | null => {
-    // Min wager: 5 points (or team's score if 0 < score < 5, or 5 if score <= 0)
-    const minWager = teamScore > 0 ? Math.min(5, teamScore) : 5;
+  const validateWager = useCallback((amount: number): string | null => {
+    const maxWager = getMaxWager();
 
-    // Max wager: current score or 500, whichever is less (but never less than minWager)
-    // If team has negative or zero score, they can still wager the minimum
-    const maxWager = teamScore <= 0 ? minWager : Math.min(teamScore, 500);
-
-    if (amount < minWager) {
-      return `Minimum wager is ${minWager} points`;
+    if (amount < DAILY_DOUBLE_MIN_WAGER) {
+      return `Minimum wager is ${DAILY_DOUBLE_MIN_WAGER} points`;
     }
 
     if (amount > maxWager) {
@@ -79,11 +87,14 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
     }
 
     return null;
-  }, []);
+  }, [getMaxWager]);
 
   // Handle wager submission
   const handleWagerSubmit = useCallback(async () => {
-    if (!firstTeamData || !currentQuestion) return;
+    if (!controllingTeamId || !currentQuestion) {
+      setWagerError('Please select a controlling team');
+      return;
+    }
 
     const wagerAmount = parseInt(wagerInput, 10);
 
@@ -93,70 +104,27 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       return;
     }
 
+    const validationError = validateWager(wagerAmount);
+    if (validationError) {
+      setWagerError(validationError);
+      return;
+    }
+
     setIsProcessing(true);
     try {
-      // Fetch fresh team data from database to prevent stale score validation
-      const { data: freshTeam, error: fetchError } = await supabase
-        .from('teams')
-        .select('score')
-        .eq('id', firstTeamData.id)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      const currentScore = freshTeam?.score ?? 0;
-
-      // Re-validate with fresh score from database
-      const validationError = validateWager(wagerAmount, currentScore);
-      if (validationError) {
-        setWagerError(validationError);
-        setIsProcessing(false); // Reset processing state before early return
-        return;
-      }
-
       // Set wager and mark as submitted
       setCurrentWager(wagerAmount);
       setWagerSubmitted(true);
       setWagerError(null);
 
-      // TODO: Broadcast wager submission via real-time channel
-      console.log(`Wager submitted: ${wagerAmount} points for question ${currentQuestion.id}`);
+      console.log(`Wager submitted: ${wagerAmount} points for question ${currentQuestion.id} by team ${controllingTeamId}`);
     } catch (error) {
-      console.error('Error validating wager:', error);
-
-      // Provide specific error messages based on error type
-      let errorMessage = 'Failed to validate wager. Please try again.';
-
-      if (error && typeof error === 'object') {
-        const err = error as { message?: string; code?: string; details?: string };
-
-        // Network or connection errors
-        if (err.message?.includes('fetch') || err.message?.includes('network')) {
-          errorMessage = 'Network error: Unable to connect to the server. Please check your internet connection and try again.';
-        }
-        // Database/auth errors
-        else if (err.code === 'PGRST116') {
-          errorMessage = 'Team not found. The team may have been removed from the game.';
-        }
-        // Permission errors
-        else if (err.message?.includes('permission') || err.message?.includes('RLS')) {
-          errorMessage = 'Permission denied: You do not have access to update this team\'s data.';
-        }
-        // Timeout errors
-        else if (err.message?.includes('timeout')) {
-          errorMessage = 'Request timed out. The server is taking too long to respond. Please try again.';
-        }
-        // Generic database errors
-        else if (err.message) {
-          errorMessage = `Database error: ${err.message}`;
-        }
-      }
-
-      setWagerError(errorMessage);
+      console.error('Error submitting wager:', error);
+      setWagerError('Failed to submit wager. Please try again.');
     } finally {
       setIsProcessing(false);
     }
-  }, [wagerInput, firstTeamData, currentQuestion, validateWager, setCurrentWager, setWagerSubmitted, supabase]);
+  }, [wagerInput, controllingTeamId, currentQuestion, validateWager, setCurrentWager, setWagerSubmitted]);
 
   // Close modal handler
   const handleClose = useCallback(async () => {
@@ -167,7 +135,6 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
     // Mark question as used in database before closing to prevent reopening
     if (currentQuestion) {
       // Mark in local store immediately (optimistic update)
-      // This ensures UI consistency even if DB update fails
       markQuestionUsed(currentQuestion.id);
 
       try {
@@ -207,17 +174,16 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
     }
 
     setCurrentQuestion(null);
-    clearBuzzQueue();
     clearWager();
     setIsProcessing(false);
-  }, [isProcessing, setCurrentQuestion, clearBuzzQueue, clearWager, markQuestionUsed, currentQuestion, gameId, supabase]);
+  }, [isProcessing, setCurrentQuestion, clearWager, markQuestionUsed, currentQuestion, gameId, supabase]);
 
   // Handle correct answer with wager
   const handleCorrect = async () => {
-    if (isProcessing || !currentQuestion || !firstBuzzTeam || !firstTeamData || !currentWager) return;
+    if (isProcessing || !currentQuestion || !controllingTeamId || !controllingTeam || !currentWager) return;
 
     // IMPORTANT: Snapshot values before any async operations to prevent race conditions
-    const teamIdToUpdate = firstTeamData.id;
+    const teamIdToUpdate = controllingTeam.id;
     const scoreToAward = currentWager; // Use wager amount instead of question value
     const questionId = currentQuestion.id;
 
@@ -237,7 +203,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
 
       const currentScore = freshTeam?.score ?? 0;
 
-      // Award wager points to the first team in the buzz queue
+      // Award wager points to the controlling team
       const newScore = currentScore + scoreToAward;
 
       // CRITICAL: Update the team score first (most important operation)
@@ -278,9 +244,8 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         console.warn('Failed to mark question as used in DB:', markError);
       }
 
-      // Success - clear buzz queue, wager, and close modal
+      // Success - clear wager and close modal
       if (isMountedRef.current) {
-        clearBuzzQueue();
         clearWager();
         setCurrentQuestion(null);
       }
@@ -298,10 +263,10 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
 
   // Handle incorrect answer with wager
   const handleIncorrect = async () => {
-    if (isProcessing || !currentQuestion || !firstBuzzTeam || !firstTeamData || !currentWager) return;
+    if (isProcessing || !currentQuestion || !controllingTeamId || !controllingTeam || !currentWager) return;
 
     // IMPORTANT: Snapshot values before any async operations to prevent race conditions
-    const teamIdToRemove = firstTeamData.id;
+    const teamIdToUpdate = controllingTeam.id;
     const scoreToDeduct = currentWager; // Use wager amount instead of question value
     const questionId = currentQuestion.id;
 
@@ -311,7 +276,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       const { data: freshTeam, error: fetchError } = await supabase
         .from('teams')
         .select('score')
-        .eq('id', teamIdToRemove)
+        .eq('id', teamIdToUpdate)
         .single();
 
       if (fetchError) {
@@ -321,26 +286,21 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
 
       const currentScore = freshTeam?.score ?? 0;
 
-      // Deduct wager points from the first team in the buzz queue
+      // Deduct wager points from the controlling team
       const newScore = currentScore - scoreToDeduct;
 
       // Update the team score in the database
       const { error: scoreError } = await supabase
         .from('teams')
         .update({ score: newScore })
-        .eq('id', teamIdToRemove);
+        .eq('id', teamIdToUpdate);
 
       if (scoreError) {
         console.error('Error updating team score:', scoreError);
         throw scoreError;
       }
 
-      // Remove the team from buzz queue using the snapshot, not current state
-      if (isMountedRef.current) {
-        removeBuzz(teamIdToRemove);
-      }
-
-      // Mark question as used in database (same as handleCorrect)
+      // Mark question as used in database
       try {
         const { data: gameData, error: gameError } = await supabase
           .from('games')
@@ -367,10 +327,9 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         console.warn('Failed to mark question as used in DB:', markError);
       }
 
-      // For Daily Doubles, after one team answers incorrectly, the question is done
+      // For Daily Doubles, after the controlling team answers, the question is done
       // Clear everything and close modal
       if (isMountedRef.current) {
-        clearBuzzQueue();
         clearWager();
         setCurrentQuestion(null);
       }
@@ -390,7 +349,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
   // Handle escape key to close modal
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen && !isProcessing) {
+      if (e.key === 'Escape' && isOpen && !isProcessing && !isWagerSubmitted) {
         handleClose();
       }
     };
@@ -401,7 +360,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       document.body.style.overflow = 'hidden';
     } else {
       // Ensure wager is cleared when modal is not open
-      if (isWagerSubmitted || currentWager !== null) {
+      if (isWagerSubmitted || currentWager !== null || controllingTeamId !== null) {
         clearWager();
       }
     }
@@ -410,15 +369,10 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen, isProcessing, handleClose, isWagerSubmitted, currentWager, clearWager]);
+  }, [isOpen, isProcessing, handleClose, isWagerSubmitted, currentWager, controllingTeamId, clearWager]);
 
   // Don't render if not open or not a Daily Double
   if (!isOpen || !currentQuestion) return null;
-
-  // Calculate min and max wager for the current team
-  const teamScore = firstTeamData?.score || 0;
-  const minWager = teamScore > 0 ? Math.min(5, teamScore) : 5;
-  const maxWager = teamScore <= 0 ? minWager : Math.min(teamScore, 500);
 
   return (
     <div
@@ -470,21 +424,46 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
             <div className="space-y-6">
               <div className="text-center mb-6">
                 <p className="text-2xl text-yellow-100 font-semibold mb-2">
-                  {firstTeamData?.name || 'Team'} has buzzed in!
+                  Select the controlling team and place a wager
                 </p>
                 <p className="text-lg text-white">
-                  Current Score: <span className="font-bold text-yellow-300">{teamScore} points</span>
+                  The team that chose this question will answer after the wager is placed.
                 </p>
               </div>
 
               <div className="bg-green-700 rounded-lg p-6 border-2 border-yellow-300">
                 <h3 className="text-xl font-bold text-yellow-300 mb-4 text-center">
-                  Place Your Wager
+                  Wager Setup
                 </h3>
                 <div className="space-y-4">
+                  {/* Team Selection */}
+                  <div>
+                    <label htmlFor="team-select" className="block text-white font-semibold mb-2">
+                      Controlling Team <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      id="team-select"
+                      value={controllingTeamId || ''}
+                      onChange={(e) => {
+                        setControllingTeam(e.target.value);
+                        setWagerError(null);
+                      }}
+                      disabled={isProcessing}
+                      className="w-full px-4 py-3 text-lg bg-white text-gray-900 rounded-lg border-2 border-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+                    >
+                      <option value="">-- Select Team --</option>
+                      {allTeams.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name} (Current Score: {team.score} pts)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Wager Amount */}
                   <div>
                     <label htmlFor="wager" className="block text-white font-semibold mb-2">
-                      Wager Amount (Min: {minWager}, Max: {maxWager})
+                      Wager Amount <span className="text-red-400">*</span>
                     </label>
                     <input
                       type="number"
@@ -494,13 +473,18 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
                         setWagerInput(e.target.value);
                         setWagerError(null);
                       }}
-                      min={minWager}
-                      max={maxWager}
-                      disabled={isProcessing}
-                      className="w-full px-4 py-3 text-2xl font-bold text-center bg-white text-gray-900 rounded-lg border-2 border-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-300"
-                      placeholder={`${minWager} - ${maxWager}`}
-                      autoFocus
+                      min={DAILY_DOUBLE_MIN_WAGER}
+                      max={getMaxWager()}
+                      disabled={isProcessing || !controllingTeamId}
+                      className="w-full px-4 py-3 text-2xl font-bold text-center bg-white text-gray-900 rounded-lg border-2 border-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-300 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      placeholder={controllingTeamId ? `${DAILY_DOUBLE_MIN_WAGER} - ${getMaxWager()}` : 'Select team first'}
+                      autoFocus={!!controllingTeamId}
                     />
+                    {controllingTeamId && (
+                      <p className="mt-2 text-yellow-100 text-sm">
+                        Maximum wager: {getMaxWager()} (higher of team&apos;s score or {DAILY_DOUBLE_MAX_WAGER})
+                      </p>
+                    )}
                     {wagerError && (
                       <p className="mt-2 text-red-300 text-sm font-semibold">{wagerError}</p>
                     )}
@@ -508,10 +492,10 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
 
                   <button
                     onClick={handleWagerSubmit}
-                    disabled={isProcessing || !wagerInput}
+                    disabled={isProcessing || !wagerInput || !controllingTeamId}
                     className="w-full py-4 px-6 bg-yellow-400 hover:bg-yellow-300 disabled:bg-gray-500 disabled:cursor-not-allowed text-gray-900 font-bold text-xl rounded-lg shadow-lg transition-colors"
                   >
-                    {isProcessing ? 'Processing...' : 'Submit Wager'}
+                    {isProcessing ? 'Processing...' : 'Submit Wager & Reveal Question'}
                   </button>
                 </div>
               </div>
@@ -526,12 +510,18 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
             // Show question and answer controls after wager is submitted
             <div className="space-y-6">
               <div className="bg-green-700 rounded-lg p-6 border-2 border-yellow-300">
-                <p className="text-lg text-yellow-200 mb-2 text-center">
-                  Wager: <span className="font-bold text-yellow-300 text-2xl">{currentWager} points</span>
-                </p>
-                <p className="text-sm text-yellow-100 text-center">
-                  {firstTeamData?.name} is answering for {currentWager} points
-                </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-yellow-200 mb-1">Controlling Team</p>
+                    <p className="text-2xl font-bold text-white">
+                      {controllingTeam?.name || 'Unknown Team'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-yellow-200 mb-1">Wager</p>
+                    <p className="text-3xl font-bold text-yellow-300">{currentWager} pts</p>
+                  </div>
+                </div>
               </div>
 
               <div className="text-center mb-8">
@@ -540,47 +530,21 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
                 </p>
               </div>
 
-              {/* Buzz Queue Section */}
-              <div className="mb-8">
-                <h3 className="text-xl font-bold text-white mb-4">Answering</h3>
-                {buzzQueue.length === 0 ? (
-                  <div className="bg-green-700 rounded-lg p-6 text-center border-2 border-yellow-300">
-                    <p className="text-yellow-100">
-                      {isProcessing ? "Processing answer..." : "Waiting for team to buzz in..."}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="bg-yellow-500 border-2 border-yellow-300 rounded-lg p-4 flex items-center justify-between shadow-lg">
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg font-bold text-gray-900">
-                        ANSWERING
-                      </span>
-                      <span className="text-lg font-semibold text-gray-900">
-                        {firstTeamData?.name || 'Unknown Team'}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-900 font-semibold">
-                      {firstTeamData ? `${firstTeamData.score} pts` : ''}
-                    </div>
-                  </div>
-                )}
-              </div>
-
               {/* Teacher Controls Section */}
               <div className="flex flex-col sm:flex-row gap-4">
                 <button
                   onClick={handleCorrect}
-                  disabled={isProcessing || buzzQueue.length === 0}
+                  disabled={isProcessing}
                   className="flex-1 py-4 px-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg shadow-lg transition-colors"
                 >
-                  {isProcessing ? 'Processing...' : '✓ Correct'}
+                  {isProcessing ? 'Processing...' : `✓ Correct (+${currentWager} pts)`}
                 </button>
                 <button
                   onClick={handleIncorrect}
-                  disabled={isProcessing || buzzQueue.length === 0}
+                  disabled={isProcessing}
                   className="flex-1 py-4 px-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg shadow-lg transition-colors"
                 >
-                  {isProcessing ? 'Processing...' : '✗ Incorrect'}
+                  {isProcessing ? 'Processing...' : `✗ Incorrect (-${currentWager} pts)`}
                 </button>
                 <button
                   onClick={handleClose}
