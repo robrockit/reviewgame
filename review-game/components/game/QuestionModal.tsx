@@ -8,15 +8,15 @@ import { getPositionDisplay } from '@/lib/utils/position';
 
 interface QuestionModalProps {
   gameId: string;
+  onClearBuzzes: () => void;
 }
 
-export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
+export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuzzes }) => {
   const {
     currentQuestion,
     setCurrentQuestion,
     buzzQueue,
     removeBuzz,
-    clearBuzzQueue,
     allTeams,
     currentGameData,
   } = useGameStore();
@@ -60,8 +60,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
   const handleClose = useCallback(() => {
     if (isProcessing) return;
     setCurrentQuestion(null);
-    clearBuzzQueue();
-  }, [isProcessing, setCurrentQuestion, clearBuzzQueue]);
+    onClearBuzzes();
+  }, [isProcessing, setCurrentQuestion, onClearBuzzes]);
 
   // Handle correct answer
   const handleCorrect = async () => {
@@ -121,7 +121,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
 
       // Success - clear buzz queue and close modal
       if (isMountedRef.current) {
-        clearBuzzQueue();
+        onClearBuzzes();
         setCurrentQuestion(null);
       }
     } catch (error) {
@@ -289,7 +289,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
                     if (window.confirm('Clear all buzzes? This cannot be undone.')) {
                       setIsClearing(true);
                       try {
-                        clearBuzzQueue();
+                        onClearBuzzes();
                       } finally {
                         setIsClearing(false);
                       }

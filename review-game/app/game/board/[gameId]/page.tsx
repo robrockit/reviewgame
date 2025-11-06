@@ -42,7 +42,7 @@ export default function GameBoardPage() {
 
   // Subscribe to buzz events from students
   // This hook automatically adds buzzes to the game store's buzz queue
-  useBuzzer(gameId);
+  const { clearBuzzes } = useBuzzer(gameId);
 
   // Fetch game data and questions
   useEffect(() => {
@@ -467,7 +467,7 @@ export default function GameBoardPage() {
       </div>
 
       {/* Question Display Modal */}
-      <QuestionModal gameId={gameId} />
+      <QuestionModal gameId={gameId} onClearBuzzes={clearBuzzes} />
 
       {/* Daily Double Modal */}
       <DailyDoubleModal gameId={gameId} />
