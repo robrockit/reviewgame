@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import { createClient } from '@/lib/supabase/client';
 import { Timer } from './Timer';
@@ -10,6 +10,60 @@ interface QuestionModalProps {
   gameId: string;
   onClearBuzzes: () => void;
 }
+
+interface BuzzQueueItemProps {
+  buzz: { teamId: string; timestamp: number };
+  index: number;
+  isFirst: boolean;
+  teamName: string;
+  teamScore: number;
+}
+
+// Memoized BuzzQueueItem component to prevent unnecessary re-renders
+const BuzzQueueItem = React.memo<BuzzQueueItemProps>(({ buzz, index, isFirst, teamName, teamScore }) => {
+  const position = getPositionDisplay(index);
+
+  return (
+    <div
+      key={`${buzz.teamId}-${buzz.timestamp}`}
+      role="listitem"
+      aria-label={isFirst ? `First place: ${teamName} is answering` : `${position.text} place: ${teamName}`}
+      className={`p-4 rounded-lg flex items-center justify-between transition-all ${
+        isFirst
+          ? 'bg-green-100 border-2 border-green-500 shadow-lg'
+          : 'bg-gray-700'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <span className="text-2xl" aria-hidden="true">
+          {position.emoji}
+        </span>
+        <span className={`text-base font-bold ${
+          isFirst ? 'text-green-900' : position.color
+        }`}>
+          {position.text}
+        </span>
+        <span className={`text-lg font-semibold ${
+          isFirst ? 'text-green-900' : 'text-gray-300'
+        }`}>
+          {teamName}
+        </span>
+        {isFirst && (
+          <span className="ml-2 px-2 py-1 bg-green-600 text-white text-xs font-bold rounded" aria-hidden="true">
+            ANSWERING
+          </span>
+        )}
+      </div>
+      <div className={`text-sm ${
+        isFirst ? 'text-green-700' : 'text-gray-400'
+      }`}>
+        {teamScore} pts
+      </div>
+    </div>
+  );
+});
+
+BuzzQueueItem.displayName = 'BuzzQueueItem';
 
 export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuzzes }) => {
   const {
@@ -49,12 +103,38 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
 
   // Get the first team in the buzz queue
   const firstBuzzTeam = buzzQueue.length > 0 ? buzzQueue[0] : null;
-  const firstTeamData = firstBuzzTeam
-    ? allTeams.find(team => team.id === firstBuzzTeam.teamId)
-    : null;
 
-  // Get category name from current question
-  const categoryName = currentQuestion?.categoryName || 'Category';
+  // Memoize first team calculation to prevent unnecessary re-renders
+  const firstTeamData = useMemo(() => {
+    if (!firstBuzzTeam) return null;
+    return allTeams.find(team => team.id === firstBuzzTeam.teamId);
+  }, [firstBuzzTeam, allTeams]);
+
+  // Memoize category name to prevent unnecessary re-renders
+  const categoryName = useMemo(() => {
+    return currentQuestion?.categoryName || 'Category';
+  }, [currentQuestion?.categoryName]);
+
+  // Memoize buzz queue items to prevent unnecessary re-renders
+  const buzzQueueItems = useMemo(() => {
+    return buzzQueue.map((buzz, index) => {
+      const team = allTeams.find(t => t.id === buzz.teamId);
+      const isFirst = index === 0;
+      const teamName = team?.name || 'Unknown Team';
+      const teamScore = team?.score || 0;
+
+      return (
+        <BuzzQueueItem
+          key={`${buzz.teamId}-${buzz.timestamp}`}
+          buzz={buzz}
+          index={index}
+          isFirst={isFirst}
+          teamName={teamName}
+          teamScore={teamScore}
+        />
+      );
+    });
+  }, [buzzQueue, allTeams]);
 
   // Set mounted flag on mount and clean up on unmount
   useEffect(() => {
@@ -63,6 +143,27 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       isMountedRef.current = false;
     };
   }, []);
+
+  // Performance monitoring: Track modal open/close
+  useEffect(() => {
+    if (isOpen) {
+      performance.mark('modal-opened');
+      // Optional: Measure time from previous close to this open
+      try {
+        performance.measure('modal-closed-to-opened', 'modal-closed', 'modal-opened');
+      } catch (e) {
+        // First open, no previous close mark exists
+      }
+    } else {
+      performance.mark('modal-closed');
+      // Optional: Measure time modal was open
+      try {
+        performance.measure('modal-open-duration', 'modal-opened', 'modal-closed');
+      } catch (e) {
+        // Modal wasn't opened, no mark exists
+      }
+    }
+  }, [isOpen]);
 
   // Focus management: Save previous focus and set initial focus
   useEffect(() => {
@@ -179,8 +280,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     onClearBuzzes();
   }, [isProcessing, setCurrentQuestion, onClearBuzzes]);
 
-  // Handle correct answer
-  const handleCorrect = async () => {
+  // Handle correct answer - memoized to prevent unnecessary re-renders
+  const handleCorrect = useCallback(async () => {
     if (isProcessing || !currentQuestion || !firstBuzzTeam || !firstTeamData) return;
 
     // IMPORTANT: Snapshot values before any async operations to prevent race conditions
@@ -243,6 +344,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       // Success - clear buzz queue and close modal
       if (isMountedRef.current) {
         // Announce score update
+        const newScore = (firstTeamData.score || 0) + scoreToAward;
         setSrAnnouncement(`Correct! ${firstTeamData.name} earned ${scoreToAward} points. New score: ${newScore} points.`);
         onClearBuzzes();
         setCurrentQuestion(null);
@@ -261,10 +363,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         setIsProcessing(false);
       }
     }
-  };
+  }, [isProcessing, currentQuestion, firstBuzzTeam, firstTeamData, gameId, onClearBuzzes, setCurrentQuestion]);
 
-  // Handle incorrect answer
-  const handleIncorrect = async () => {
+  // Handle incorrect answer - memoized to prevent unnecessary re-renders
+  const handleIncorrect = useCallback(async () => {
     if (isProcessing || !currentQuestion || !firstBuzzTeam || !firstTeamData) return;
 
     // IMPORTANT: Snapshot team ID before any async operations to prevent race conditions
@@ -297,6 +399,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       // Remove the team from buzz queue using the snapshot, not current state
       if (isMountedRef.current) {
         // Announce score update
+        const newScore = (firstTeamData.score || 0) - scoreToDeduct;
         setSrAnnouncement(`Incorrect. ${firstTeamData.name} lost ${scoreToDeduct} points. New score: ${newScore} points.`);
         removeBuzz(teamIdToRemove);
       }
@@ -318,7 +421,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         setIsProcessing(false);
       }
     }
-  };
+  }, [isProcessing, currentQuestion, firstBuzzTeam, firstTeamData, gameId, removeBuzz]);
 
   // Handle escape key to close modal
   useEffect(() => {
@@ -488,51 +591,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
                 role="list"
                 aria-label={`Buzz queue with ${buzzQueue.length} ${buzzQueue.length === 1 ? 'team' : 'teams'}`}
               >
-                {buzzQueue.map((buzz, index) => {
-                  const team = allTeams.find(t => t.id === buzz.teamId);
-                  const isFirst = index === 0;
-                  const position = getPositionDisplay(index);
-                  const teamName = team?.name || 'Unknown Team';
-
-                  return (
-                    <div
-                      key={`${buzz.teamId}-${buzz.timestamp}`}
-                      role="listitem"
-                      aria-label={isFirst ? `First place: ${teamName} is answering` : `${position.text} place: ${teamName}`}
-                      className={`p-4 rounded-lg flex items-center justify-between transition-all ${
-                        isFirst
-                          ? 'bg-green-100 border-2 border-green-500 shadow-lg'
-                          : 'bg-gray-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl" aria-hidden="true">
-                          {position.emoji}
-                        </span>
-                        <span className={`text-base font-bold ${
-                          isFirst ? 'text-green-900' : position.color
-                        }`}>
-                          {position.text}
-                        </span>
-                        <span className={`text-lg font-semibold ${
-                          isFirst ? 'text-green-900' : 'text-gray-300'
-                        }`}>
-                          {teamName}
-                        </span>
-                        {isFirst && (
-                          <span className="ml-2 px-2 py-1 bg-green-600 text-white text-xs font-bold rounded" aria-hidden="true">
-                            ANSWERING
-                          </span>
-                        )}
-                      </div>
-                      <div className={`text-sm ${
-                        isFirst ? 'text-green-700' : 'text-gray-400'
-                      }`}>
-                        {team ? `${team.score} pts` : ''}
-                      </div>
-                    </div>
-                  );
-                })}
+                {buzzQueueItems}
               </div>
             )}
           </div>
