@@ -68,9 +68,28 @@ export const useGameStore = create<GameStore>((set) => ({
     })),
   clearBuzzQueue: () => set({ buzzQueue: [] }),
   markQuestionUsed: (questionId) =>
-    set((state) => ({
-      selectedQuestions: [...state.selectedQuestions, questionId],
-    })),
+    set((state) => {
+      // Update selectedQuestions array
+      const updatedSelectedQuestions = [...state.selectedQuestions, questionId];
+
+      // Update the isUsed flag on the actual question object in categories
+      const updatedGameData = state.currentGameData ? {
+        ...state.currentGameData,
+        categories: state.currentGameData.categories.map((category) => ({
+          ...category,
+          questions: category.questions.map((question) =>
+            question.id === questionId
+              ? { ...question, isUsed: true }
+              : question
+          ),
+        })),
+      } : null;
+
+      return {
+        selectedQuestions: updatedSelectedQuestions,
+        currentGameData: updatedGameData,
+      };
+    }),
   updateTeamScore: (teamId, scoreChange) =>
     set((state) => {
       const currentScore = state.scoreUpdates[teamId] || 0;
