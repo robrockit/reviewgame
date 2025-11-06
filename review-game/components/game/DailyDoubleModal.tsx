@@ -245,7 +245,10 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
     } catch (error) {
       console.error('Error handling correct answer:', error);
       if (isMountedRef.current) {
-        alert('Failed to update score. Please try again.');
+        const errorMessage = error instanceof Error
+          ? error.message
+          : 'Failed to update score. Please try again.';
+        alert(errorMessage);
       }
     } finally {
       if (isMountedRef.current) {
@@ -323,7 +326,10 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
     } catch (error) {
       console.error('Error handling incorrect answer:', error);
       if (isMountedRef.current) {
-        alert('Failed to update score. Please try again.');
+        const errorMessage = error instanceof Error
+          ? error.message
+          : 'Failed to update score. Please try again.';
+        alert(errorMessage);
       }
     } finally {
       if (isMountedRef.current) {

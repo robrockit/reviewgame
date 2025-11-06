@@ -28,7 +28,6 @@ AS $$
 DECLARE
   v_teacher_id UUID;
   v_team_game_id UUID;
-  v_current_score INTEGER;
   v_new_score INTEGER;
 BEGIN
   -- Check if user is authenticated
@@ -66,10 +65,15 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Verify team belongs to this game and get current score
-  SELECT game_id, COALESCE(score, 0) INTO v_team_game_id, v_current_score
-  FROM public.teams
-  WHERE id = p_team_id;
+  -- Update team score atomically (prevents race conditions)
+  -- This uses a single UPDATE statement that:
+  -- 1. Validates team exists and belongs to the game
+  -- 2. Atomically calculates new score from current value
+  -- 3. Returns both game_id and new score for validation
+  UPDATE public.teams
+  SET score = COALESCE(score, 0) + p_score_change
+  WHERE id = p_team_id
+  RETURNING game_id, score INTO v_team_game_id, v_new_score;
 
   -- Verify team exists
   IF v_team_game_id IS NULL THEN
@@ -83,21 +87,9 @@ BEGIN
 
   -- Verify team belongs to the specified game
   IF v_team_game_id != p_game_id THEN
-    RETURN QUERY SELECT
-      p_team_id,
-      NULL::INTEGER,
-      FALSE,
-      'Team does not belong to the specified game'::TEXT;
-    RETURN;
+    -- Rollback the update since team doesn't belong to this game
+    RAISE EXCEPTION 'Team does not belong to the specified game';
   END IF;
-
-  -- Calculate new score
-  v_new_score := v_current_score + p_score_change;
-
-  -- Update team score atomically
-  UPDATE public.teams
-  SET score = v_new_score
-  WHERE id = p_team_id;
 
   -- Return success with updated score
   RETURN QUERY SELECT

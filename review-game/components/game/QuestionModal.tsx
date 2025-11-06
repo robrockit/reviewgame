@@ -70,7 +70,6 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     // IMPORTANT: Snapshot values before any async operations to prevent race conditions
     const teamIdToUpdate = firstTeamData.id;
     const scoreToAward = currentQuestion.value;
-    const currentScore = firstTeamData.score;
     const questionId = currentQuestion.id;
 
     setIsProcessing(true);
@@ -133,7 +132,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     } catch (error) {
       console.error('Error handling correct answer:', error);
       if (isMountedRef.current) {
-        alert('Failed to update score. Please try again.');
+        const errorMessage = error instanceof Error
+          ? error.message
+          : 'Failed to update score. Please try again.';
+        alert(errorMessage);
       }
     } finally {
       // Only update state if component is still mounted
@@ -151,7 +153,6 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     // The buzz queue could change during async operations (especially with real-time updates)
     const teamIdToRemove = firstTeamData.id;
     const scoreToDeduct = currentQuestion.value;
-    const currentScore = firstTeamData.score;
 
     setIsProcessing(true);
     try {
@@ -186,7 +187,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     } catch (error) {
       console.error('Error handling incorrect answer:', error);
       if (isMountedRef.current) {
-        alert('Failed to update score. Please try again.');
+        const errorMessage = error instanceof Error
+          ? error.message
+          : 'Failed to update score. Please try again.';
+        alert(errorMessage);
       }
     } finally {
       // Only update state if component is still mounted
