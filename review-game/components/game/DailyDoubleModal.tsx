@@ -21,6 +21,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
     isWagerSubmitted,
     setWagerSubmitted,
     clearWager,
+    markQuestionUsed,
   } = useGameStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -121,7 +122,36 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       console.log(`Wager submitted: ${wagerAmount} points for question ${currentQuestion.id}`);
     } catch (error) {
       console.error('Error validating wager:', error);
-      setWagerError('Failed to validate wager. Please try again.');
+
+      // Provide specific error messages based on error type
+      let errorMessage = 'Failed to validate wager. Please try again.';
+
+      if (error && typeof error === 'object') {
+        const err = error as { message?: string; code?: string; details?: string };
+
+        // Network or connection errors
+        if (err.message?.includes('fetch') || err.message?.includes('network')) {
+          errorMessage = 'Network error: Unable to connect to the server. Please check your internet connection and try again.';
+        }
+        // Database/auth errors
+        else if (err.code === 'PGRST116') {
+          errorMessage = 'Team not found. The team may have been removed from the game.';
+        }
+        // Permission errors
+        else if (err.message?.includes('permission') || err.message?.includes('RLS')) {
+          errorMessage = 'Permission denied: You do not have access to update this team\'s data.';
+        }
+        // Timeout errors
+        else if (err.message?.includes('timeout')) {
+          errorMessage = 'Request timed out. The server is taking too long to respond. Please try again.';
+        }
+        // Generic database errors
+        else if (err.message) {
+          errorMessage = `Database error: ${err.message}`;
+        }
+      }
+
+      setWagerError(errorMessage);
     } finally {
       setIsProcessing(false);
     }
@@ -131,8 +161,14 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
   const handleClose = useCallback(async () => {
     if (isProcessing) return;
 
+    setIsProcessing(true);
+
     // Mark question as used in database before closing to prevent reopening
     if (currentQuestion) {
+      // Mark in local store immediately (optimistic update)
+      // This ensures UI consistency even if DB update fails
+      markQuestionUsed(currentQuestion.id);
+
       try {
         const { data: gameData, error: fetchError } = await supabase
           .from('games')
@@ -140,26 +176,40 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
           .eq('id', gameId)
           .single();
 
-        if (!fetchError && gameData) {
+        if (fetchError) {
+          console.error('Failed to fetch game data for marking question:', fetchError);
+          throw fetchError;
+        }
+
+        if (gameData) {
           const selectedQuestions = gameData.selected_questions || [];
           if (!selectedQuestions.includes(currentQuestion.id)) {
-            await supabase
+            const { error: updateError } = await supabase
               .from('games')
               .update({
                 selected_questions: [...selectedQuestions, currentQuestion.id]
               })
               .eq('id', gameId);
+
+            if (updateError) {
+              console.error('Failed to mark question as used in DB:', updateError);
+              throw updateError;
+            }
           }
         }
       } catch (error) {
-        console.warn('Failed to mark question as used on close:', error);
+        console.error('Failed to mark question as used on close:', error);
+        // Question is already marked in local store, so modal will close
+        // Show warning to user but don't block the close operation
+        alert('Warning: Failed to save question state to database. The question has been marked as used locally but may reappear if you refresh the page.');
       }
     }
 
     setCurrentQuestion(null);
     clearBuzzQueue();
     clearWager();
-  }, [isProcessing, setCurrentQuestion, clearBuzzQueue, clearWager, currentQuestion, gameId, supabase]);
+    setIsProcessing(false);
+  }, [isProcessing, setCurrentQuestion, clearBuzzQueue, clearWager, markQuestionUsed, currentQuestion, gameId, supabase]);
 
   // Handle correct answer with wager
   const handleCorrect = async () => {
@@ -168,11 +218,24 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
     // IMPORTANT: Snapshot values before any async operations to prevent race conditions
     const teamIdToUpdate = firstTeamData.id;
     const scoreToAward = currentWager; // Use wager amount instead of question value
-    const currentScore = firstTeamData.score;
     const questionId = currentQuestion.id;
 
     setIsProcessing(true);
     try {
+      // Fetch fresh team score from database to prevent stale data issues
+      const { data: freshTeam, error: fetchError } = await supabase
+        .from('teams')
+        .select('score')
+        .eq('id', teamIdToUpdate)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching fresh team score:', fetchError);
+        throw fetchError;
+      }
+
+      const currentScore = freshTeam?.score ?? 0;
+
       // Award wager points to the first team in the buzz queue
       const newScore = currentScore + scoreToAward;
 
@@ -239,10 +302,23 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
     // IMPORTANT: Snapshot team ID before any async operations to prevent race conditions
     const teamIdToRemove = firstTeamData.id;
     const scoreToDeduct = currentWager; // Use wager amount instead of question value
-    const currentScore = firstTeamData.score;
 
     setIsProcessing(true);
     try {
+      // Fetch fresh team score from database to prevent stale data issues
+      const { data: freshTeam, error: fetchError } = await supabase
+        .from('teams')
+        .select('score')
+        .eq('id', teamIdToRemove)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching fresh team score:', fetchError);
+        throw fetchError;
+      }
+
+      const currentScore = freshTeam?.score ?? 0;
+
       // Deduct wager points from the first team in the buzz queue
       const newScore = currentScore - scoreToDeduct;
 
