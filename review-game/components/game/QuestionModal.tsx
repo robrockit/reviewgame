@@ -12,7 +12,6 @@ interface QuestionModalProps {
 }
 
 interface BuzzQueueItemProps {
-  buzz: { teamId: string; timestamp: number };
   index: number;
   isFirst: boolean;
   teamName: string;
@@ -20,12 +19,11 @@ interface BuzzQueueItemProps {
 }
 
 // Memoized BuzzQueueItem component to prevent unnecessary re-renders
-const BuzzQueueItem = React.memo<BuzzQueueItemProps>(({ buzz, index, isFirst, teamName, teamScore }) => {
+const BuzzQueueItem = React.memo<BuzzQueueItemProps>(({ index, isFirst, teamName, teamScore }) => {
   const position = getPositionDisplay(index);
 
   return (
     <div
-      key={`${buzz.teamId}-${buzz.timestamp}`}
       role="listitem"
       aria-label={isFirst ? `First place: ${teamName} is answering` : `${position.text} place: ${teamName}`}
       className={`p-4 rounded-lg flex items-center justify-between transition-all ${
@@ -79,7 +77,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
   const [isClearing, setIsClearing] = useState(false);
   const [srAnnouncement, setSrAnnouncement] = useState('');
   const [previousBuzzQueueLength, setPreviousBuzzQueueLength] = useState(0);
-  const supabase = createClient();
+
+  // Memoize Supabase client to prevent creating new instance on every render
+  const supabase = useMemo(() => createClient(), []);
 
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef(true);
@@ -101,19 +101,17 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
   // Modal is open when currentQuestion is not null
   const isOpen = currentQuestion !== null;
 
-  // Get the first team in the buzz queue
-  const firstBuzzTeam = buzzQueue.length > 0 ? buzzQueue[0] : null;
-
   // Memoize first team calculation to prevent unnecessary re-renders
   const firstTeamData = useMemo(() => {
-    if (!firstBuzzTeam) return null;
-    return allTeams.find(team => team.id === firstBuzzTeam.teamId);
-  }, [firstBuzzTeam, allTeams]);
+    if (buzzQueue.length === 0) return null;
+    return allTeams.find(team => team.id === buzzQueue[0].teamId);
+  }, [buzzQueue, allTeams]);
 
-  // Memoize category name to prevent unnecessary re-renders
-  const categoryName = useMemo(() => {
-    return currentQuestion?.categoryName || 'Category';
-  }, [currentQuestion?.categoryName]);
+  // Get the first team in the buzz queue (derived from buzzQueue for compatibility)
+  const firstBuzzTeam = buzzQueue.length > 0 ? buzzQueue[0] : null;
+
+  // Category name - no memoization needed for simple string operations
+  const categoryName = currentQuestion?.categoryName || 'Category';
 
   // Memoize buzz queue items to prevent unnecessary re-renders
   const buzzQueueItems = useMemo(() => {
@@ -126,7 +124,6 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       return (
         <BuzzQueueItem
           key={`${buzz.teamId}-${buzz.timestamp}`}
-          buzz={buzz}
           index={index}
           isFirst={isFirst}
           teamName={teamName}
@@ -363,7 +360,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         setIsProcessing(false);
       }
     }
-  }, [isProcessing, currentQuestion, firstBuzzTeam, firstTeamData, gameId, onClearBuzzes, setCurrentQuestion]);
+  }, [isProcessing, currentQuestion, firstTeamData, gameId, onClearBuzzes, setCurrentQuestion]);
 
   // Handle incorrect answer - memoized to prevent unnecessary re-renders
   const handleIncorrect = useCallback(async () => {
@@ -421,7 +418,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         setIsProcessing(false);
       }
     }
-  }, [isProcessing, currentQuestion, firstBuzzTeam, firstTeamData, gameId, removeBuzz]);
+  }, [isProcessing, currentQuestion, firstTeamData, gameId, removeBuzz]);
 
   // Handle escape key to close modal
   useEffect(() => {
@@ -443,18 +440,20 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     };
   }, [isOpen, isProcessing, handleClose]);
 
+  // Memoize backdrop click handler to prevent unnecessary re-renders
+  const handleBackdropClick = useCallback((e: React.MouseEvent) => {
+    if (e.target === e.currentTarget && !isProcessing) {
+      handleClose();
+    }
+  }, [isProcessing, handleClose]);
+
   // Don't render if not open or if it's a Daily Double (DailyDoubleModal handles those)
   if (!isOpen || !currentQuestion || currentQuestion.isDailyDouble) return null;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4"
-      onClick={(e) => {
-        // Close modal if clicking the backdrop
-        if (e.target === e.currentTarget && !isProcessing) {
-          handleClose();
-        }
-      }}
+      onClick={handleBackdropClick}
       role="presentation"
     >
       <div
