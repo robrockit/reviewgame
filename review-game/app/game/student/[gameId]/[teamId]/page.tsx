@@ -161,9 +161,12 @@ export default function StudentGamePage() {
     if (position === -1) {
       // Team not in queue
       setQueuePosition(null);
-      // Only set to active if game is active, otherwise keep current state
-      if (game?.status === 'active' && buzzButtonState !== 'waiting') {
+
+      // Set button state based on game status
+      if (game?.status === 'active') {
         setBuzzButtonState('active');
+      } else {
+        setBuzzButtonState('waiting');
       }
     } else {
       // Team is in queue
@@ -178,7 +181,7 @@ export default function StudentGamePage() {
         setBuzzButtonState('buzzed');
       }
     }
-  }, [buzzQueue, teamId, game?.status, buzzButtonState]);
+  }, [buzzQueue, teamId, game?.status]);
 
   // Handle buzz button press
   const handleBuzz = async () => {

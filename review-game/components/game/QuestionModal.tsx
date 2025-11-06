@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import { createClient } from '@/lib/supabase/client';
 import { Timer } from './Timer';
+import { getPositionDisplay } from '@/lib/utils/position';
 
 interface QuestionModalProps {
   gameId: string;
@@ -21,6 +22,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
   } = useGameStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const supabase = createClient();
 
   // Track if component is mounted to prevent state updates after unmount
@@ -285,14 +287,19 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
                 <button
                   onClick={() => {
                     if (window.confirm('Clear all buzzes? This cannot be undone.')) {
-                      clearBuzzQueue();
+                      setIsClearing(true);
+                      try {
+                        clearBuzzQueue();
+                      } finally {
+                        setIsClearing(false);
+                      }
                     }
                   }}
-                  disabled={isProcessing}
-                  className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded transition-colors"
-                  title="Clear all buzzes"
+                  disabled={isProcessing || isClearing}
+                  className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  aria-label="Clear all buzzes from the queue"
                 >
-                  Clear Queue
+                  {isClearing ? 'Clearing...' : 'Clear Queue'}
                 </button>
               )}
             </div>
@@ -311,26 +318,18 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
                 )}
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2" role="list" aria-label="Buzz queue">
                 {buzzQueue.map((buzz, index) => {
                   const team = allTeams.find(t => t.id === buzz.teamId);
                   const isFirst = index === 0;
-
-                  // Get position emoji and text
-                  const getPositionDisplay = (pos: number) => {
-                    switch (pos) {
-                      case 0: return { emoji: '🥇', text: '1st', color: 'text-yellow-500' };
-                      case 1: return { emoji: '🥈', text: '2nd', color: 'text-gray-400' };
-                      case 2: return { emoji: '🥉', text: '3rd', color: 'text-orange-500' };
-                      default: return { emoji: '🏅', text: `${pos + 1}th`, color: 'text-blue-400' };
-                    }
-                  };
-
                   const position = getPositionDisplay(index);
+                  const teamName = team?.name || 'Unknown Team';
 
                   return (
                     <div
                       key={`${buzz.teamId}-${buzz.timestamp}`}
+                      role="listitem"
+                      aria-label={isFirst ? `First place: ${teamName} is answering` : `${position.text} place: ${teamName}`}
                       className={`p-4 rounded-lg flex items-center justify-between transition-all ${
                         isFirst
                           ? 'bg-green-100 border-2 border-green-500 shadow-lg'
@@ -338,7 +337,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="text-2xl" aria-label={position.text}>
+                        <span className="text-2xl" aria-hidden="true">
                           {position.emoji}
                         </span>
                         <span className={`text-base font-bold ${
@@ -349,10 +348,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId }) => {
                         <span className={`text-lg font-semibold ${
                           isFirst ? 'text-green-900' : 'text-gray-300'
                         }`}>
-                          {team?.name || 'Unknown Team'}
+                          {teamName}
                         </span>
                         {isFirst && (
-                          <span className="ml-2 px-2 py-1 bg-green-600 text-white text-xs font-bold rounded">
+                          <span className="ml-2 px-2 py-1 bg-green-600 text-white text-xs font-bold rounded" aria-hidden="true">
                             ANSWERING
                           </span>
                         )}
