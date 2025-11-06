@@ -189,32 +189,25 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
 
     setIsProcessing(true);
     try {
-      // Fetch fresh team score from database to prevent stale data issues
-      const { data: freshTeam, error: fetchError } = await supabase
-        .from('teams')
-        .select('score')
-        .eq('id', teamIdToUpdate)
-        .single();
-
-      if (fetchError) {
-        console.error('Error fetching fresh team score:', fetchError);
-        throw fetchError;
-      }
-
-      const currentScore = freshTeam?.score ?? 0;
-
       // Award wager points to the controlling team
-      const newScore = currentScore + scoreToAward;
-
-      // CRITICAL: Update the team score first (most important operation)
-      const { error: scoreError } = await supabase
-        .from('teams')
-        .update({ score: newScore })
-        .eq('id', teamIdToUpdate);
+      // Use server-side RPC function for proper authorization and atomic updates
+      // The RPC function handles fetching current score atomically
+      const { data: scoreResult, error: scoreError } = await supabase
+        .rpc('update_team_score', {
+          p_team_id: teamIdToUpdate,
+          p_score_change: scoreToAward,
+          p_game_id: gameId
+        });
 
       if (scoreError) {
         console.error('Error updating team score:', scoreError);
         throw scoreError;
+      }
+
+      // Check for authorization or validation errors from the RPC function
+      if (scoreResult && scoreResult.length > 0 && !scoreResult[0].success) {
+        console.error('Score update failed:', scoreResult[0].error_message);
+        throw new Error(scoreResult[0].error_message || 'Failed to update score');
       }
 
       // Try to mark question as used in database (less critical)
@@ -272,32 +265,25 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
 
     setIsProcessing(true);
     try {
-      // Fetch fresh team score from database to prevent stale data issues
-      const { data: freshTeam, error: fetchError } = await supabase
-        .from('teams')
-        .select('score')
-        .eq('id', teamIdToUpdate)
-        .single();
-
-      if (fetchError) {
-        console.error('Error fetching fresh team score:', fetchError);
-        throw fetchError;
-      }
-
-      const currentScore = freshTeam?.score ?? 0;
-
       // Deduct wager points from the controlling team
-      const newScore = currentScore - scoreToDeduct;
-
-      // Update the team score in the database
-      const { error: scoreError } = await supabase
-        .from('teams')
-        .update({ score: newScore })
-        .eq('id', teamIdToUpdate);
+      // Use server-side RPC function for proper authorization and atomic updates
+      // The RPC function handles fetching current score atomically
+      const { data: scoreResult, error: scoreError } = await supabase
+        .rpc('update_team_score', {
+          p_team_id: teamIdToUpdate,
+          p_score_change: -scoreToDeduct, // Negative for deduction
+          p_game_id: gameId
+        });
 
       if (scoreError) {
         console.error('Error updating team score:', scoreError);
         throw scoreError;
+      }
+
+      // Check for authorization or validation errors from the RPC function
+      if (scoreResult && scoreResult.length > 0 && !scoreResult[0].success) {
+        console.error('Score update failed:', scoreResult[0].error_message);
+        throw new Error(scoreResult[0].error_message || 'Failed to update score');
       }
 
       // Mark question as used in database

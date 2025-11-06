@@ -76,17 +76,23 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     setIsProcessing(true);
     try {
       // Award points to the first team in the buzz queue
-      const newScore = currentScore + scoreToAward;
-
-      // CRITICAL: Update the team score first (most important operation)
-      const { error: scoreError } = await supabase
-        .from('teams')
-        .update({ score: newScore })
-        .eq('id', teamIdToUpdate);
+      // Use server-side RPC function for proper authorization and atomic updates
+      const { data: scoreResult, error: scoreError } = await supabase
+        .rpc('update_team_score', {
+          p_team_id: teamIdToUpdate,
+          p_score_change: scoreToAward,
+          p_game_id: gameId
+        });
 
       if (scoreError) {
         console.error('Error updating team score:', scoreError);
         throw scoreError;
+      }
+
+      // Check for authorization or validation errors from the RPC function
+      if (scoreResult && scoreResult.length > 0 && !scoreResult[0].success) {
+        console.error('Score update failed:', scoreResult[0].error_message);
+        throw new Error(scoreResult[0].error_message || 'Failed to update score');
       }
 
       // Try to mark question as used in database (less critical)
@@ -150,17 +156,23 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     setIsProcessing(true);
     try {
       // Deduct points from the first team in the buzz queue
-      const newScore = currentScore - scoreToDeduct;
-
-      // Update the team score in the database
-      const { error: scoreError } = await supabase
-        .from('teams')
-        .update({ score: newScore })
-        .eq('id', teamIdToRemove);
+      // Use server-side RPC function for proper authorization and atomic updates
+      const { data: scoreResult, error: scoreError } = await supabase
+        .rpc('update_team_score', {
+          p_team_id: teamIdToRemove,
+          p_score_change: -scoreToDeduct, // Negative for deduction
+          p_game_id: gameId
+        });
 
       if (scoreError) {
         console.error('Error updating team score:', scoreError);
         throw scoreError;
+      }
+
+      // Check for authorization or validation errors from the RPC function
+      if (scoreResult && scoreResult.length > 0 && !scoreResult[0].success) {
+        console.error('Score update failed:', scoreResult[0].error_message);
+        throw new Error(scoreResult[0].error_message || 'Failed to update score');
       }
 
       // Remove the team from buzz queue using the snapshot, not current state
