@@ -110,6 +110,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       const validationError = validateWager(wagerAmount, currentScore);
       if (validationError) {
         setWagerError(validationError);
+        setIsProcessing(false); // Reset processing state before early return
         return;
       }
 
@@ -299,9 +300,10 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
   const handleIncorrect = async () => {
     if (isProcessing || !currentQuestion || !firstBuzzTeam || !firstTeamData || !currentWager) return;
 
-    // IMPORTANT: Snapshot team ID before any async operations to prevent race conditions
+    // IMPORTANT: Snapshot values before any async operations to prevent race conditions
     const teamIdToRemove = firstTeamData.id;
     const scoreToDeduct = currentWager; // Use wager amount instead of question value
+    const questionId = currentQuestion.id;
 
     setIsProcessing(true);
     try {
@@ -336,6 +338,33 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       // Remove the team from buzz queue using the snapshot, not current state
       if (isMountedRef.current) {
         removeBuzz(teamIdToRemove);
+      }
+
+      // Mark question as used in database (same as handleCorrect)
+      try {
+        const { data: gameData, error: gameError } = await supabase
+          .from('games')
+          .select('selected_questions')
+          .eq('id', gameId)
+          .single();
+
+        if (!gameError && gameData) {
+          const selectedQuestions = gameData.selected_questions || [];
+          if (!selectedQuestions.includes(questionId)) {
+            const { error: updateError } = await supabase
+              .from('games')
+              .update({
+                selected_questions: [...selectedQuestions, questionId]
+              })
+              .eq('id', gameId);
+
+            if (updateError) {
+              console.warn('Failed to mark question in DB (will sync later):', updateError);
+            }
+          }
+        }
+      } catch (markError) {
+        console.warn('Failed to mark question as used in DB:', markError);
       }
 
       // For Daily Doubles, after one team answers incorrectly, the question is done
