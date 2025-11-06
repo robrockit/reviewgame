@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import useSound from 'use-sound';
+import { getPositionDisplay } from '@/lib/utils/position';
 
 /**
  * Button state determines visual appearance and behavior
@@ -19,6 +20,8 @@ interface BuzzButtonProps {
   disableSound?: boolean;
   /** Optional: Disable haptic feedback */
   disableHaptic?: boolean;
+  /** Optional: Position in buzz queue (1 = first, 2 = second, etc.) */
+  queuePosition?: number | null;
 }
 
 /**
@@ -47,6 +50,7 @@ export const BuzzButton: React.FC<BuzzButtonProps> = ({
   size = 250,
   disableSound = false,
   disableHaptic = false,
+  queuePosition = null,
 }) => {
   const [isPressed, setIsPressed] = useState(false);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -228,10 +232,36 @@ export const BuzzButton: React.FC<BuzzButtonProps> = ({
       {/* Status indicator text */}
       <div className="text-center">
         <p className="text-sm text-gray-600 font-medium">
-          {state === 'active' && '🎯 Ready to buzz in'}
-          {state === 'buzzed' && '⏳ You buzzed in!'}
-          {state === 'answering' && '✨ Your turn to answer!'}
-          {state === 'waiting' && '💤 Waiting for question...'}
+          {state === 'active' && (
+            <>
+              <span aria-hidden="true">🎯 </span>
+              <span>Ready to buzz in</span>
+            </>
+          )}
+          {state === 'buzzed' && queuePosition && (
+            <>
+              <span aria-hidden="true">{getPositionDisplay(queuePosition - 1).emoji} </span>
+              <span>Position: {getPositionDisplay(queuePosition - 1).text}</span>
+            </>
+          )}
+          {state === 'buzzed' && !queuePosition && (
+            <>
+              <span aria-hidden="true">⏳ </span>
+              <span>You buzzed in!</span>
+            </>
+          )}
+          {state === 'answering' && (
+            <>
+              <span aria-hidden="true">✨ </span>
+              <span>Your turn to answer!</span>
+            </>
+          )}
+          {state === 'waiting' && (
+            <>
+              <span aria-hidden="true">💤 </span>
+              <span>Waiting for question...</span>
+            </>
+          )}
         </p>
       </div>
     </div>

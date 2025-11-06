@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { BuzzButton, BuzzButtonState } from '@/components/student/BuzzButton';
 import { useBuzzer } from '@/hooks/useBuzzer';
+import { useGameStore } from '@/lib/stores/gameStore';
 import type { Tables } from '@/types/database.types';
 
 type Game = Tables<'games'>;
@@ -23,9 +24,13 @@ export default function StudentGamePage() {
   const [game, setGame] = useState<Game | null>(null);
   const [team, setTeam] = useState<Team | null>(null);
   const [buzzButtonState, setBuzzButtonState] = useState<BuzzButtonState>('waiting');
+  const [queuePosition, setQueuePosition] = useState<number | null>(null);
 
   // Use buzzer hook for real-time buzz events
   const { sendBuzz } = useBuzzer(gameId);
+
+  // Get buzz queue from game store
+  const { buzzQueue } = useGameStore();
 
   // Fetch game and team data
   useEffect(() => {
@@ -146,6 +151,38 @@ export default function StudentGamePage() {
     };
   }, [gameId, teamId, supabase]);
 
+  // Monitor buzz queue to update button state and position
+  useEffect(() => {
+    if (!teamId) return;
+
+    // Find this team's position in the buzz queue
+    const position = buzzQueue.findIndex(buzz => buzz.teamId === teamId);
+
+    if (position === -1) {
+      // Team not in queue
+      setQueuePosition(null);
+
+      // Set button state based on game status
+      if (game?.status === 'active') {
+        setBuzzButtonState('active');
+      } else {
+        setBuzzButtonState('waiting');
+      }
+    } else {
+      // Team is in queue
+      const pos = position + 1; // Convert to 1-based position
+      setQueuePosition(pos);
+
+      if (pos === 1) {
+        // First in queue - it's their turn to answer
+        setBuzzButtonState('answering');
+      } else {
+        // In queue but not first
+        setBuzzButtonState('buzzed');
+      }
+    }
+  }, [buzzQueue, teamId, game?.status]);
+
   // Handle buzz button press
   const handleBuzz = async () => {
     console.log('Buzz button pressed!');
@@ -158,14 +195,8 @@ export default function StudentGamePage() {
     // Send buzz event via Supabase broadcast channel
     sendBuzz(teamId);
 
-    // Update local state to provide immediate visual feedback
-    setBuzzButtonState('buzzed');
-
-    // Reset to active after delay (in case teacher doesn't respond)
-    // This allows the student to buzz again if needed
-    setTimeout(() => {
-      setBuzzButtonState('active');
-    }, 5000);
+    // The buzz queue tracking effect will automatically update the button state
+    // based on the team's position in the queue
   };
 
   // Render loading state
@@ -286,6 +317,7 @@ export default function StudentGamePage() {
             state={buzzButtonState}
             onBuzz={handleBuzz}
             size={300}
+            queuePosition={queuePosition}
           />
 
           {/* Instructions */}
