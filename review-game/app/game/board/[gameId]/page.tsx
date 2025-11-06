@@ -8,6 +8,7 @@ import { TeamScoreboard } from '@/components/game/TeamScoreboard';
 import { QuestionModal } from '@/components/game/QuestionModal';
 import { DailyDoubleModal } from '@/components/game/DailyDoubleModal';
 import { useGameStore } from '@/lib/stores/gameStore';
+import { useBuzzer } from '@/hooks/useBuzzer';
 import type { Tables } from '@/types/database.types';
 import type { Category, Question, Team } from '@/types/game';
 
@@ -38,6 +39,10 @@ export default function GameBoardPage() {
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
 
   const { setGame: setStoreGame, setTeams } = useGameStore();
+
+  // Subscribe to buzz events from students
+  // This hook automatically adds buzzes to the game store's buzz queue
+  useBuzzer(gameId);
 
   // Fetch game data and questions
   useEffect(() => {
