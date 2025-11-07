@@ -78,8 +78,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
   const [srAnnouncement, setSrAnnouncement] = useState('');
   const [previousBuzzQueueLength, setPreviousBuzzQueueLength] = useState(0);
 
-  // Memoize Supabase client to prevent creating new instance on every render
-  const supabase = useMemo(() => createClient(), []);
+  // Supabase client - not memoized to allow session updates
+  const supabase = createClient();
 
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef(true);
@@ -279,7 +279,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
 
   // Handle correct answer - memoized to prevent unnecessary re-renders
   const handleCorrect = useCallback(async () => {
-    if (isProcessing || !currentQuestion || !firstBuzzTeam || !firstTeamData) return;
+    if (isProcessing || !currentQuestion || !firstTeamData) return;
 
     // IMPORTANT: Snapshot values before any async operations to prevent race conditions
     const teamIdToUpdate = firstTeamData.id;
@@ -364,7 +364,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
 
   // Handle incorrect answer - memoized to prevent unnecessary re-renders
   const handleIncorrect = useCallback(async () => {
-    if (isProcessing || !currentQuestion || !firstBuzzTeam || !firstTeamData) return;
+    if (isProcessing || !currentQuestion || !firstTeamData) return;
 
     // IMPORTANT: Snapshot team ID before any async operations to prevent race conditions
     // The buzz queue could change during async operations (especially with real-time updates)
