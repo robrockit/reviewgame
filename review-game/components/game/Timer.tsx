@@ -125,11 +125,12 @@ export const Timer: React.FC<TimerProps> = ({
   }, [enabled, isPaused, isExpired]); // Removed onExpire, onTick from deps
 
   // Defensive validation - check AFTER all hooks are called
+  // This is a warning, not an error, since it's input validation
   if (duration <= 0) {
-    logger.error('Timer duration must be positive', {
+    logger.warn('Timer component received invalid duration', {
       duration,
       component: 'Timer',
-      operation: 'validate'
+      operation: 'validate',
     });
     return null;
   }

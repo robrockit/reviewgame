@@ -31,8 +31,10 @@ Sentry.init({
 
   // You can also set beforeSend to filter out certain events
   beforeSend(event, hint) {
-    // Filter out events in development
-    if (process.env.NODE_ENV === 'development') {
+    // Allow opt-in Sentry testing in development
+    // Set SENTRY_DEBUG=true in .env.local to test Sentry integration locally
+    if (process.env.NODE_ENV === 'development' &&
+        process.env.NEXT_PUBLIC_SENTRY_DEBUG !== 'true') {
       return null;
     }
     return event;

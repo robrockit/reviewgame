@@ -28,11 +28,10 @@ export async function GET(request: Request) {
     );
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
-      logger.error('Error exchanging code for session', {
-        error: error.message,
-        code: code.substring(0, 10) + '...', // Log partial code for debugging
+      logger.error('Error exchanging code for session', error, {
         operation: 'exchangeCodeForSession',
-        route: '/auth/callback'
+        route: '/auth/callback',
+        hasCode: !!code, // Log presence, not value
       });
       return NextResponse.redirect(`${requestUrl.origin}/login?error=auth_failed`);
     }

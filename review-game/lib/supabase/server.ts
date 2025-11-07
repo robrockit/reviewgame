@@ -1,5 +1,6 @@
 import { stripe } from "@/lib/stripe/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { logger } from "@/lib/logger";
 
 export const createOrRetrieveCustomer = async (
   supabase: SupabaseClient,
@@ -38,7 +39,11 @@ export const createOrRetrieveCustomer = async (
       throw supabaseError;
     }
 
-    console.log(`New customer created and inserted for ${uuid}.`);
+    logger.info('New Stripe customer created and linked to profile', {
+      userId: uuid,
+      stripeCustomerId: customer.id,
+      operation: 'createStripeCustomer',
+    });
     return customer.id;
   }
 
