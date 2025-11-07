@@ -7,6 +7,7 @@ import { BuzzButton, BuzzButtonState } from '@/components/student/BuzzButton';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import { useGameStore } from '@/lib/stores/gameStore';
 import type { Tables } from '@/types/database.types';
+import { logger } from '@/lib/logger';
 
 type Game = Tables<'games'>;
 type Team = Tables<'teams'>;
@@ -74,7 +75,13 @@ export default function StudentGamePage() {
 
         setLoading(false);
       } catch (err) {
-        console.error('Error fetching data:', err);
+        logger.error('Error fetching game data', {
+          error: err instanceof Error ? err.message : String(err),
+          gameId,
+          teamId,
+          operation: 'fetchData',
+          page: 'StudentGamePage'
+        });
         const message = err instanceof Error ? err.message : 'Failed to load game';
         setError(message);
         setLoading(false);
@@ -188,7 +195,11 @@ export default function StudentGamePage() {
     console.log('Buzz button pressed!');
 
     if (!teamId) {
-      console.error('Cannot buzz: teamId is not available');
+      logger.error('Cannot buzz: teamId is not available', {
+        gameId,
+        operation: 'handleBuzz',
+        page: 'StudentGamePage'
+      });
       return;
     }
 

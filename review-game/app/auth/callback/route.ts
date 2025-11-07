@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -27,7 +28,11 @@ export async function GET(request: Request) {
     );
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
-      console.error('Error exchanging code for session:', error);
+      logger.error('Error exchanging code for session', error, {
+        operation: 'exchangeCodeForSession',
+        route: '/auth/callback',
+        hasCode: !!code, // Log presence, not value
+      });
       return NextResponse.redirect(`${requestUrl.origin}/login?error=auth_failed`);
     }
   }

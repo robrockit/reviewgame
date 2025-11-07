@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { logger } from '@/lib/logger';
 
 /**
  * Timer Props Interface
@@ -124,8 +125,13 @@ export const Timer: React.FC<TimerProps> = ({
   }, [enabled, isPaused, isExpired]); // Removed onExpire, onTick from deps
 
   // Defensive validation - check AFTER all hooks are called
+  // This is a warning, not an error, since it's input validation
   if (duration <= 0) {
-    console.error('Timer: duration must be positive, received:', duration);
+    logger.warn('Timer component received invalid duration', {
+      duration,
+      component: 'Timer',
+      operation: 'validate',
+    });
     return null;
   }
 
