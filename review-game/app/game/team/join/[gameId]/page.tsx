@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { logger } from '@/lib/logger';
 
 interface JoinPageProps {
   params: {
@@ -68,7 +69,12 @@ export default function JoinGamePage({ params }: JoinPageProps) {
           .eq('game_id', gameId);
 
         if (countError) {
-          console.error('Error counting teams:', countError);
+          logger.error('Error counting teams', {
+            error: countError.message,
+            gameId,
+            operation: 'validateGame',
+            page: 'JoinGamePage'
+          });
           setError('Unable to check game availability. Please try again.');
           return;
         }
@@ -84,7 +90,12 @@ export default function JoinGamePage({ params }: JoinPageProps) {
           title: questionBank?.title || 'Review Game',
         });
       } catch (err) {
-        console.error('Unexpected error validating game:', err);
+        logger.error('Unexpected error validating game', {
+          error: err instanceof Error ? err.message : String(err),
+          gameId,
+          operation: 'validateGame',
+          page: 'JoinGamePage'
+        });
         setError('An unexpected error occurred. Please try again.');
       }
     };
@@ -164,7 +175,12 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         .maybeSingle();
 
       if (maxError) {
-        console.error('Error determining team number:', maxError);
+        logger.error('Error determining team number', {
+          error: maxError.message,
+          gameId,
+          operation: 'joinGame',
+          page: 'JoinGamePage'
+        });
         throw new Error('Failed to determine team number');
       }
 
@@ -187,7 +203,13 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         .single();
 
       if (createError || !team) {
-        console.error('Error creating team:', createError);
+        logger.error('Error creating team', {
+          error: createError?.message,
+          gameId,
+          teamNumber,
+          operation: 'joinGame',
+          page: 'JoinGamePage'
+        });
         // If error is a unique constraint violation, it might be a race condition
         // User can retry by clicking the button again
         throw new Error('Failed to join game. Please try again.');
@@ -196,7 +218,12 @@ export default function JoinGamePage({ params }: JoinPageProps) {
       // Redirect to waiting room
       router.push(`/game/team/waiting/${team.id}`);
     } catch (err) {
-      console.error('Error joining game:', err);
+      logger.error('Error joining game', {
+        error: err instanceof Error ? err.message : String(err),
+        gameId,
+        operation: 'joinGame',
+        page: 'JoinGamePage'
+      });
       setError(
         err instanceof Error ? err.message : 'Failed to join game. Please try again.'
       );

@@ -11,6 +11,7 @@ import { useGameStore } from '@/lib/stores/gameStore';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import type { Tables } from '@/types/database.types';
 import type { Category, Question, Team } from '@/types/game';
+import { logger } from '@/lib/logger';
 
 type Game = Tables<'games'>;
 type DatabaseTeam = Tables<'teams'>;
@@ -157,7 +158,13 @@ export default function GameBoardPage() {
         // Validate and set timer settings
         const timerSeconds = gameData.timer_seconds ?? 10;
         if (timerSeconds <= 0) {
-          console.warn(`Invalid timer_seconds value: ${timerSeconds}, using default 10`);
+          logger.warn('Invalid timer_seconds value, using default', {
+            timerSeconds,
+            gameId,
+            defaultValue: 10,
+            operation: 'fetchGameData',
+            page: 'GameBoardPage'
+          });
         }
 
         // Set all state together to prevent partial renders
@@ -171,7 +178,12 @@ export default function GameBoardPage() {
         setTeams(teamsForStore);
         setLoading(false);
       } catch (err) {
-        console.error('Error fetching game data:', err);
+        logger.error('Error fetching game data', {
+          error: err instanceof Error ? err.message : String(err),
+          gameId,
+          operation: 'fetchGameData',
+          page: 'GameBoardPage'
+        });
         const message = err instanceof Error ? err.message : 'Failed to load game data';
         setError(message);
         setLoading(false);
@@ -274,7 +286,12 @@ export default function GameBoardPage() {
               };
             });
           } catch (error) {
-            console.error('Error in game update handler:', error);
+            logger.error('Error in game update handler', {
+              error: error instanceof Error ? error.message : String(error),
+              gameId,
+              operation: 'gameUpdateHandler',
+              page: 'GameBoardPage'
+            });
             setSubscriptionError('Failed to process game update');
           }
         }
@@ -282,7 +299,13 @@ export default function GameBoardPage() {
       .subscribe((status, err) => {
         console.log('Game board subscription status:', status);
         if (err) {
-          console.error('Game subscription error:', err);
+          logger.error('Game subscription error', {
+            error: err instanceof Error ? err.message : String(err),
+            gameId,
+            status,
+            operation: 'gameSubscription',
+            page: 'GameBoardPage'
+          });
           setSubscriptionError('Lost connection to game updates. Attempting to reconnect...');
           setConnectionStatus('disconnected');
         } else if (status === 'SUBSCRIBED') {
@@ -339,7 +362,12 @@ export default function GameBoardPage() {
               }
             });
           } catch (error) {
-            console.error('Error in team update handler:', error);
+            logger.error('Error in team update handler', {
+              error: error instanceof Error ? error.message : String(error),
+              gameId,
+              operation: 'teamUpdateHandler',
+              page: 'GameBoardPage'
+            });
             setSubscriptionError('Failed to process team update');
           }
         }
@@ -362,7 +390,12 @@ export default function GameBoardPage() {
               prevTeams.filter((t) => t.id !== deletedTeam.id)
             );
           } catch (error) {
-            console.error('Error in team delete handler:', error);
+            logger.error('Error in team delete handler', {
+              error: error instanceof Error ? error.message : String(error),
+              gameId,
+              operation: 'teamDeleteHandler',
+              page: 'GameBoardPage'
+            });
             setSubscriptionError('Failed to process team deletion');
           }
         }
@@ -370,7 +403,13 @@ export default function GameBoardPage() {
       .subscribe((status, err) => {
         console.log('Teams subscription status:', status);
         if (err) {
-          console.error('Teams subscription error:', err);
+          logger.error('Teams subscription error', {
+            error: err instanceof Error ? err.message : String(err),
+            gameId,
+            status,
+            operation: 'teamsSubscription',
+            page: 'GameBoardPage'
+          });
           setSubscriptionError('Lost connection to team updates. Attempting to reconnect...');
           setConnectionStatus('disconnected');
         } else if (status === 'SUBSCRIBED') {

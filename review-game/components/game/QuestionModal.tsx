@@ -5,6 +5,7 @@ import { useGameStore } from '../../lib/stores/gameStore';
 import { createClient } from '@/lib/supabase/client';
 import { Timer } from './Timer';
 import { getPositionDisplay } from '@/lib/utils/position';
+import { logger } from '@/lib/logger';
 
 interface QuestionModalProps {
   gameId: string;
@@ -93,10 +94,14 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
   // Memoized timer expiration handler
   const handleTimerExpire = useCallback(() => {
     if (currentQuestion) {
-      console.log('Timer expired for question:', currentQuestion.id);
+      logger.info('Question timer expired', {
+        questionId: currentQuestion.id,
+        gameId,
+        operation: 'timerExpired',
+      });
       // TODO: Consider auto-closing modal or preventing new buzzes
     }
-  }, [currentQuestion]);
+  }, [currentQuestion, gameId]);
 
   // Modal is open when currentQuestion is not null
   const isOpen = currentQuestion !== null;
@@ -298,13 +303,26 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         });
 
       if (scoreError) {
-        console.error('Error updating team score:', scoreError);
+        logger.error('Failed to update team score for correct answer', scoreError, {
+          teamId: teamIdToUpdate,
+          scoreChange: scoreToAward,
+          gameId,
+          questionId,
+          operation: 'correctAnswer',
+        });
         throw scoreError;
       }
 
       // Check for authorization or validation errors from the RPC function
       if (scoreResult && scoreResult.length > 0 && !scoreResult[0].success) {
-        console.error('Score update failed:', scoreResult[0].error_message);
+        logger.error('Team score update failed for correct answer', scoreResult[0].error_message, {
+          teamId: teamIdToUpdate,
+          scoreChange: scoreToAward,
+          gameId,
+          questionId,
+          errorMessage: scoreResult[0].error_message,
+          operation: 'correctAnswer',
+        });
         throw new Error(scoreResult[0].error_message || 'Failed to update score');
       }
 
@@ -329,13 +347,23 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
 
             if (updateError) {
               // Log but don't fail - question is marked locally
-              console.warn('Failed to mark question in DB (will sync later):', updateError);
+              logger.warn('Failed to mark question in database (will sync later)', {
+                gameId,
+                questionId,
+                operation: 'markQuestionUsed',
+                error: updateError,
+              });
             }
           }
         }
       } catch (markError) {
         // Non-critical failure - log and continue
-        console.warn('Failed to mark question as used in DB:', markError);
+        logger.warn('Failed to mark question as used in database', {
+          gameId,
+          questionId,
+          operation: 'markQuestionUsed',
+          error: markError,
+        });
       }
 
       // Success - clear buzz queue and close modal
@@ -347,7 +375,13 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         setCurrentQuestion(null);
       }
     } catch (error) {
-      console.error('Error handling correct answer:', error);
+      logger.error('Failed to handle correct answer', error, {
+        teamId: teamIdToUpdate,
+        scoreChange: scoreToAward,
+        gameId,
+        questionId,
+        operation: 'correctAnswer',
+      });
       if (isMountedRef.current) {
         const errorMessage = error instanceof Error
           ? error.message
@@ -383,13 +417,26 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         });
 
       if (scoreError) {
-        console.error('Error updating team score:', scoreError);
+        logger.error('Failed to update team score for incorrect answer', scoreError, {
+          teamId: teamIdToRemove,
+          scoreChange: -scoreToDeduct,
+          gameId,
+          questionId: currentQuestion.id,
+          operation: 'incorrectAnswer',
+        });
         throw scoreError;
       }
 
       // Check for authorization or validation errors from the RPC function
       if (scoreResult && scoreResult.length > 0 && !scoreResult[0].success) {
-        console.error('Score update failed:', scoreResult[0].error_message);
+        logger.error('Team score update failed for incorrect answer', scoreResult[0].error_message, {
+          teamId: teamIdToRemove,
+          scoreChange: -scoreToDeduct,
+          gameId,
+          questionId: currentQuestion.id,
+          errorMessage: scoreResult[0].error_message,
+          operation: 'incorrectAnswer',
+        });
         throw new Error(scoreResult[0].error_message || 'Failed to update score');
       }
 
@@ -405,7 +452,13 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       // Teacher can close manually or wait for more buzzes
 
     } catch (error) {
-      console.error('Error handling incorrect answer:', error);
+      logger.error('Failed to handle incorrect answer', error, {
+        teamId: teamIdToRemove,
+        scoreChange: -scoreToDeduct,
+        gameId,
+        questionId: currentQuestion.id,
+        operation: 'incorrectAnswer',
+      });
       if (isMountedRef.current) {
         const errorMessage = error instanceof Error
           ? error.message

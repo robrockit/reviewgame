@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { logger } from '@/lib/logger';
 
 /**
  * Timer Props Interface
@@ -125,7 +126,11 @@ export const Timer: React.FC<TimerProps> = ({
 
   // Defensive validation - check AFTER all hooks are called
   if (duration <= 0) {
-    console.error('Timer: duration must be positive, received:', duration);
+    logger.error('Timer duration must be positive', {
+      duration,
+      component: 'Timer',
+      operation: 'validate'
+    });
     return null;
   }
 

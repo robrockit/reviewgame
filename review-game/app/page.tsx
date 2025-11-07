@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { createClient } from '@/lib/supabase/client';
+import { logger } from '@/lib/logger';
 
 export default function Home() {
   const supabase = createClient();
@@ -15,7 +16,12 @@ export default function Home() {
       },
     });
     if (error) {
-      console.error('Error signing in with Google:', error);
+      logger.error('Error signing in with Google OAuth', {
+        error: error.message,
+        provider: 'google',
+        operation: 'signInWithOAuth',
+        page: 'home'
+      });
       // Consider adding user-facing error feedback here
     }
   };

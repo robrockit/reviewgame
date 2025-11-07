@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/types/database.types';
+import { logger } from '@/lib/logger';
 
 type Team = Database['public']['Tables']['teams']['Row'];
 
@@ -117,7 +118,12 @@ export default function WaitingRoomPage({ params }: WaitingRoomProps) {
         .eq('id', teamId);
 
       if (updateError) {
-        console.error('Failed to update last_seen:', updateError);
+        logger.error('Failed to update last_seen timestamp', {
+          error: updateError.message,
+          teamId,
+          operation: 'updateLastSeen',
+          page: 'WaitingRoomPage'
+        });
         // Don't show error to user as this is a background operation
         // Teacher will see stale last_seen timestamp if this fails repeatedly
       }

@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { logger } from '@/lib/logger';
 
 interface JoinQRCodeProps {
   gameId: string;
@@ -31,7 +32,11 @@ export const JoinQRCode: React.FC<JoinQRCodeProps> = ({ gameId }) => {
   );
 
   if (!appUrl) {
-    console.error('NEXT_PUBLIC_APP_URL environment variable is not configured');
+    logger.error('NEXT_PUBLIC_APP_URL environment variable is not configured', {
+      component: 'JoinQRCode',
+      gameId,
+      operation: 'generateQRCode'
+    });
     return (
       <div className="flex flex-col items-center gap-4 p-6 bg-red-50 rounded-lg border-2 border-red-200">
         <div className="text-center">
@@ -51,7 +56,12 @@ export const JoinQRCode: React.FC<JoinQRCodeProps> = ({ gameId }) => {
 
   // Validate gameId
   if (!gameId || typeof gameId !== 'string' || gameId.trim().length === 0) {
-    console.error('JoinQRCode: Invalid gameId provided:', gameId);
+    logger.error('Invalid gameId provided to JoinQRCode', {
+      gameId,
+      gameIdType: typeof gameId,
+      component: 'JoinQRCode',
+      operation: 'validate'
+    });
     return (
       <div className="flex flex-col items-center gap-4 p-6 bg-yellow-50 rounded-lg border-2 border-yellow-200">
         <div className="text-center">

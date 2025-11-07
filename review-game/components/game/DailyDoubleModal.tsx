@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import { createClient } from '@/lib/supabase/client';
+import { logger } from '@/lib/logger';
 
 interface DailyDoubleModalProps {
   gameId: string;
@@ -117,9 +118,21 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       setWagerSubmitted(true);
       setWagerError(null);
 
-      console.log(`Wager submitted: ${wagerAmount} points for question ${currentQuestion.id} by team ${controllingTeamId}`);
+      logger.info('Daily Double wager submitted', {
+        wagerAmount,
+        questionId: currentQuestion.id,
+        teamId: controllingTeamId,
+        gameId,
+        operation: 'submitWager',
+      });
     } catch (error) {
-      console.error('Error submitting wager:', error);
+      logger.error('Failed to submit Daily Double wager', error, {
+        wagerAmount,
+        questionId: currentQuestion.id,
+        teamId: controllingTeamId,
+        gameId,
+        operation: 'submitWager',
+      });
       setWagerError('Failed to submit wager. Please try again.');
     } finally {
       setIsProcessing(false);
@@ -145,7 +158,11 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
           .single();
 
         if (fetchError) {
-          console.error('Failed to fetch game data for marking question:', fetchError);
+          logger.error('Failed to fetch game data for marking question on close', fetchError, {
+            gameId,
+            questionId: currentQuestion.id,
+            operation: 'markQuestionUsed',
+          });
           throw fetchError;
         }
 
@@ -160,13 +177,21 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
               .eq('id', gameId);
 
             if (updateError) {
-              console.error('Failed to mark question as used in DB:', updateError);
+              logger.error('Failed to mark Daily Double question as used in database', updateError, {
+                gameId,
+                questionId: currentQuestion.id,
+                operation: 'markQuestionUsed',
+              });
               throw updateError;
             }
           }
         }
       } catch (error) {
-        console.error('Failed to mark question as used on close:', error);
+        logger.error('Failed to mark Daily Double question as used on modal close', error, {
+          gameId,
+          questionId: currentQuestion.id,
+          operation: 'markQuestionUsed',
+        });
         // Question is already marked in local store, so modal will close
         // Show warning to user but don't block the close operation
         alert('Warning: Failed to save question state to database. The question has been marked as used locally but may reappear if you refresh the page.');
@@ -200,13 +225,26 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         });
 
       if (scoreError) {
-        console.error('Error updating team score:', scoreError);
+        logger.error('Failed to update team score for correct Daily Double answer', scoreError, {
+          teamId: teamIdToUpdate,
+          scoreChange: scoreToAward,
+          gameId,
+          questionId,
+          operation: 'correctAnswer',
+        });
         throw scoreError;
       }
 
       // Check for authorization or validation errors from the RPC function
       if (scoreResult && scoreResult.length > 0 && !scoreResult[0].success) {
-        console.error('Score update failed:', scoreResult[0].error_message);
+        logger.error('Team score update failed for correct Daily Double', scoreResult[0].error_message, {
+          teamId: teamIdToUpdate,
+          scoreChange: scoreToAward,
+          gameId,
+          questionId,
+          errorMessage: scoreResult[0].error_message,
+          operation: 'correctAnswer',
+        });
         throw new Error(scoreResult[0].error_message || 'Failed to update score');
       }
 
@@ -229,12 +267,22 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
               .eq('id', gameId);
 
             if (updateError) {
-              console.warn('Failed to mark question in DB (will sync later):', updateError);
+              logger.warn('Failed to mark Daily Double question in database (will sync later)', {
+                gameId,
+                questionId,
+                operation: 'markQuestionUsed',
+                error: updateError,
+              });
             }
           }
         }
       } catch (markError) {
-        console.warn('Failed to mark question as used in DB:', markError);
+        logger.warn('Failed to mark Daily Double question as used in database', {
+          gameId,
+          questionId,
+          operation: 'markQuestionUsed',
+          error: markError,
+        });
       }
 
       // Success - clear wager and close modal
@@ -243,7 +291,13 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         setCurrentQuestion(null);
       }
     } catch (error) {
-      console.error('Error handling correct answer:', error);
+      logger.error('Failed to handle correct Daily Double answer', error, {
+        teamId: teamIdToUpdate,
+        scoreChange: scoreToAward,
+        gameId,
+        questionId,
+        operation: 'correctAnswer',
+      });
       if (isMountedRef.current) {
         const errorMessage = error instanceof Error
           ? error.message
@@ -279,13 +333,26 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         });
 
       if (scoreError) {
-        console.error('Error updating team score:', scoreError);
+        logger.error('Failed to update team score for incorrect Daily Double answer', scoreError, {
+          teamId: teamIdToUpdate,
+          scoreChange: -scoreToDeduct,
+          gameId,
+          questionId,
+          operation: 'incorrectAnswer',
+        });
         throw scoreError;
       }
 
       // Check for authorization or validation errors from the RPC function
       if (scoreResult && scoreResult.length > 0 && !scoreResult[0].success) {
-        console.error('Score update failed:', scoreResult[0].error_message);
+        logger.error('Team score update failed for incorrect Daily Double', scoreResult[0].error_message, {
+          teamId: teamIdToUpdate,
+          scoreChange: -scoreToDeduct,
+          gameId,
+          questionId,
+          errorMessage: scoreResult[0].error_message,
+          operation: 'incorrectAnswer',
+        });
         throw new Error(scoreResult[0].error_message || 'Failed to update score');
       }
 
@@ -308,12 +375,22 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
               .eq('id', gameId);
 
             if (updateError) {
-              console.warn('Failed to mark question in DB (will sync later):', updateError);
+              logger.warn('Failed to mark Daily Double question in database (will sync later)', {
+                gameId,
+                questionId,
+                operation: 'markQuestionUsed',
+                error: updateError,
+              });
             }
           }
         }
       } catch (markError) {
-        console.warn('Failed to mark question as used in DB:', markError);
+        logger.warn('Failed to mark Daily Double question as used in database', {
+          gameId,
+          questionId,
+          operation: 'markQuestionUsed',
+          error: markError,
+        });
       }
 
       // For Daily Doubles, after the controlling team answers, the question is done
@@ -324,7 +401,13 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       }
 
     } catch (error) {
-      console.error('Error handling incorrect answer:', error);
+      logger.error('Failed to handle incorrect Daily Double answer', error, {
+        teamId: teamIdToUpdate,
+        scoreChange: -scoreToDeduct,
+        gameId,
+        questionId,
+        operation: 'incorrectAnswer',
+      });
       if (isMountedRef.current) {
         const errorMessage = error instanceof Error
           ? error.message

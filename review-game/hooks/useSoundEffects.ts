@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import useSound from 'use-sound';
+import { logger } from '@/lib/logger';
 
 // Define sound event types for type safety
 export type SoundEvent =
@@ -158,7 +159,11 @@ const useSoundEffects = (): SoundEffectsHook => {
         break;
 
       default:
-        console.warn(`Unknown sound event: ${event}`);
+        logger.warn('Unknown sound event requested', {
+          event,
+          operation: 'playSound',
+          hook: 'useSoundEffects'
+        });
     }
   }, [
     playBuzzSound,

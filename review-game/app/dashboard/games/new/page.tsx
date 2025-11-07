@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Tables, TablesInsert } from '@/types/database.types';
+import { logger } from '@/lib/logger';
 
 type QuestionBank = Tables<'question_banks'>;
 type Profile = Tables<'profiles'>;
@@ -70,7 +71,13 @@ export default function NewGamePage() {
           .single();
 
         if (profileError) {
-          console.error('Error fetching profile:', profileError);
+          logger.error('Error fetching profile', {
+            error: profileError.message,
+            userId: currentUser.id,
+            code: profileError.code,
+            operation: 'fetchProfile',
+            page: 'NewGamePage'
+          });
 
           // If profile doesn't exist, it means the database trigger hasn't run yet or failed
           if (profileError.code === 'PGRST116') {
@@ -122,7 +129,12 @@ export default function NewGamePage() {
 
         setLoading(false);
       } catch (err) {
-        console.error('Initialization error:', err);
+        logger.error('Initialization error', {
+          error: err instanceof Error ? err.message : String(err),
+          userId: user?.id,
+          operation: 'initializePage',
+          page: 'NewGamePage'
+        });
         setError('Failed to load page. Please try again.');
         setLoading(false);
       }
@@ -201,7 +213,14 @@ export default function NewGamePage() {
       // Redirect to teacher control page
       router.push(`/game/teacher/${newGame.id}`);
     } catch (err) {
-      console.error('Error creating game:', err);
+      logger.error('Error creating game', {
+        error: err instanceof Error ? err.message : String(err),
+        userId: user?.id,
+        selectedBankId,
+        numTeams,
+        operation: 'createGame',
+        page: 'NewGamePage'
+      });
       setError(err instanceof Error ? err.message : 'Failed to create game. Please try again.');
       setIsCreating(false);
     }

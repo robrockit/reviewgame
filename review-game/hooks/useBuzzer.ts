@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useGameStore } from '../lib/stores/gameStore';
 import { createClient } from '../lib/supabase/client';
 import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
+import { logger } from '../lib/logger';
 
 // Define the structure of a buzz event
 interface BuzzEvent {
@@ -33,7 +34,10 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
 
   useEffect(() => {
     if (!gameId || !supabaseClientRef.current) {
-      console.warn('useBuzzer: gameId is not provided, not subscribing to channel.');
+      logger.warn('Buzzer hook: gameId not provided, skipping channel subscription', {
+        gameId,
+        operation: 'subscribeToChannel',
+      });
       return;
     }
 
@@ -62,9 +66,18 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
 
     channel.subscribe((status: string) => {
       if (status === 'SUBSCRIBED') {
-        console.log(`Subscribed to channel: ${channelName}`);
+        logger.info('Subscribed to buzzer channel', {
+          gameId,
+          channelName,
+          operation: 'subscribeToChannel',
+        });
       } else if (status === 'CHANNEL_ERROR') {
-        console.error(`Error subscribing to channel: ${channelName}`);
+        logger.error('Failed to subscribe to buzzer channel', undefined, {
+          gameId,
+          channelName,
+          status,
+          operation: 'subscribeToChannel',
+        });
       }
     });
 
@@ -72,7 +85,11 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     return () => {
       if (supabaseClientRef.current) {
         supabaseClientRef.current.removeChannel(channel);
-        console.log(`Unsubscribed from channel: ${channelName}`);
+        logger.info('Unsubscribed from buzzer channel', {
+          gameId,
+          channelName,
+          operation: 'unsubscribeFromChannel',
+        });
       }
       // Clear the channel ref
       channelRef.current = null;
@@ -81,7 +98,12 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
 
   const sendBuzz = (teamId: string) => {
     if (!gameId || !channelRef.current) {
-      console.warn('useBuzzer: Cannot send buzz, gameId is not provided or channel not initialized.');
+      logger.warn('Cannot send buzz: gameId not provided or channel not initialized', {
+        gameId,
+        teamId,
+        channelInitialized: !!channelRef.current,
+        operation: 'sendBuzz',
+      });
       return;
     }
 
@@ -102,7 +124,11 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
 
   const clearBuzzes = () => {
     if (!gameId || !channelRef.current) {
-      console.warn('useBuzzer: Cannot clear buzzes, gameId is not provided or channel not initialized.');
+      logger.warn('Cannot clear buzzes: gameId not provided or channel not initialized', {
+        gameId,
+        channelInitialized: !!channelRef.current,
+        operation: 'clearBuzzes',
+      });
       return;
     }
 
