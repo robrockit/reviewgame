@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import { createClient } from '@/lib/supabase/client';
 import { logger } from '@/lib/logger';
@@ -8,13 +8,14 @@ import { BUTTON_TEXT } from '@/lib/constants/ui';
 
 interface DailyDoubleModalProps {
   gameId: string;
+  onQuestionClose?: () => void;
 }
 
 // Daily Double constants
 const DAILY_DOUBLE_MAX_WAGER = 1000;
 const DAILY_DOUBLE_MIN_WAGER = 5;
 
-export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) => {
+export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQuestionClose }) => {
   const {
     currentQuestion,
     setCurrentQuestion,
@@ -32,7 +33,9 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
   const [isProcessing, setIsProcessing] = useState(false);
   const [wagerInput, setWagerInput] = useState('');
   const [wagerError, setWagerError] = useState<string | null>(null);
-  const supabase = createClient();
+
+  // Supabase client - memoized to ensure stable reference for callbacks
+  const supabase = useMemo(() => createClient(), []);
 
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef(true);
@@ -138,7 +141,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
     } finally {
       setIsProcessing(false);
     }
-  }, [wagerInput, controllingTeamId, currentQuestion, validateWager, setCurrentWager, setWagerSubmitted]);
+  }, [wagerInput, controllingTeamId, currentQuestion, validateWager, setCurrentWager, setWagerSubmitted, gameId]);
 
   // Close modal handler
   const handleClose = useCallback(async () => {
@@ -188,6 +191,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
           }
         }
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         logger.error('Failed to mark Daily Double question as used on modal close', error, {
           gameId,
           questionId: currentQuestion.id,
@@ -195,14 +199,19 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         });
         // Question is already marked in local store, so modal will close
         // Show warning to user but don't block the close operation
-        alert(`Warning: Failed to save question state to database. ${errorMessage}. The question has been marked as used locally but may reappear if you refresh the page.`);
+        alert(`Warning: Failed to save question state to database. ${errorMsg}. The question has been marked as used locally but may reappear if you refresh the page.`);
       }
     }
 
     setCurrentQuestion(null);
     clearWager();
     setIsProcessing(false);
-  }, [isProcessing, setCurrentQuestion, clearWager, markQuestionUsed, currentQuestion, gameId, supabase]);
+
+    // Broadcast question closed event to all clients
+    if (onQuestionClose) {
+      onQuestionClose();
+    }
+  }, [isProcessing, setCurrentQuestion, clearWager, markQuestionUsed, currentQuestion, gameId, supabase, onQuestionClose]);
 
   // Handle correct answer with wager
   const handleCorrect = async () => {
@@ -290,8 +299,14 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       if (isMountedRef.current) {
         clearWager();
         setCurrentQuestion(null);
+
+        // Broadcast question closed event to all clients
+        if (onQuestionClose) {
+          onQuestionClose();
+        }
       }
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to handle correct Daily Double answer', error, {
         teamId: teamIdToUpdate,
         scoreChange: scoreToAward,
@@ -300,7 +315,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         operation: 'correctAnswer',
       });
       if (isMountedRef.current) {
-        alert(`Failed to update score: ${errorMessage}. Please try again.`);
+        alert(`Failed to update score: ${errorMsg}. Please try again.`);
       }
     } finally {
       if (isMountedRef.current) {
@@ -396,9 +411,15 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
       if (isMountedRef.current) {
         clearWager();
         setCurrentQuestion(null);
+
+        // Broadcast question closed event to all clients
+        if (onQuestionClose) {
+          onQuestionClose();
+        }
       }
 
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to handle incorrect Daily Double answer', error, {
         teamId: teamIdToUpdate,
         scoreChange: -scoreToDeduct,
@@ -407,7 +428,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         operation: 'incorrectAnswer',
       });
       if (isMountedRef.current) {
-        alert(`Failed to update score: ${errorMessage}. Please try again.`);
+        alert(`Failed to update score: ${errorMsg}. Please try again.`);
       }
     } finally {
       if (isMountedRef.current) {

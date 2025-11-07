@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import * as Sentry from '@sentry/nextjs';
+import Error from "next/error";
 
 /**
  * Global error boundary for catching errors in the root layout

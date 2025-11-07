@@ -43,7 +43,7 @@ export default function GameBoardPage() {
 
   // Subscribe to buzz events from students
   // This hook automatically adds buzzes to the game store's buzz queue
-  const { clearBuzzes } = useBuzzer(gameId);
+  const { clearBuzzes, broadcastQuestionSelected, broadcastQuestionClosed } = useBuzzer(gameId);
 
   // Fetch game data and questions
   useEffect(() => {
@@ -94,11 +94,13 @@ export default function GameBoardPage() {
         // Cache the teacher ID for authorization checks in subscriptions
         setTeacherId(user.id);
 
-        // Debug: Log game data to verify bank_id
-        console.log('Game data:', {
+        // Log game data to verify bank_id
+        logger.info('Game data loaded', {
           gameId: gameData.id,
           bankId: gameData.bank_id,
           bankName: gameData.question_banks?.title,
+          operation: 'fetchGameData',
+          page: 'GameBoardPage',
         });
 
         // Fetch questions and teams in parallel to prevent race conditions
@@ -120,15 +122,18 @@ export default function GameBoardPage() {
             .order('team_number'),
         ]);
 
-        // Debug: Log query results
-        console.log('Questions query result:', {
+        // Log query results
+        logger.info('Questions query result', {
           count: questionsResult.data?.length || 0,
-          error: questionsResult.error,
-          data: questionsResult.data,
+          hasError: !!questionsResult.error,
+          operation: 'fetchQuestions',
+          page: 'GameBoardPage',
         });
-        console.log('Teams query result:', {
+        logger.info('Teams query result', {
           count: teamsResult.data?.length || 0,
-          error: teamsResult.error,
+          hasError: !!teamsResult.error,
+          operation: 'fetchTeams',
+          page: 'GameBoardPage',
         });
 
         if (questionsResult.error) throw questionsResult.error;
@@ -250,7 +255,12 @@ export default function GameBoardPage() {
     // Don't set up subscriptions until we have gameId and teacherId
     if (!gameId || !teacherId) return;
 
-    console.log('Setting up real-time subscriptions for game board');
+    logger.info('Setting up real-time subscriptions for game board', {
+      gameId,
+      teacherId,
+      operation: 'setupSubscriptions',
+      page: 'GameBoardPage',
+    });
 
     // Subscribe to game updates
     const gameChannel = supabase
@@ -265,7 +275,11 @@ export default function GameBoardPage() {
         },
         (payload) => {
           try {
-            console.log('Game updated:', payload);
+            logger.info('Game updated', {
+              gameId,
+              status: (payload.new as Game).status,
+              operation: 'gameUpdate',
+            });
             const updatedGame = payload.new as Game;
 
             // Verify authorization using cached teacher ID
@@ -297,7 +311,11 @@ export default function GameBoardPage() {
         }
       )
       .subscribe((status, err) => {
-        console.log('Game board subscription status:', status);
+        logger.info('Game board subscription status', {
+          gameId,
+          status,
+          operation: 'gameChannelSubscription',
+        });
         if (err) {
           logger.error('Game subscription error', {
             error: err instanceof Error ? err.message : String(err),
@@ -330,7 +348,11 @@ export default function GameBoardPage() {
         },
         (payload) => {
           try {
-            console.log('Team updated:', payload);
+            logger.info('Team updated', {
+              teamId: (payload.new as DatabaseTeam).id,
+              score: (payload.new as DatabaseTeam).score,
+              operation: 'teamUpdate',
+            });
             const updatedTeam = payload.new as DatabaseTeam;
 
             // Filter to only process connected teams (matches initial fetch filter)
@@ -382,7 +404,10 @@ export default function GameBoardPage() {
         },
         (payload) => {
           try {
-            console.log('Team deleted:', payload);
+            logger.info('Team deleted', {
+              teamId: (payload.old as DatabaseTeam).id,
+              operation: 'teamDelete',
+            });
             const deletedTeam = payload.old as DatabaseTeam;
 
             // Remove the team from the list
@@ -401,7 +426,11 @@ export default function GameBoardPage() {
         }
       )
       .subscribe((status, err) => {
-        console.log('Teams subscription status:', status);
+        logger.info('Teams subscription status', {
+          gameId,
+          status,
+          operation: 'teamsChannelSubscription',
+        });
         if (err) {
           logger.error('Teams subscription error', {
             error: err instanceof Error ? err.message : String(err),
@@ -423,7 +452,11 @@ export default function GameBoardPage() {
 
     // Cleanup
     return () => {
-      console.log('Cleaning up game board subscriptions');
+      logger.info('Cleaning up game board subscriptions', {
+        gameId,
+        operation: 'cleanupSubscriptions',
+        page: 'GameBoardPage',
+      });
       supabase.removeChannel(gameChannel);
       supabase.removeChannel(teamsChannel);
     };
@@ -497,7 +530,7 @@ export default function GameBoardPage() {
         )}
 
         {/* Game Board */}
-        <GameBoard />
+        <GameBoard onQuestionSelect={broadcastQuestionSelected} />
 
         {/* Scoreboard */}
         <div className="mt-8">
@@ -506,10 +539,14 @@ export default function GameBoardPage() {
       </div>
 
       {/* Question Display Modal */}
-      <QuestionModal gameId={gameId} onClearBuzzes={clearBuzzes} />
+      <QuestionModal
+        gameId={gameId}
+        onClearBuzzes={clearBuzzes}
+        onQuestionClose={broadcastQuestionClosed}
+      />
 
       {/* Daily Double Modal */}
-      <DailyDoubleModal gameId={gameId} />
+      <DailyDoubleModal gameId={gameId} onQuestionClose={broadcastQuestionClosed} />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { BUZZ_QUEUE_LABELS, BUTTON_TEXT, QUESTION_MODAL_MESSAGES } from '@/lib/c
 interface QuestionModalProps {
   gameId: string;
   onClearBuzzes: () => void;
+  onQuestionClose?: () => void;
 }
 
 interface BuzzQueueItemProps {
@@ -65,7 +66,7 @@ const BuzzQueueItem = React.memo<BuzzQueueItemProps>(({ index, isFirst, teamName
 
 BuzzQueueItem.displayName = 'BuzzQueueItem';
 
-export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuzzes }) => {
+export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuzzes, onQuestionClose }) => {
   const {
     currentQuestion,
     setCurrentQuestion,
@@ -80,8 +81,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
   const [srAnnouncement, setSrAnnouncement] = useState('');
   const [previousBuzzQueueLength, setPreviousBuzzQueueLength] = useState(0);
 
-  // Supabase client - not memoized to allow session updates
-  const supabase = createClient();
+  // Supabase client - memoized to ensure stable reference for callbacks
+  const supabase = useMemo(() => createClient(), []);
 
   // Track if component is mounted to prevent state updates after unmount
   const isMountedRef = useRef(true);
@@ -112,9 +113,6 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     if (buzzQueue.length === 0) return null;
     return allTeams.find(team => team.id === buzzQueue[0].teamId);
   }, [buzzQueue, allTeams]);
-
-  // Get the first team in the buzz queue (derived from buzzQueue for compatibility)
-  const firstBuzzTeam = buzzQueue.length > 0 ? buzzQueue[0] : null;
 
   // Category name - no memoization needed for simple string operations
   const categoryName = currentQuestion?.categoryName || 'Category';
@@ -154,7 +152,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       // Optional: Measure time from previous close to this open
       try {
         performance.measure('modal-closed-to-opened', 'modal-closed', 'modal-opened');
-      } catch (e) {
+      } catch {
         // First open, no previous close mark exists
       }
     } else {
@@ -162,7 +160,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       // Optional: Measure time modal was open
       try {
         performance.measure('modal-open-duration', 'modal-opened', 'modal-closed');
-      } catch (e) {
+      } catch {
         // Modal wasn't opened, no mark exists
       }
     }
@@ -281,7 +279,12 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     if (isProcessing) return;
     setCurrentQuestion(null);
     onClearBuzzes();
-  }, [isProcessing, setCurrentQuestion, onClearBuzzes]);
+
+    // Broadcast question closed event to all clients
+    if (onQuestionClose) {
+      onQuestionClose();
+    }
+  }, [isProcessing, setCurrentQuestion, onClearBuzzes, onQuestionClose]);
 
   // Handle correct answer - memoized to prevent unnecessary re-renders
   const handleCorrect = useCallback(async () => {
@@ -374,8 +377,14 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         setSrAnnouncement(`Correct! ${firstTeamData.name} earned ${scoreToAward} points. New score: ${newScore} points.`);
         onClearBuzzes();
         setCurrentQuestion(null);
+
+        // Broadcast question closed event to all clients
+        if (onQuestionClose) {
+          onQuestionClose();
+        }
       }
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to handle correct answer', error, {
         teamId: teamIdToUpdate,
         scoreChange: scoreToAward,
@@ -384,7 +393,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         operation: 'correctAnswer',
       });
       if (isMountedRef.current) {
-        alert(`Failed to update score: ${errorMessage}. Please try again.`);
+        alert(`Failed to update score: ${errorMsg}. Please try again.`);
       }
     } finally {
       // Only update state if component is still mounted
@@ -392,7 +401,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         setIsProcessing(false);
       }
     }
-  }, [isProcessing, currentQuestion, firstTeamData, gameId, onClearBuzzes, setCurrentQuestion]);
+  }, [isProcessing, currentQuestion, firstTeamData, gameId, onClearBuzzes, setCurrentQuestion, supabase, onQuestionClose]);
 
   // Handle incorrect answer - memoized to prevent unnecessary re-renders
   const handleIncorrect = useCallback(async () => {
@@ -450,6 +459,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       // Teacher can close manually or wait for more buzzes
 
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to handle incorrect answer', error, {
         teamId: teamIdToRemove,
         scoreChange: -scoreToDeduct,
@@ -458,7 +468,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         operation: 'incorrectAnswer',
       });
       if (isMountedRef.current) {
-        alert(`Failed to update score: ${errorMessage}. Please try again.`);
+        alert(`Failed to update score: ${errorMsg}. Please try again.`);
       }
     } finally {
       // Only update state if component is still mounted
@@ -466,7 +476,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         setIsProcessing(false);
       }
     }
-  }, [isProcessing, currentQuestion, firstTeamData, gameId, removeBuzz]);
+  }, [isProcessing, currentQuestion, firstTeamData, gameId, removeBuzz, supabase]);
 
   // Handle escape key to close modal
   useEffect(() => {

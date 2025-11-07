@@ -43,3 +43,6 @@ next-env.d.ts
 # Stripe CLI
 stripe.exe
 stripe-cli.zip
+
+# Sentry Config File
+.env.sentry-build-plugin
