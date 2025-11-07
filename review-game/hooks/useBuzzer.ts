@@ -177,7 +177,7 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     });
 
     // Also update the local store immediately for responsiveness
-    addBuzz(teamId, timestamp);
+    useGameStore.getState().addBuzz(teamId, timestamp);
   };
 
   const clearBuzzes = () => {
@@ -199,7 +199,7 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     });
 
     // Clear the local buzz queue immediately
-    clearBuzzQueue();
+    useGameStore.getState().clearBuzzQueue();
   };
 
   const broadcastQuestionSelected = (question: Question) => {
