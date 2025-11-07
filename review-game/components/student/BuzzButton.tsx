@@ -96,7 +96,10 @@ export const BuzzButton: React.FC<BuzzButtonProps> = ({
       } catch (error) {
         // Silently fail if vibration is not supported
         // This is expected on many desktop browsers
-        console.debug('Haptic feedback not supported:', error);
+        const errorMessage = error instanceof Error
+          ? error.message
+          : 'Unknown error';
+        console.debug('Haptic feedback not supported:', errorMessage);
       }
     }
   };
