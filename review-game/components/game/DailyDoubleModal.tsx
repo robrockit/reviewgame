@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import { createClient } from '@/lib/supabase/client';
 import { logger } from '@/lib/logger';
+import { BUTTON_TEXT } from '@/lib/constants/ui';
 
 interface DailyDoubleModalProps {
   gameId: string;
@@ -194,7 +195,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         });
         // Question is already marked in local store, so modal will close
         // Show warning to user but don't block the close operation
-        alert('Warning: Failed to save question state to database. The question has been marked as used locally but may reappear if you refresh the page.');
+        alert(`Warning: Failed to save question state to database. ${errorMessage}. The question has been marked as used locally but may reappear if you refresh the page.`);
       }
     }
 
@@ -299,10 +300,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         operation: 'correctAnswer',
       });
       if (isMountedRef.current) {
-        const errorMessage = error instanceof Error
-          ? error.message
-          : 'Failed to update score. Please try again.';
-        alert(errorMessage);
+        alert(`Failed to update score: ${errorMessage}. Please try again.`);
       }
     } finally {
       if (isMountedRef.current) {
@@ -409,10 +407,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
         operation: 'incorrectAnswer',
       });
       if (isMountedRef.current) {
-        const errorMessage = error instanceof Error
-          ? error.message
-          : 'Failed to update score. Please try again.';
-        alert(errorMessage);
+        alert(`Failed to update score: ${errorMessage}. Please try again.`);
       }
     } finally {
       if (isMountedRef.current) {
@@ -570,7 +565,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
                     disabled={isProcessing || !wagerInput || !controllingTeamId}
                     className="w-full py-4 px-6 bg-yellow-400 hover:bg-yellow-300 disabled:bg-gray-500 disabled:cursor-not-allowed text-gray-900 font-bold text-xl rounded-lg shadow-lg transition-colors"
                   >
-                    {isProcessing ? 'Processing...' : 'Submit Wager & Reveal Question'}
+                    {isProcessing ? BUTTON_TEXT.PROCESSING : 'Submit Wager & Reveal Question'}
                   </button>
                 </div>
               </div>
@@ -612,21 +607,21 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId }) =>
                   disabled={isProcessing}
                   className="flex-1 py-4 px-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg shadow-lg transition-colors"
                 >
-                  {isProcessing ? 'Processing...' : `✓ Correct (+${currentWager} pts)`}
+                  {isProcessing ? BUTTON_TEXT.PROCESSING : `✓ Correct (+${currentWager} pts)`}
                 </button>
                 <button
                   onClick={handleIncorrect}
                   disabled={isProcessing}
                   className="flex-1 py-4 px-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg shadow-lg transition-colors"
                 >
-                  {isProcessing ? 'Processing...' : `✗ Incorrect (-${currentWager} pts)`}
+                  {isProcessing ? BUTTON_TEXT.PROCESSING : `✗ Incorrect (-${currentWager} pts)`}
                 </button>
                 <button
                   onClick={handleClose}
                   disabled={isProcessing}
                   className="sm:flex-none px-6 py-4 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold text-lg rounded-lg transition-colors"
                 >
-                  Close
+                  {BUTTON_TEXT.CLOSE}
                 </button>
               </div>
 

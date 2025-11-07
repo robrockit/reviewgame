@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Timer } from './Timer';
 import { getPositionDisplay } from '@/lib/utils/position';
 import { logger } from '@/lib/logger';
+import { BUZZ_QUEUE_LABELS, BUTTON_TEXT, QUESTION_MODAL_MESSAGES } from '@/lib/constants/ui';
 
 interface QuestionModalProps {
   gameId: string;
@@ -49,7 +50,7 @@ const BuzzQueueItem = React.memo<BuzzQueueItemProps>(({ index, isFirst, teamName
         </span>
         {isFirst && (
           <span className="ml-2 px-2 py-1 bg-green-600 text-white text-xs font-bold rounded" aria-hidden="true">
-            ANSWERING
+            {BUZZ_QUEUE_LABELS.ANSWERING}
           </span>
         )}
       </div>
@@ -383,10 +384,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         operation: 'correctAnswer',
       });
       if (isMountedRef.current) {
-        const errorMessage = error instanceof Error
-          ? error.message
-          : 'Failed to update score. Please try again.';
-        alert(errorMessage);
+        alert(`Failed to update score: ${errorMessage}. Please try again.`);
       }
     } finally {
       // Only update state if component is still mounted
@@ -460,10 +458,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         operation: 'incorrectAnswer',
       });
       if (isMountedRef.current) {
-        const errorMessage = error instanceof Error
-          ? error.message
-          : 'Failed to update score. Please try again.';
-        alert(errorMessage);
+        alert(`Failed to update score: ${errorMessage}. Please try again.`);
       }
     } finally {
       // Only update state if component is still mounted
@@ -614,7 +609,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
                   className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800"
                   aria-label={isClearing ? 'Clearing all buzzes from queue' : `Clear all ${buzzQueue.length} buzzes from the queue`}
                 >
-                  {isClearing ? 'Clearing...' : 'Clear Queue'}
+                  {isClearing ? BUZZ_QUEUE_LABELS.CLEARING : BUZZ_QUEUE_LABELS.CLEAR_QUEUE}
                 </button>
               )}
             </div>
@@ -627,8 +622,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
               >
                 <p className="text-gray-400">
                   {isProcessing
-                    ? "Processing answer..."
-                    : "Waiting for buzzes..."}
+                    ? QUESTION_MODAL_MESSAGES.PROCESSING_ANSWER
+                    : QUESTION_MODAL_MESSAGES.WAITING_FOR_BUZZES}
                 </p>
                 {!isProcessing && (
                   <p className="text-yellow-400 text-sm mt-3 flex items-center justify-center gap-2">
@@ -664,7 +659,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
               }
               className="flex-1 py-4 px-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg shadow-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 focus:ring-offset-gray-800"
             >
-              {isProcessing ? 'Processing...' : '✓ Correct'}
+              {isProcessing ? BUTTON_TEXT.PROCESSING : BUTTON_TEXT.CORRECT}
             </button>
             <button
               onClick={handleIncorrect}
@@ -680,7 +675,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
               }
               className="flex-1 py-4 px-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold text-xl rounded-lg shadow-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-gray-800"
             >
-              {isProcessing ? 'Processing...' : '✗ Incorrect'}
+              {isProcessing ? BUTTON_TEXT.PROCESSING : BUTTON_TEXT.INCORRECT}
             </button>
             <button
               onClick={handleClose}
@@ -689,7 +684,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
               aria-label={isProcessing ? 'Close modal (processing, please wait)' : 'Close question modal without scoring'}
               className="sm:flex-none px-6 py-4 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold text-lg rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-800"
             >
-              Close
+              {BUTTON_TEXT.CLOSE}
             </button>
           </div>
 
