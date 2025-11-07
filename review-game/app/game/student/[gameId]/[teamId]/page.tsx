@@ -100,7 +100,12 @@ export default function StudentGamePage() {
   useEffect(() => {
     if (!gameId || !teamId) return;
 
-    console.log('Setting up real-time subscriptions for student view');
+    logger.info('Setting up real-time subscriptions for student view', {
+      gameId,
+      teamId,
+      operation: 'setupSubscriptions',
+      page: 'StudentGamePage',
+    });
 
     // Subscribe to game updates
     const gameChannel = supabase
@@ -114,7 +119,11 @@ export default function StudentGamePage() {
           filter: `id=eq.${gameId}`,
         },
         (payload) => {
-          console.log('Game updated:', payload);
+          logger.info('Game updated', {
+            gameId,
+            status: (payload.new as Game).status,
+            operation: 'gameUpdate',
+          });
           const updatedGame = payload.new as Game;
           setGame(updatedGame);
 
@@ -130,7 +139,11 @@ export default function StudentGamePage() {
         }
       )
       .subscribe((status) => {
-        console.log('Game subscription status:', status);
+        logger.info('Game subscription status', {
+          gameId,
+          status,
+          operation: 'gameChannelSubscription',
+        });
       });
 
     // Subscribe to team updates (for score changes)
@@ -145,17 +158,30 @@ export default function StudentGamePage() {
           filter: `id=eq.${teamId}`,
         },
         (payload) => {
-          console.log('Team updated:', payload);
+          logger.info('Team updated', {
+            teamId,
+            score: (payload.new as Team).score,
+            operation: 'teamUpdate',
+          });
           setTeam(payload.new as Team);
         }
       )
       .subscribe((status) => {
-        console.log('Team subscription status:', status);
+        logger.info('Team subscription status', {
+          teamId,
+          status,
+          operation: 'teamChannelSubscription',
+        });
       });
 
     // Cleanup
     return () => {
-      console.log('Cleaning up subscriptions');
+      logger.info('Cleaning up subscriptions', {
+        gameId,
+        teamId,
+        operation: 'cleanupSubscriptions',
+        page: 'StudentGamePage',
+      });
       supabase.removeChannel(gameChannel);
       supabase.removeChannel(teamChannel);
     };
@@ -195,7 +221,12 @@ export default function StudentGamePage() {
 
   // Handle buzz button press
   const handleBuzz = async () => {
-    console.log('Buzz button pressed!');
+    logger.info('Buzz button pressed', {
+      gameId,
+      teamId,
+      operation: 'handleBuzz',
+      page: 'StudentGamePage',
+    });
 
     if (!teamId) {
       logger.error('Cannot buzz: teamId is not available', {

@@ -25,8 +25,6 @@ interface BuzzerHook {
 }
 
 export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
-  const { addBuzz, clearBuzzQueue } = useGameStore();
-
   // Store the Supabase client in a ref so it can be accessed across renders
   // and in functions outside the useEffect scope
   const supabaseClientRef = useRef<SupabaseClient | null>(null);
@@ -34,6 +32,9 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
   // Store the channel reference to ensure we use the same subscribed channel
   // for both receiving and sending events (prevents race conditions)
   const channelRef = useRef<RealtimeChannel | null>(null);
+
+  // Track if component is mounted to prevent state updates after unmount
+  const isMountedRef = useRef(true);
 
   // Initialize the client on first render
   if (supabaseClientRef.current === null) {
@@ -70,20 +71,34 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
 
     // Subscribe to 'buzz' events
     channel.on('broadcast', { event: 'buzz' }, ({ payload }: { payload: BuzzEvent }) => {
+      // Prevent state updates if component has unmounted
+      if (!isMountedRef.current) return;
+
       const buzzEvent: BuzzEvent = payload;
-      // Add buzz to the store, ensuring it's sorted by timestamp
-      addBuzz(buzzEvent.teamId, buzzEvent.timestamp);
+      // Add buzz to the store using getState() for consistency
+      useGameStore.getState().addBuzz(buzzEvent.teamId, buzzEvent.timestamp);
     });
 
     // Subscribe to 'clear-buzzes' events
     channel.on('broadcast', { event: 'clear-buzzes' }, () => {
-      clearBuzzQueue();
+      // Prevent state updates if component has unmounted
+      if (!isMountedRef.current) return;
+
+      useGameStore.getState().clearBuzzQueue();
     });
 
     // Subscribe to 'question-selected' events to sync question state across all clients
     channel.on('broadcast', { event: 'question-selected' }, ({ payload }: { payload: QuestionSelectedPayload }) => {
-      // Validate payload structure before processing
-      if (!payload || !payload.question || typeof payload.question.id !== 'string') {
+      // Prevent state updates if component has unmounted
+      if (!isMountedRef.current) return;
+
+      // Comprehensive payload validation
+      if (!payload ||
+          !payload.question ||
+          typeof payload.question.id !== 'string' ||
+          typeof payload.question.value !== 'number' ||
+          typeof payload.question.text !== 'string' ||
+          typeof payload.question.isUsed !== 'boolean') {
         logger.warn('Received invalid question-selected payload', {
           gameId,
           payload,
@@ -92,14 +107,15 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
         return;
       }
 
-      const { setCurrentQuestion } = useGameStore.getState();
-      setCurrentQuestion(payload.question);
+      useGameStore.getState().setCurrentQuestion(payload.question);
     });
 
     // Subscribe to 'question-closed' events to clear question state
     channel.on('broadcast', { event: 'question-closed' }, () => {
-      const { setCurrentQuestion } = useGameStore.getState();
-      setCurrentQuestion(null);
+      // Prevent state updates if component has unmounted
+      if (!isMountedRef.current) return;
+
+      useGameStore.getState().setCurrentQuestion(null);
     });
 
     channel.subscribe((status: string) => {
@@ -121,6 +137,9 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
 
     // Cleanup subscription on component unmount
     return () => {
+      // Mark component as unmounted to prevent state updates
+      isMountedRef.current = false;
+
       if (supabaseClientRef.current) {
         supabaseClientRef.current.removeChannel(channel);
         logger.info('Unsubscribed from buzzer channel', {
@@ -132,7 +151,7 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
       // Clear the channel ref
       channelRef.current = null;
     };
-  }, [gameId, addBuzz, clearBuzzQueue]); // Dependencies for useEffect
+  }, [gameId]); // Only gameId dependency since we use getState() in handlers
 
   const sendBuzz = (teamId: string) => {
     // Validate gameId and channel before sending
