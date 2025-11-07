@@ -3,6 +3,7 @@ import { useGameStore } from '../../lib/stores/gameStore';
 import type { Team } from '../../types/game';
 import { SCORE_ANIMATION_DURATION } from '../../lib/constants/animations';
 import { useAnimatedScore } from '../../lib/hooks/useAnimatedScore';
+import { getOrdinal } from '../../lib/utils/formatters';
 
 // Individual team card component with animations
 interface TeamCardProps {
@@ -70,7 +71,7 @@ const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
         </span>
         {index < 3 && (
           <span className="text-xs bg-black bg-opacity-20 px-2 py-1 rounded">
-            {index === 0 ? '1st' : index === 1 ? '2nd' : '3rd'}
+            {getOrdinal(index + 1)}
           </span>
         )}
       </div>

@@ -171,9 +171,11 @@ export default function GameBoardPage() {
         setTeams(teamsForStore);
         setLoading(false);
       } catch (err) {
-        console.error('Error fetching game data:', err);
-        const message = err instanceof Error ? err.message : 'Failed to load game data';
-        setError(message);
+        const errorMessage = err instanceof Error
+          ? err.message
+          : 'An unknown error occurred';
+        console.error('Error fetching game data:', errorMessage);
+        setError(`Failed to load game data: ${errorMessage}`);
         setLoading(false);
       }
     };
@@ -274,8 +276,11 @@ export default function GameBoardPage() {
               };
             });
           } catch (error) {
-            console.error('Error in game update handler:', error);
-            setSubscriptionError('Failed to process game update');
+            const errorMessage = error instanceof Error
+              ? error.message
+              : 'An unknown error occurred';
+            console.error('Error in game update handler:', errorMessage);
+            setSubscriptionError(`Failed to process game update: ${errorMessage}`);
           }
         }
       )
@@ -339,8 +344,11 @@ export default function GameBoardPage() {
               }
             });
           } catch (error) {
-            console.error('Error in team update handler:', error);
-            setSubscriptionError('Failed to process team update');
+            const errorMessage = error instanceof Error
+              ? error.message
+              : 'An unknown error occurred';
+            console.error('Error in team update handler:', errorMessage);
+            setSubscriptionError(`Failed to process team update: ${errorMessage}`);
           }
         }
       )
@@ -362,8 +370,11 @@ export default function GameBoardPage() {
               prevTeams.filter((t) => t.id !== deletedTeam.id)
             );
           } catch (error) {
-            console.error('Error in team delete handler:', error);
-            setSubscriptionError('Failed to process team deletion');
+            const errorMessage = error instanceof Error
+              ? error.message
+              : 'An unknown error occurred';
+            console.error('Error in team delete handler:', errorMessage);
+            setSubscriptionError(`Failed to process team deletion: ${errorMessage}`);
           }
         }
       )
