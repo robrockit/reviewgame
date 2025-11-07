@@ -30,8 +30,8 @@ export default function StudentGamePage() {
   // Use buzzer hook for real-time buzz events
   const { sendBuzz } = useBuzzer(gameId);
 
-  // Get buzz queue from game store
-  const { buzzQueue } = useGameStore();
+  // Get buzz queue and current question from game store
+  const { buzzQueue, currentQuestion } = useGameStore();
 
   // Fetch game and team data
   useEffect(() => {
@@ -64,11 +64,14 @@ export default function StudentGamePage() {
         setTeam(teamData);
 
         // Set initial buzz button state based on game status
+        // Note: currentQuestion state will be synced via game store
+        // Button state will be properly set by the useEffect that monitors currentQuestion
         if (gameData.status === 'setup') {
           setBuzzButtonState('waiting');
         } else if (gameData.status === 'active') {
-          // TODO: Will be updated based on question state
-          setBuzzButtonState('active');
+          // Will be 'active' only if there's a question, otherwise 'waiting'
+          // This will be corrected by the useEffect that monitors currentQuestion
+          setBuzzButtonState('waiting');
         } else {
           setBuzzButtonState('waiting');
         }
@@ -116,14 +119,14 @@ export default function StudentGamePage() {
           setGame(updatedGame);
 
           // Update button state based on game status
+          // Note: The useEffect that monitors currentQuestion will handle
+          // the active state properly based on whether there's a question
           if (updatedGame.status === 'setup') {
             setBuzzButtonState('waiting');
-          } else if (updatedGame.status === 'active') {
-            // TODO: Will be based on actual question state
-            setBuzzButtonState('active');
           } else if (updatedGame.status === 'completed') {
             setBuzzButtonState('waiting');
           }
+          // For 'active' status, let the useEffect handle it based on currentQuestion
         }
       )
       .subscribe((status) => {
@@ -169,8 +172,8 @@ export default function StudentGamePage() {
       // Team not in queue
       setQueuePosition(null);
 
-      // Set button state based on game status
-      if (game?.status === 'active') {
+      // Set button state based on game status and question state
+      if (game?.status === 'active' && currentQuestion) {
         setBuzzButtonState('active');
       } else {
         setBuzzButtonState('waiting');
@@ -188,7 +191,7 @@ export default function StudentGamePage() {
         setBuzzButtonState('buzzed');
       }
     }
-  }, [buzzQueue, teamId, game?.status]);
+  }, [buzzQueue, teamId, game?.status, currentQuestion]);
 
   // Handle buzz button press
   const handleBuzz = async () => {

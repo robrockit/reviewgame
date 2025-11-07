@@ -4,7 +4,11 @@ import { useGameStore } from '../../lib/stores/gameStore';
 import { QuestionCard } from './QuestionCard';
 import { Question } from '../../types/game';
 
-export const GameBoard = () => {
+interface GameBoardProps {
+  onQuestionSelect?: (question: Question) => void;
+}
+
+export const GameBoard = ({ onQuestionSelect }: GameBoardProps) => {
   const { currentGameData, markQuestionUsed, setCurrentQuestion } = useGameStore();
 
   // Get categories from store (set by the page component)
@@ -28,6 +32,11 @@ export const GameBoard = () => {
       // Mark the question as used and set it as the current question
       markQuestionUsed(question.id);
       setCurrentQuestion(question);
+
+      // Broadcast the question selection to all connected clients
+      if (onQuestionSelect) {
+        onQuestionSelect(question);
+      }
     }
   };
 
