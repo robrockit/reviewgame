@@ -531,3 +531,192 @@ DROP CONSTRAINT IF EXISTS unique_game_team_number;
 - ❌ Multiple students joining same team simultaneously
 - ❌ TOCTOU vulnerability in team join flow
 - ❌ Duplicate team numbers within same game
+
+---
+
+## Migration: 20251110_admin_portal_schema.sql
+
+**Purpose:** Create database schema for Admin Customer Service Portal (Phase 1 MVP)
+
+**Reference:** Jira ticket RG-54 (Epic RG-53 - Admin Portal)
+
+**Why it's needed:**
+- Enable admin customer service operations without direct database access
+- Track all admin actions for compliance (GDPR, audit requirements)
+- Support subscription management, refunds, and user impersonation
+- Provide foundation for customer support scaling
+
+**Changes:**
+
+**1. Enhanced Profiles Table:**
+- Adds `role` column (user/admin) with CHECK constraint
+- Adds `is_active` column for account suspension
+- Adds `suspension_reason` column for tracking why accounts are suspended
+- Adds `email_verified_manually` column for admin email verification
+- Adds `last_login_at` column for tracking user activity
+- Adds `admin_notes` column for internal admin notes
+- Adds custom plan fields:
+  - `custom_plan_name` - Display name for custom plans
+  - `custom_plan_type` - Type: lifetime, temporary, custom_price
+  - `custom_plan_expires_at` - Expiration for temporary plans
+  - `custom_plan_notes` - Admin notes explaining the grant
+  - `plan_override_limits` - JSONB for custom feature limits
+
+**2. New Tables:**
+
+**admin_audit_log:**
+- Tracks all admin actions for compliance and troubleshooting
+- Columns: admin_user_id, action_type, target_type, target_id, changes (JSONB), reason, notes, ip_address, user_agent
+- Indexed by: admin_user_id, (target_type, target_id), created_at, action_type
+- Retention: 7 years (compliance requirement)
+
+**login_history:**
+- Tracks user login events including impersonation sessions
+- Columns: user_id, login_at, ip_address, user_agent, login_method, impersonated_by
+- Indexed by: user_id, login_at, impersonated_by
+- Used for: Activity tracking, security monitoring, impersonation auditing
+
+**refunds:**
+- Tracks refund operations with reasons and admin accountability
+- Columns: user_id, stripe_refund_id, stripe_charge_id, amount_cents, currency, reason_category, notes, refunded_by
+- Indexed by: user_id, created_at, refunded_by, stripe_refund_id
+- Required fields: reason_category (technical_issue, user_request, duplicate_charge, fraudulent, service_outage, other)
+
+**impersonation_sessions:**
+- Tracks admin impersonation sessions for security and compliance
+- Columns: admin_user_id, target_user_id, started_at, ended_at, reason, ip_address, ended_by
+- Indexed by: admin_user_id, target_user_id, started_at, active sessions (WHERE ended_at IS NULL)
+- Used for: Security monitoring, compliance, session management
+
+**3. Row Level Security (RLS) Policies:**
+- All new tables have RLS enabled
+- Admin audit log: Only admins can read/insert
+- Login history: Users can see own, admins can see all
+- Refunds: Admin-only access
+- Impersonation sessions: Admin-only access
+
+**4. Helper Functions:**
+
+**is_admin():**
+- Returns TRUE if authenticated user is an active admin
+- SECURITY DEFINER function for safe role checking
+- Used by: RLS policies, API routes
+
+**log_admin_action():**
+- Logs admin actions to audit_log table
+- Parameters: action_type, target_type, target_id, changes, reason, notes, ip_address, user_agent
+- Returns: UUID of created log entry
+- Only callable by active admins
+
+**Security Notes:**
+- Admin-only access enforced via RLS policies
+- All admin actions must be logged (audit trail)
+- Impersonation sessions auto-expire after 15 minutes (application-level)
+- Cannot impersonate other admin users (application-level check)
+- PII access logged for GDPR compliance
+
+**Impact:**
+- Non-destructive migration (uses IF NOT EXISTS)
+- Safe to run multiple times (idempotent)
+- No data loss
+- Adds columns with sensible defaults (won't break existing queries)
+- Enables Phase 1 admin portal features
+
+**To Apply:**
+
+**Option A: Via Supabase Dashboard (Recommended)**
+1. Go to Supabase Dashboard: https://nyacfskxqoumzzfvpysv.supabase.co
+2. Navigate to SQL Editor
+3. Copy contents of `supabase/migrations/20251110_admin_portal_schema.sql`
+4. Paste and click Run
+
+**Option B: Via Supabase CLI**
+```bash
+cd reviewgame/review-game
+supabase db push
+```
+
+**After applying:**
+- Admin roles can be assigned via:
+  ```sql
+  UPDATE profiles SET role = 'admin' WHERE email = 'admin@example.com';
+  ```
+- All new tables are ready for admin portal development
+- RLS policies protect admin-only data
+- Audit logging is active
+
+**Next Steps:**
+After applying migration:
+1. Assign initial admin user(s)
+2. Regenerate TypeScript types (see regenerate-types.md)
+3. Create admin authentication middleware
+4. Build admin portal routes at `/app/admin/*`
+
+**Verification:**
+
+Check if migration was successful:
+```sql
+-- Check new columns in profiles table
+SELECT column_name, data_type, column_default
+FROM information_schema.columns
+WHERE table_name = 'profiles'
+AND column_name IN ('role', 'is_active', 'last_login_at', 'custom_plan_name')
+ORDER BY column_name;
+
+-- Check new tables exist
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+AND table_name IN ('admin_audit_log', 'login_history', 'refunds', 'impersonation_sessions')
+ORDER BY table_name;
+
+-- Check RLS is enabled
+SELECT tablename, rowsecurity
+FROM pg_tables
+WHERE schemaname = 'public'
+AND tablename IN ('admin_audit_log', 'login_history', 'refunds', 'impersonation_sessions');
+
+-- Test is_admin() function
+SELECT public.is_admin(); -- Should return FALSE for non-admin users
+```
+
+**Rollback (If Needed):**
+
+```sql
+-- Drop new tables
+DROP TABLE IF EXISTS impersonation_sessions CASCADE;
+DROP TABLE IF EXISTS refunds CASCADE;
+DROP TABLE IF EXISTS login_history CASCADE;
+DROP TABLE IF EXISTS admin_audit_log CASCADE;
+
+-- Drop functions
+DROP FUNCTION IF EXISTS public.log_admin_action CASCADE;
+DROP FUNCTION IF EXISTS public.is_admin CASCADE;
+
+-- Remove new columns from profiles
+ALTER TABLE profiles DROP COLUMN IF EXISTS role;
+ALTER TABLE profiles DROP COLUMN IF EXISTS is_active;
+ALTER TABLE profiles DROP COLUMN IF EXISTS suspension_reason;
+ALTER TABLE profiles DROP COLUMN IF EXISTS email_verified_manually;
+ALTER TABLE profiles DROP COLUMN IF EXISTS last_login_at;
+ALTER TABLE profiles DROP COLUMN IF EXISTS admin_notes;
+ALTER TABLE profiles DROP COLUMN IF EXISTS custom_plan_name;
+ALTER TABLE profiles DROP COLUMN IF EXISTS custom_plan_type;
+ALTER TABLE profiles DROP COLUMN IF EXISTS custom_plan_expires_at;
+ALTER TABLE profiles DROP COLUMN IF EXISTS custom_plan_notes;
+ALTER TABLE profiles DROP COLUMN IF EXISTS plan_override_limits;
+
+-- Remove indexes
+DROP INDEX IF EXISTS idx_profiles_role;
+DROP INDEX IF EXISTS idx_profiles_is_active;
+```
+
+**Phase 1 Features Enabled by This Migration:**
+- ✅ Teacher account management (view, edit, suspend, notes)
+- ✅ Payment & subscription management (view history, refunds, grants)
+- ✅ Custom plan assignments (lifetime, temporary, custom pricing)
+- ✅ User impersonation (troubleshooting)
+- ✅ Comprehensive audit logging (compliance)
+- ✅ Login history tracking (security)
+
+---
