@@ -1,3 +1,19 @@
+/**
+ * @fileoverview Daily Double modal component for wager-based questions.
+ *
+ * This component handles the special Daily Double question flow:
+ * - Team selection (highest scorer or current controller)
+ * - Wager amount selection with validation
+ * - Question reveal after wager submission
+ * - Score updates based on correct/incorrect answer with wager multiplier
+ * - Database synchronization for scores
+ *
+ * Daily Doubles are high-stakes questions where teams can wager points before
+ * seeing the question, adding strategic depth to the game.
+ *
+ * @module components/game/DailyDoubleModal
+ */
+
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -6,15 +22,65 @@ import { createClient } from '@/lib/supabase/client';
 import { logger } from '@/lib/logger';
 import { BUTTON_TEXT } from '@/lib/constants/ui';
 
+/**
+ * Props for the DailyDoubleModal component.
+ *
+ * @interface DailyDoubleModalProps
+ * @property {string} gameId - The unique identifier of the current game
+ * @property {function} [onQuestionClose] - Optional callback when the question is closed
+ */
 interface DailyDoubleModalProps {
   gameId: string;
   onQuestionClose?: () => void;
 }
 
-// Daily Double constants
+/**
+ * Maximum wager amount allowed for Daily Doubles.
+ * @constant {number}
+ */
 const DAILY_DOUBLE_MAX_WAGER = 1000;
+
+/**
+ * Minimum wager amount required for Daily Doubles.
+ * @constant {number}
+ */
 const DAILY_DOUBLE_MIN_WAGER = 5;
 
+/**
+ * DailyDoubleModal component for managing Daily Double questions and wagers.
+ *
+ * This component handles the complete Daily Double flow:
+ *
+ * **Phase 1 - Wager Selection:**
+ * - Displays controlling team (highest scorer or selected team)
+ * - Shows wager input with validation
+ * - Validates wager against min/max bounds
+ * - Max wager is the higher of: team's score or 1000 points
+ * - Min wager is 5 points
+ *
+ * **Phase 2 - Question Display:**
+ * - Reveals question text after wager is submitted
+ * - Shows category and wager amount
+ * - Provides correct/incorrect buttons
+ * - Only the controlling team can answer (no buzz queue)
+ *
+ * **Score Updates:**
+ * - Correct answer: Add wager amount to team score
+ * - Incorrect answer: Subtract wager amount from team score
+ * - Synchronizes with Supabase database
+ * - Uses optimistic updates with rollback on error
+ *
+ * @param {DailyDoubleModalProps} props - Component props
+ * @returns {JSX.Element | null} The rendered modal or null if not a Daily Double
+ *
+ * @example
+ * ```tsx
+ * <DailyDoubleModal
+ *   gameId="game-123"
+ *   onQuestionClose={() => broadcastQuestionClosed()}
+ * />
+ * ```
+ */
 export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQuestionClose }) => {
   const {
     currentQuestion,
@@ -68,7 +134,17 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
     }
   }, [isOpen, clearWager]);
 
-  // Calculate max wager for the selected team
+  /**
+   * Calculates the maximum wager allowed for the controlling team.
+   *
+   * The max wager is the higher of:
+   * - The team's current score
+   * - The fixed maximum (1000 points)
+   *
+   * This ensures teams can always make meaningful wagers even with low scores.
+   *
+   * @returns {number} The maximum wager amount
+   */
   const getMaxWager = useCallback(() => {
     if (!controllingTeamId) return DAILY_DOUBLE_MAX_WAGER;
 
@@ -79,7 +155,12 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
     return Math.max(teamScore, DAILY_DOUBLE_MAX_WAGER);
   }, [controllingTeamId, allTeams]);
 
-  // Validate wager amount
+  /**
+   * Validates a wager amount against the min and max constraints.
+   *
+   * @param {number} amount - The wager amount to validate
+   * @returns {string | null} Error message if invalid, null if valid
+   */
   const validateWager = useCallback((amount: number): string | null => {
     const maxWager = getMaxWager();
 
@@ -94,7 +175,17 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
     return null;
   }, [getMaxWager]);
 
-  // Handle wager submission
+  /**
+   * Handles wager submission and reveals the question.
+   *
+   * This function:
+   * 1. Validates the wager input
+   * 2. Stores the wager in the game store
+   * 3. Marks the wager as submitted
+   * 4. Reveals the question text to the controlling team
+   *
+   * @async
+   */
   const handleWagerSubmit = useCallback(async () => {
     if (!controllingTeamId || !currentQuestion) {
       setWagerError('Please select a controlling team');
@@ -143,7 +234,18 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
     }
   }, [wagerInput, controllingTeamId, currentQuestion, validateWager, setCurrentWager, setWagerSubmitted, gameId]);
 
-  // Close modal handler
+  /**
+   * Closes the Daily Double modal and marks the question as used.
+   *
+   * This function:
+   * - Marks the question as used in the database
+   * - Clears the current question and wager state
+   * - Broadcasts the close event to all clients
+   *
+   * The close is prevented if an answer is currently being processed.
+   *
+   * @async
+   */
   const handleClose = useCallback(async () => {
     if (isProcessing) return;
 
@@ -213,7 +315,22 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
     }
   }, [isProcessing, setCurrentQuestion, clearWager, markQuestionUsed, currentQuestion, gameId, supabase, onQuestionClose]);
 
-  // Handle correct answer with wager
+  /**
+   * Handles a correct answer by awarding the wagered points.
+   *
+   * This function:
+   * 1. Awards the wager amount to the controlling team
+   * 2. Updates the team's score in Supabase
+   * 3. Closes the modal and marks the question as used
+   * 4. Broadcasts the close event to all clients
+   *
+   * The function uses optimistic UI updates with rollback on error:
+   * - Updates local state immediately for responsive UI
+   * - Syncs with database in the background
+   * - Rolls back changes if database update fails
+   *
+   * @async
+   */
   const handleCorrect = async () => {
     if (isProcessing || !currentQuestion || !controllingTeamId || !controllingTeam || !currentWager) return;
 
@@ -324,7 +441,22 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
     }
   };
 
-  // Handle incorrect answer with wager
+  /**
+   * Handles an incorrect answer by deducting the wagered points.
+   *
+   * This function:
+   * 1. Deducts the wager amount from the controlling team's score
+   * 2. Updates the team's score in Supabase
+   * 3. Closes the modal and marks the question as used
+   * 4. Broadcasts the close event to all clients
+   *
+   * The function uses optimistic UI updates with rollback on error:
+   * - Updates local state immediately for responsive UI
+   * - Syncs with database in the background
+   * - Rolls back changes if database update fails
+   *
+   * @async
+   */
   const handleIncorrect = async () => {
     if (isProcessing || !currentQuestion || !controllingTeamId || !controllingTeam || !currentWager) return;
 

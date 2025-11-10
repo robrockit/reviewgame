@@ -1,9 +1,39 @@
+/**
+ * @fileoverview Login form component for user authentication.
+ *
+ * This component provides a login interface using Supabase authentication,
+ * with email/password credentials and error handling.
+ *
+ * @module components/auth/LoginForm
+ */
+
 "use client";
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
+/**
+ * Login form component for authenticating users.
+ *
+ * This component:
+ * - Provides email and password input fields
+ * - Handles form submission and authentication via Supabase
+ * - Displays error messages for failed login attempts
+ * - Shows loading state during authentication
+ * - Redirects to dashboard on successful login
+ * - Provides a link to the signup page
+ *
+ * The form is disabled during the login process to prevent multiple submissions.
+ *
+ * @returns {JSX.Element} The rendered login form
+ *
+ * @example
+ * ```tsx
+ * // In a page component
+ * <LoginForm />
+ * ```
+ */
 export default function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -11,6 +41,15 @@ export default function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
+  /**
+   * Handles the login form submission.
+   *
+   * Authenticates the user with Supabase using email and password,
+   * then redirects to the dashboard on success or displays an error
+   * message on failure.
+   *
+   * @param {React.FormEvent} e - The form submission event
+   */
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);

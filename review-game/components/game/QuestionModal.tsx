@@ -1,3 +1,21 @@
+/**
+ * @fileoverview Question modal component for displaying and managing game questions.
+ *
+ * This is a complex modal component that handles:
+ * - Displaying question text and value
+ * - Managing buzz queue (students buzzing in)
+ * - Countdown timer
+ * - Score updates (correct/incorrect answers)
+ * - Accessibility (focus management, screen reader announcements)
+ * - Performance monitoring
+ * - Real-time database synchronization
+ *
+ * The modal includes advanced features like focus trapping, keyboard navigation,
+ * and optimistic UI updates with error handling.
+ *
+ * @module components/game/QuestionModal
+ */
+
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -8,12 +26,29 @@ import { getPositionDisplay } from '@/lib/utils/position';
 import { logger } from '@/lib/logger';
 import { BUZZ_QUEUE_LABELS, BUTTON_TEXT, QUESTION_MODAL_MESSAGES } from '@/lib/constants/ui';
 
+/**
+ * Props for the QuestionModal component.
+ *
+ * @interface QuestionModalProps
+ * @property {string} gameId - The unique identifier of the current game
+ * @property {function} onClearBuzzes - Callback to clear all buzzes in the queue
+ * @property {function} [onQuestionClose] - Optional callback when the question is closed
+ */
 interface QuestionModalProps {
   gameId: string;
   onClearBuzzes: () => void;
   onQuestionClose?: () => void;
 }
 
+/**
+ * Props for the BuzzQueueItem component.
+ *
+ * @interface BuzzQueueItemProps
+ * @property {number} index - The position in the buzz queue (0-indexed)
+ * @property {boolean} isFirst - Whether this team buzzed in first
+ * @property {string} teamName - The name of the team
+ * @property {number} teamScore - The team's current score
+ */
 interface BuzzQueueItemProps {
   index: number;
   isFirst: boolean;
@@ -21,7 +56,21 @@ interface BuzzQueueItemProps {
   teamScore: number;
 }
 
-// Memoized BuzzQueueItem component to prevent unnecessary re-renders
+/**
+ * Memoized component displaying a single team in the buzz queue.
+ *
+ * This component:
+ * - Shows team position with emoji indicators
+ * - Highlights the first team with special styling
+ * - Displays team name and current score
+ * - Includes ARIA labels for accessibility
+ *
+ * The component is memoized to prevent unnecessary re-renders when
+ * the buzz queue updates.
+ *
+ * @param {BuzzQueueItemProps} props - Component props
+ * @returns {JSX.Element} The rendered buzz queue item
+ */
 const BuzzQueueItem = React.memo<BuzzQueueItemProps>(({ index, isFirst, teamName, teamScore }) => {
   const position = getPositionDisplay(index);
 
@@ -66,6 +115,50 @@ const BuzzQueueItem = React.memo<BuzzQueueItemProps>(({ index, isFirst, teamName
 
 BuzzQueueItem.displayName = 'BuzzQueueItem';
 
+/**
+ * QuestionModal component for displaying and managing game questions.
+ *
+ * This is the main modal component shown when a question is selected. It provides:
+ *
+ * **Core Features:**
+ * - Question display with category, value, and text
+ * - Countdown timer (30 seconds default)
+ * - Real-time buzz queue showing students who buzzed in
+ * - Correct/incorrect buttons for scoring
+ * - Close functionality with confirmation
+ *
+ * **Advanced Features:**
+ * - Focus management with focus trapping
+ * - Keyboard navigation (Escape to close, Tab for navigation)
+ * - Screen reader announcements for accessibility
+ * - Performance monitoring with Performance API
+ * - Optimistic UI updates with database synchronization
+ * - Error handling and rollback on failure
+ * - Memoized rendering for performance
+ *
+ * **Accessibility:**
+ * - ARIA labels and live regions
+ * - Focus restoration when modal closes
+ * - Keyboard navigation support
+ * - Screen reader announcements for state changes
+ *
+ * **Database Operations:**
+ * - Updates team scores in Supabase
+ * - Marks questions as used
+ * - Handles connection errors gracefully
+ *
+ * @param {QuestionModalProps} props - Component props
+ * @returns {JSX.Element | null} The rendered modal or null if no question is active
+ *
+ * @example
+ * ```tsx
+ * <QuestionModal
+ *   gameId="game-123"
+ *   onClearBuzzes={() => clearBuzzes()}
+ *   onQuestionClose={() => broadcastQuestionClosed()}
+ * />
+ * ```
+ */
 export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuzzes, onQuestionClose }) => {
   const {
     currentQuestion,
@@ -93,7 +186,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const focusableElementsRef = useRef<HTMLElement[]>([]);
 
-  // Memoized timer expiration handler
+  /**
+   * Handles timer expiration when time runs out on a question.
+   * Currently logs the event; could be extended to auto-close or disable buzzing.
+   */
   const handleTimerExpire = useCallback(() => {
     if (currentQuestion) {
       logger.info('Question timer expired', {
@@ -274,7 +370,17 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     setPreviousBuzzQueueLength(currentLength);
   }, [buzzQueue, previousBuzzQueueLength, allTeams, isOpen]);
 
-  // Close modal handler
+  /**
+   * Closes the question modal and clears the buzz queue.
+   *
+   * This function:
+   * - Clears the current question from the store
+   * - Clears all buzzes
+   * - Broadcasts the close event to all clients
+   * - Restores focus to the previously focused element
+   *
+   * The close is prevented if an answer is currently being processed.
+   */
   const handleClose = useCallback(() => {
     if (isProcessing) return;
     setCurrentQuestion(null);
@@ -286,7 +392,23 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     }
   }, [isProcessing, setCurrentQuestion, onClearBuzzes, onQuestionClose]);
 
-  // Handle correct answer - memoized to prevent unnecessary re-renders
+  /**
+   * Handles a correct answer by awarding points and updating the database.
+   *
+   * This function:
+   * 1. Awards points to the first team in the buzz queue
+   * 2. Updates the team's score in Supabase
+   * 3. Removes the team from the buzz queue
+   * 4. Closes the modal and marks the question as used
+   * 5. Broadcasts the close event to all clients
+   *
+   * The function uses optimistic UI updates with rollback on error:
+   * - Updates local state immediately for responsive UI
+   * - Syncs with database in the background
+   * - Rolls back changes if database update fails
+   *
+   * @async
+   */
   const handleCorrect = useCallback(async () => {
     if (isProcessing || !currentQuestion || !firstTeamData) return;
 
@@ -403,7 +525,25 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     }
   }, [isProcessing, currentQuestion, firstTeamData, gameId, onClearBuzzes, setCurrentQuestion, supabase, onQuestionClose]);
 
-  // Handle incorrect answer - memoized to prevent unnecessary re-renders
+  /**
+   * Handles an incorrect answer by deducting points and removing the team from the queue.
+   *
+   * This function:
+   * 1. Deducts points from the first team in the buzz queue
+   * 2. Updates the team's score in Supabase
+   * 3. Removes the team from the buzz queue
+   * 4. Allows other teams to answer (modal stays open if queue not empty)
+   *
+   * If the buzz queue becomes empty after an incorrect answer, the modal closes
+   * and the question is marked as used (no correct answer given).
+   *
+   * The function uses optimistic UI updates with rollback on error:
+   * - Updates local state immediately for responsive UI
+   * - Syncs with database in the background
+   * - Rolls back changes if database update fails
+   *
+   * @async
+   */
   const handleIncorrect = useCallback(async () => {
     if (isProcessing || !currentQuestion || !firstTeamData) return;
 
@@ -498,7 +638,15 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     };
   }, [isOpen, isProcessing, handleClose]);
 
-  // Memoize backdrop click handler to prevent unnecessary re-renders
+  /**
+   * Handles clicks on the modal backdrop (area outside the modal content).
+   *
+   * Closes the modal when the backdrop is clicked, but only if no answer
+   * is currently being processed. This prevents accidental closures during
+   * database operations.
+   *
+   * @param {React.MouseEvent} e - The mouse click event
+   */
   const handleBackdropClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget && !isProcessing) {
       handleClose();

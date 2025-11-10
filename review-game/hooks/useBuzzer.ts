@@ -1,3 +1,13 @@
+/**
+ * @fileoverview Manages real-time buzzer functionality for game show interactions.
+ *
+ * This hook provides real-time buzzer capabilities using Supabase's broadcast feature,
+ * enabling students to buzz in during questions and teachers to manage the buzz queue.
+ * It also handles broadcasting question state changes across all connected clients.
+ *
+ * @module hooks/useBuzzer
+ */
+
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../lib/stores/gameStore';
 import { createClient } from '../lib/supabase/client';
@@ -5,18 +15,37 @@ import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import { logger } from '../lib/logger';
 import type { Question } from '../types/game';
 
-// Define the structure of a buzz event
+/**
+ * Represents a buzz event sent by a team.
+ *
+ * @interface BuzzEvent
+ * @property {string} teamId - The unique identifier of the team that buzzed
+ * @property {number} timestamp - The timestamp (milliseconds) when the buzz occurred
+ */
 interface BuzzEvent {
   teamId: string;
   timestamp: number;
 }
 
-// Define the structure of broadcast payloads
+/**
+ * Payload structure for question selection broadcast events.
+ *
+ * @interface QuestionSelectedPayload
+ * @property {Question} question - The question that was selected
+ */
 interface QuestionSelectedPayload {
   question: Question;
 }
 
-// Define the structure of the hook's return value
+/**
+ * Return type of the useBuzzer hook.
+ *
+ * @interface BuzzerHook
+ * @property {function} sendBuzz - Function to send a buzz event for a team
+ * @property {function} clearBuzzes - Function to clear all buzzes in the queue
+ * @property {function} broadcastQuestionSelected - Function to broadcast a selected question to all clients
+ * @property {function} broadcastQuestionClosed - Function to broadcast that the current question has been closed
+ */
 interface BuzzerHook {
   sendBuzz: (teamId: string) => void;
   clearBuzzes: () => void;
@@ -24,6 +53,34 @@ interface BuzzerHook {
   broadcastQuestionClosed: () => void;
 }
 
+/**
+ * Custom hook for managing real-time buzzer functionality in a game.
+ *
+ * This hook:
+ * - Establishes a Supabase Realtime channel for the specified game
+ * - Listens for buzz events from students
+ * - Listens for buzz queue clear events from teachers
+ * - Listens for question selection/closure events to sync state
+ * - Provides functions to send buzzes and broadcast game events
+ * - Automatically cleans up subscriptions on unmount
+ *
+ * The hook uses refs to maintain stable channel connections and prevent race conditions
+ * between subscription and broadcast operations.
+ *
+ * @param {string | undefined} gameId - The unique identifier of the game session
+ * @returns {BuzzerHook} Object containing buzzer control functions
+ *
+ * @example
+ * ```tsx
+ * const { sendBuzz, clearBuzzes } = useBuzzer(gameId);
+ *
+ * // Student buzzes in
+ * const handleBuzz = () => sendBuzz(teamId);
+ *
+ * // Teacher clears all buzzes
+ * const handleClear = () => clearBuzzes();
+ * ```
+ */
 export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
   // Store the Supabase client in a ref so it can be accessed across renders
   // and in functions outside the useEffect scope
@@ -153,6 +210,20 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     };
   }, [gameId]); // Only gameId dependency since we use getState() in handlers
 
+  /**
+   * Sends a buzz event for a specific team to all connected clients.
+   *
+   * This function broadcasts a buzz event through the Supabase Realtime channel
+   * and immediately updates the local game store for responsive UI feedback.
+   * The buzz includes a timestamp to ensure proper ordering in the queue.
+   *
+   * @param {string} teamId - The unique identifier of the team buzzing in
+   *
+   * @example
+   * ```tsx
+   * sendBuzz('team-abc-123');
+   * ```
+   */
   const sendBuzz = (teamId: string) => {
     // Validate gameId and channel before sending
     if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {
@@ -180,6 +251,18 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     useGameStore.getState().addBuzz(teamId, timestamp);
   };
 
+  /**
+   * Clears all buzzes from the buzz queue across all connected clients.
+   *
+   * This function broadcasts a clear-buzzes event through the Supabase Realtime
+   * channel and immediately clears the local buzz queue. Typically called by
+   * teachers after acknowledging buzzes or when starting a new question.
+   *
+   * @example
+   * ```tsx
+   * clearBuzzes(); // All buzzes cleared
+   * ```
+   */
   const clearBuzzes = () => {
     // Validate gameId and channel before clearing
     if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {
@@ -202,6 +285,25 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     useGameStore.getState().clearBuzzQueue();
   };
 
+  /**
+   * Broadcasts a question selection event to synchronize state across all clients.
+   *
+   * This function notifies all connected clients (students, teachers, and display boards)
+   * that a question has been selected. The question data is validated before broadcasting
+   * to ensure data integrity.
+   *
+   * @param {Question} question - The question object that was selected
+   *
+   * @example
+   * ```tsx
+   * broadcastQuestionSelected({
+   *   id: 'q-123',
+   *   text: 'What is the capital of France?',
+   *   value: 200,
+   *   isUsed: false
+   * });
+   * ```
+   */
   const broadcastQuestionSelected = (question: Question) => {
     // Validate gameId and channel before broadcasting
     if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {
@@ -245,6 +347,17 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     }
   };
 
+  /**
+   * Broadcasts a question closed event to clear current question state across all clients.
+   *
+   * This function notifies all connected clients that the current question has been
+   * answered or dismissed, clearing the question from the UI across all views.
+   *
+   * @example
+   * ```tsx
+   * broadcastQuestionClosed(); // Clears current question on all clients
+   * ```
+   */
   const broadcastQuestionClosed = () => {
     // Validate gameId and channel before broadcasting
     if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {

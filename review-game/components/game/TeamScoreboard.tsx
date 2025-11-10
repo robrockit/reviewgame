@@ -1,3 +1,12 @@
+/**
+ * @fileoverview Team scoreboard component displaying live scores and rankings.
+ *
+ * This component shows a ranked leaderboard of all teams with animated score updates,
+ * visual flash effects on score changes, and special styling for top 3 teams.
+ *
+ * @module components/game/TeamScoreboard
+ */
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import type { Team } from '../../types/game';
@@ -5,12 +14,31 @@ import { SCORE_ANIMATION_DURATION } from '../../lib/constants/animations';
 import { useAnimatedScore } from '../../lib/hooks/useAnimatedScore';
 import { getOrdinal } from '../../lib/utils/formatters';
 
-// Individual team card component with animations
+/**
+ * Props for the TeamCard component.
+ *
+ * @interface TeamCardProps
+ * @property {Team} team - The team data to display
+ * @property {number} index - The team's rank position (0-indexed)
+ */
 interface TeamCardProps {
   team: Team;
   index: number;
 }
 
+/**
+ * Individual team card component with score animations and flash effects.
+ *
+ * This component:
+ * - Displays team name and current score
+ * - Animates score changes with number transitions
+ * - Flashes green on score increase, red on decrease
+ * - Shows special styling for top 3 positions (gold, silver, bronze)
+ * - Displays rank medals and ordinal suffixes
+ *
+ * @param {TeamCardProps} props - Component props
+ * @returns {JSX.Element} The rendered team card
+ */
 const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
   const animatedScore = useAnimatedScore(team.score);
   const [flashClass, setFlashClass] = useState('');
@@ -49,7 +77,12 @@ const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
     };
   }, [team.score]);
 
-  // Determine rank styling
+  /**
+   * Determines the background and border styling based on team rank.
+   * Top 3 teams get special gold, silver, and bronze gradients.
+   *
+   * @returns {string} Tailwind CSS classes for rank styling
+   */
   const getRankStyle = () => {
     if (index === 0) {
       return 'bg-gradient-to-br from-yellow-500 to-yellow-600 border-2 border-yellow-300';
@@ -86,6 +119,29 @@ const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
   );
 };
 
+/**
+ * Team scoreboard component displaying live rankings and statistics.
+ *
+ * This component:
+ * - Displays all teams sorted by score (highest to lowest)
+ * - Shows animated score updates with visual feedback
+ * - Highlights top 3 teams with special styling
+ * - Displays aggregate statistics (total teams, total points, average score)
+ * - Automatically updates when team scores change
+ *
+ * The scoreboard uses a responsive grid layout that adapts to screen size:
+ * - Mobile: 1 column
+ * - Tablet: 2 columns
+ * - Desktop: 3 columns
+ * - Large screens: 4 columns
+ *
+ * @returns {JSX.Element} The rendered team scoreboard
+ *
+ * @example
+ * ```tsx
+ * <TeamScoreboard />
+ * ```
+ */
 export const TeamScoreboard: React.FC = () => {
   const { allTeams } = useGameStore();
 

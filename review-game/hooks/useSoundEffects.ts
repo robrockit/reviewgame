@@ -1,8 +1,26 @@
+/**
+ * @fileoverview Hook for managing game sound effects with volume control.
+ *
+ * This hook provides a centralized interface for playing various game sounds
+ * including buzzes, correct/incorrect feedback, Daily Double announcements,
+ * Final Jeopardy music, and timer ticks. It supports global volume control,
+ * muting, and per-sound volume adjustments.
+ *
+ * The hook uses the 'use-sound' library (which wraps Howler.js) for reliable
+ * audio playback across different browsers.
+ *
+ * @module hooks/useSoundEffects
+ */
+
 import React, { useState, useCallback } from 'react';
 import useSound from 'use-sound';
 import { logger } from '@/lib/logger';
 
-// Define sound event types for type safety
+/**
+ * Available sound event types for the game.
+ *
+ * @typedef {('buzz' | 'correct' | 'incorrect' | 'dailyDouble' | 'finalJeopardy' | 'timerTick')} SoundEvent
+ */
 export type SoundEvent =
   | 'buzz'
   | 'correct'
@@ -11,14 +29,31 @@ export type SoundEvent =
   | 'finalJeopardy'
   | 'timerTick';
 
-// Sound configuration options
+/**
+ * Configuration options for playing a sound.
+ *
+ * @interface SoundOptions
+ * @property {number} [volume] - Volume level from 0.0 (silent) to 1.0 (full volume)
+ * @property {number} [playbackRate] - Playback speed multiplier (1.0 is normal speed)
+ * @property {boolean} [interrupt] - Whether to interrupt the currently playing sound
+ */
 export interface SoundOptions {
-  volume?: number; // 0.0 to 1.0
-  playbackRate?: number; // Speed multiplier
-  interrupt?: boolean; // Whether to interrupt currently playing sound
+  volume?: number;
+  playbackRate?: number;
+  interrupt?: boolean;
 }
 
-// Hook return type
+/**
+ * Return type of the useSoundEffects hook.
+ *
+ * @interface SoundEffectsHook
+ * @property {function} playSound - Function to play a specific sound effect
+ * @property {function} setGlobalVolume - Function to set the global volume level
+ * @property {function} mute - Function to mute all sounds
+ * @property {function} unmute - Function to unmute all sounds
+ * @property {boolean} isMuted - Current mute state
+ * @property {number} globalVolume - Current global volume level (0.0 to 1.0)
+ */
 export interface SoundEffectsHook {
   playSound: (event: SoundEvent, options?: SoundOptions) => void;
   setGlobalVolume: (volume: number) => void;
@@ -28,6 +63,40 @@ export interface SoundEffectsHook {
   globalVolume: number;
 }
 
+/**
+ * Custom hook for managing game sound effects.
+ *
+ * This hook provides:
+ * - Sound playback for various game events (buzz, correct, incorrect, etc.)
+ * - Global volume control that affects all sounds
+ * - Mute/unmute functionality
+ * - Per-sound volume adjustments
+ * - Automatic volume synchronization across all loaded sounds
+ *
+ * Each sound has a default volume multiplier that balances audio levels:
+ * - Buzz, correct, incorrect: 100% of global volume
+ * - Daily Double: 80% of global volume
+ * - Final Jeopardy: 60% of global volume (background music)
+ * - Timer: 50% of global volume
+ *
+ * @returns {SoundEffectsHook} Object containing sound control functions and state
+ *
+ * @example
+ * ```tsx
+ * const { playSound, setGlobalVolume, mute, unmute } = useSoundEffects();
+ *
+ * // Play a buzz sound
+ * playSound('buzz');
+ *
+ * // Play with custom options
+ * playSound('correct', { volume: 0.8, playbackRate: 1.2 });
+ *
+ * // Control global volume
+ * setGlobalVolume(0.5); // 50% volume
+ * mute(); // Mute all sounds
+ * unmute(); // Restore volume
+ * ```
+ */
 const useSoundEffects = (): SoundEffectsHook => {
   // Global volume state (0.0 to 1.0)
   const [globalVolume, setGlobalVolume] = useState<number>(0.7); // Default to 70%
@@ -98,7 +167,27 @@ const useSoundEffects = (): SoundEffectsHook => {
   }, [globalVolume, isMuted, buzzControls, correctControls, incorrectControls,
       dailyDoubleControls, finalJeopardyControls, timerControls]);
 
-  // Function to play sounds based on event with optional configuration
+  /**
+   * Plays a sound effect based on the specified event type.
+   *
+   * This function plays the appropriate sound for the given event type and
+   * applies any custom options provided. If a custom volume is specified,
+   * it temporarily overrides the global volume for that specific sound play.
+   *
+   * @param {SoundEvent} event - The type of sound to play
+   * @param {SoundOptions} [options] - Optional playback configuration
+   * @param {number} [options.volume] - Custom volume for this play (0.0 to 1.0)
+   * @param {number} [options.playbackRate] - Playback speed multiplier (default: 1.0)
+   *
+   * @example
+   * ```tsx
+   * // Play buzz at default volume
+   * playSound('buzz');
+   *
+   * // Play correct sound at half volume, 1.5x speed
+   * playSound('correct', { volume: 0.5, playbackRate: 1.5 });
+   * ```
+   */
   const playSound = useCallback((event: SoundEvent, options?: SoundOptions) => {
     // If custom volume is provided, temporarily set it on the appropriate sound instance
     // Otherwise, the volume set by the useEffect will be used
@@ -180,17 +269,55 @@ const useSoundEffects = (): SoundEffectsHook => {
     timerControls
   ]);
 
-  // Mute/unmute functions
+  /**
+   * Mutes all sound effects.
+   *
+   * Sets the volume to 0 for all currently loaded sounds and stops the timer
+   * sound if it's currently playing. The globalVolume setting is preserved
+   * and will be restored when unmute() is called.
+   *
+   * @example
+   * ```tsx
+   * mute(); // All sounds muted
+   * ```
+   */
   const mute = useCallback(() => {
     setIsMuted(true);
     stopTimer(); // Stop timer if playing
   }, [stopTimer]);
 
+  /**
+   * Unmutes all sound effects.
+   *
+   * Restores the volume to the current globalVolume setting for all sounds.
+   *
+   * @example
+   * ```tsx
+   * unmute(); // Sounds restored to previous volume
+   * ```
+   */
   const unmute = useCallback(() => {
     setIsMuted(false);
   }, []);
 
-  // Set global volume (0.0 to 1.0)
+  /**
+   * Sets the global volume level for all sound effects.
+   *
+   * This affects all sounds with their respective multipliers. For example,
+   * if you set the global volume to 0.5, the buzz sound will play at 50%
+   * volume, while the timer will play at 25% (50% of the 0.5 multiplier).
+   *
+   * The volume is automatically clamped between 0.0 and 1.0.
+   *
+   * @param {number} volume - Volume level from 0.0 (silent) to 1.0 (full volume)
+   *
+   * @example
+   * ```tsx
+   * setGlobalVolume(0.7); // Set to 70% volume
+   * setGlobalVolume(1.5); // Clamped to 1.0 (100%)
+   * setGlobalVolume(-0.2); // Clamped to 0.0 (silent)
+   * ```
+   */
   const setVolume = useCallback((volume: number) => {
     const clampedVolume = Math.max(0, Math.min(1, volume));
     setGlobalVolume(clampedVolume);
