@@ -1,7 +1,47 @@
+/**
+ * @fileoverview Next.js middleware for authentication and session management.
+ *
+ * This middleware runs on every request (matching the config pattern) to:
+ * - Create a Supabase server client with cookie management
+ * - Refresh user authentication sessions
+ * - Track and log session errors via Sentry
+ *
+ * The middleware operates on all routes except:
+ * - API routes (/api/*)
+ * - Static files (_next/static/*)
+ * - Images (_next/image/*)
+ * - Favicon
+ * - Auth callback routes
+ *
+ * @module middleware
+ */
+
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 
+/**
+ * Next.js middleware function for authentication and session management.
+ *
+ * This middleware:
+ * 1. Creates a Supabase server client with proper cookie handling
+ * 2. Retrieves and validates the user session
+ * 3. Logs any session errors to Sentry for monitoring
+ * 4. Returns the response with updated authentication cookies
+ *
+ * The middleware is non-blocking - even if errors occur, the request continues
+ * to prevent authentication issues from breaking the entire application.
+ *
+ * @param {NextRequest} req - The incoming Next.js request object
+ * @returns {Promise<NextResponse>} The Next.js response with updated cookies
+ *
+ * @example
+ * This middleware runs automatically on matching routes:
+ * - /dashboard → middleware runs
+ * - /game/board/123 → middleware runs
+ * - /api/games → middleware skipped (excluded in config)
+ * - /_next/static/... → middleware skipped (excluded in config)
+ */
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
@@ -62,6 +102,21 @@ export async function middleware(req: NextRequest) {
   }
 }
 
+/**
+ * Middleware configuration defining which routes to process.
+ *
+ * This configuration uses Next.js matcher patterns to specify which routes
+ * should be processed by the middleware. The pattern includes most routes
+ * but excludes:
+ * - API routes (/api/*)
+ * - Next.js static files (_next/static/*)
+ * - Next.js image optimization (_next/image/*)
+ * - Favicon (favicon.ico)
+ * - Auth callback routes (auth/callback)
+ *
+ * @constant {Object}
+ * @property {string[]} matcher - Array of route patterns to match
+ */
 export const config = {
   matcher: [
     /*

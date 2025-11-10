@@ -1,13 +1,52 @@
+/**
+ * @fileoverview Game board component displaying categories and questions.
+ *
+ * This component renders the main Jeopardy-style game board with category headers
+ * and question cards arranged in a grid. It handles question selection and marking
+ * questions as used.
+ *
+ * @module components/game/GameBoard
+ */
+
 "use client";
 import React from 'react';
 import { useGameStore } from '../../lib/stores/gameStore';
 import { QuestionCard } from './QuestionCard';
 import { Question } from '../../types/game';
 
+/**
+ * Props for the GameBoard component.
+ *
+ * @interface GameBoardProps
+ * @property {function} [onQuestionSelect] - Optional callback when a question is selected
+ */
 interface GameBoardProps {
   onQuestionSelect?: (question: Question) => void;
 }
 
+/**
+ * GameBoard component displaying the Jeopardy-style game board.
+ *
+ * This component:
+ * - Displays categories in a horizontal row
+ * - Shows questions in columns under each category
+ * - Handles question selection and marks them as used
+ * - Broadcasts question selections via the optional callback
+ * - Shows a loading state while game data is being fetched
+ *
+ * The board uses a CSS grid layout with 7 columns (for 7 categories) and
+ * automatically sizes rows based on content.
+ *
+ * @param {GameBoardProps} props - Component props
+ * @returns {JSX.Element} The rendered game board
+ *
+ * @example
+ * ```tsx
+ * <GameBoard onQuestionSelect={(question) => {
+ *   broadcastQuestionSelected(question);
+ * }} />
+ * ```
+ */
 export const GameBoard = ({ onQuestionSelect }: GameBoardProps) => {
   const { currentGameData, markQuestionUsed, setCurrentQuestion } = useGameStore();
 
@@ -26,7 +65,11 @@ export const GameBoard = ({ onQuestionSelect }: GameBoardProps) => {
     );
   }
 
-  // Function to handle question selection
+  /**
+   * Handles question selection by marking it as used and broadcasting to clients.
+   *
+   * @param {Question} question - The question that was selected
+   */
   const handleQuestionSelect = (question: Question) => {
     if (!question.isUsed) {
       // Mark the question as used and set it as the current question
