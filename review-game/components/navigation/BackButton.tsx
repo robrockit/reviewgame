@@ -30,6 +30,8 @@ interface BackButtonProps {
   href: string;
   /** The text label for the button. Defaults to "Back to Dashboard" */
   label?: string;
+  /** Optional aria-label override. If not provided, uses the label directly */
+  ariaLabel?: string;
   /** The visual style variant of the button */
   variant?: 'primary' | 'secondary' | 'text';
   /** Additional CSS classes to apply */
@@ -39,23 +41,24 @@ interface BackButtonProps {
 export function BackButton({
   href,
   label = "Back to Dashboard",
+  ariaLabel,
   variant = 'secondary',
   className = ''
 }: BackButtonProps) {
   const router = useRouter();
 
-  // Variant-specific styling
+  // Variant-specific styling with focus indicators for keyboard accessibility
   const variantStyles = {
-    primary: 'bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg',
-    secondary: 'bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg',
-    text: 'text-indigo-600 hover:text-indigo-800'
+    primary: 'bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+    secondary: 'bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2',
+    text: 'text-indigo-600 hover:text-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:rounded'
   };
 
   return (
     <button
       onClick={() => router.push(href)}
       className={`transition-colors font-medium flex items-center gap-2 ${variantStyles[variant]} ${className}`}
-      aria-label={`Return to ${label.toLowerCase()}`}
+      aria-label={ariaLabel || label}
       type="button"
     >
       <ChevronLeftIcon />

@@ -22,6 +22,8 @@ export function ChevronLeftIcon({ className = "w-5 h-5" }: ChevronLeftIconProps)
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
+      width="20"
+      height="20"
       aria-hidden="true"
     >
       <path
