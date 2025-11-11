@@ -54,15 +54,23 @@ export async function createAdminServerClient() {
         set(name: string, value: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value, ...options });
-          } catch (error) {
-            // Handle cookie setting errors in middleware
+          } catch (cookieError) {
+            // Cookie setting can fail in middleware context
+            // Log for debugging but don't throw
+            if (process.env.NODE_ENV === 'development') {
+              console.error('Failed to set cookie:', name, cookieError);
+            }
           }
         },
         remove(name: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value: '', ...options });
-          } catch (error) {
-            // Handle cookie removal errors in middleware
+          } catch (cookieError) {
+            // Cookie removal can fail in middleware context
+            // Log for debugging but don't throw
+            if (process.env.NODE_ENV === 'development') {
+              console.error('Failed to remove cookie:', name, cookieError);
+            }
           }
         },
       },
@@ -222,11 +230,11 @@ export async function logAdminAction({
       p_action_type: actionType,
       p_target_type: targetType,
       p_target_id: targetId,
-      p_changes: changes ? JSON.parse(JSON.stringify(changes)) : null,
-      p_reason: reason || null,
-      p_notes: notes || null,
-      p_ip_address: ipAddress || null,
-      p_user_agent: userAgent || null,
+      p_changes: changes ? JSON.parse(JSON.stringify(changes)) : undefined,
+      p_reason: reason || undefined,
+      p_notes: notes || undefined,
+      p_ip_address: ipAddress || undefined,
+      p_user_agent: userAgent || undefined,
     });
 
     if (error) {
