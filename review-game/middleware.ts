@@ -116,7 +116,7 @@ if (typeof setInterval !== 'undefined') {
  * - /_next/static/... → middleware skipped (excluded in config)
  */
 export async function middleware(req: NextRequest) {
-  let res = NextResponse.next();
+  const res = NextResponse.next();
 
   try {
     const supabase = createServerClient(

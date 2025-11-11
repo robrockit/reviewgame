@@ -31,9 +31,6 @@ export default withSentryConfig(nextConfig, {
   // Note: Check that the Sentry DSN is publicly available before enabling this option.
   tunnelRoute: "/monitoring",
 
-  // Hides source maps from generated client bundles
-  hideSourceMaps: true,
-
   // Automatically tree-shake Sentry logger statements to reduce bundle size
   disableLogger: true,
 });
