@@ -26,8 +26,9 @@ import * as Sentry from '@sentry/nextjs';
  * This middleware:
  * 1. Creates a Supabase server client with proper cookie handling
  * 2. Retrieves and validates the user session
- * 3. Logs any session errors to Sentry for monitoring
- * 4. Returns the response with updated authentication cookies
+ * 3. Protects admin routes (/admin/*) - redirects non-admins to dashboard
+ * 4. Logs any session errors to Sentry for monitoring
+ * 5. Returns the response with updated authentication cookies
  *
  * The middleware is non-blocking - even if errors occur, the request continues
  * to prevent authentication issues from breaking the entire application.
@@ -37,13 +38,14 @@ import * as Sentry from '@sentry/nextjs';
  *
  * @example
  * This middleware runs automatically on matching routes:
- * - /dashboard → middleware runs
- * - /game/board/123 → middleware runs
+ * - /dashboard → middleware runs (session refresh only)
+ * - /admin → middleware runs (admin check + session refresh)
+ * - /game/board/123 → middleware runs (session refresh only)
  * - /api/games → middleware skipped (excluded in config)
  * - /_next/static/... → middleware skipped (excluded in config)
  */
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
+  let res = NextResponse.next();
 
   try {
     const supabase = createServerClient(
@@ -79,6 +81,47 @@ export async function middleware(req: NextRequest) {
           middleware: 'auth',
         },
       });
+    }
+
+    // Admin route protection
+    if (req.nextUrl.pathname.startsWith('/admin')) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      // Redirect to login if not authenticated
+      if (!user) {
+        const redirectUrl = new URL('/login', req.url);
+        redirectUrl.searchParams.set('redirectTo', req.nextUrl.pathname);
+        return NextResponse.redirect(redirectUrl);
+      }
+
+      // Check admin role
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, is_active')
+        .eq('id', user.id)
+        .single();
+
+      // Redirect to dashboard if not an admin or inactive
+      if (!profile || profile.role !== 'admin' || !profile.is_active) {
+        Sentry.captureMessage('Unauthorized admin access attempt', {
+          level: 'warning',
+          user: {
+            id: user.id,
+            email: user.email,
+          },
+          contexts: {
+            custom: {
+              path: req.nextUrl.pathname,
+              role: profile?.role || 'none',
+              isActive: profile?.is_active || false,
+            },
+          },
+        });
+
+        return NextResponse.redirect(new URL('/dashboard', req.url));
+      }
     }
 
     return res;
