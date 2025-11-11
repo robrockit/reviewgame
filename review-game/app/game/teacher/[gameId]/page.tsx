@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import { createClient } from '@/lib/supabase/client';
+import { BackButton } from '@/components/navigation/BackButton';
 import type { Tables } from '@/types/database.types';
 
 type Game = Tables<'games'>;
@@ -236,12 +237,7 @@ export default function TeacherControlPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
           <p className="text-gray-700">{error || 'Game not found'}</p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Back to Dashboard
-          </button>
+          <BackButton href="/dashboard" variant="primary" className="mt-4" />
         </div>
       </div>
     );
@@ -254,17 +250,7 @@ export default function TeacherControlPage() {
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
             <h1 className="text-3xl font-bold text-gray-900">Teacher Control Panel</h1>
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium flex items-center gap-2"
-              aria-label="Return to dashboard"
-              type="button"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Back to Dashboard
-            </button>
+            <BackButton href="/dashboard" variant="secondary" />
           </div>
           <p className="text-gray-600">
             Game Status: <span className="font-semibold capitalize">{game.status}</span>
