@@ -7,6 +7,7 @@ import { GameBoard } from '@/components/game/GameBoard';
 import { TeamScoreboard } from '@/components/game/TeamScoreboard';
 import { QuestionModal } from '@/components/game/QuestionModal';
 import { DailyDoubleModal } from '@/components/game/DailyDoubleModal';
+import { BackButton } from '@/components/navigation/BackButton';
 import { useGameStore } from '@/lib/stores/gameStore';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import type { Tables } from '@/types/database.types';
@@ -476,12 +477,7 @@ export default function GameBoardPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
           <p className="text-gray-700">{error || 'Game not found'}</p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Back to Dashboard
-          </button>
+          <BackButton href="/dashboard" variant="primary" className="mt-4" />
         </div>
       </div>
     );
