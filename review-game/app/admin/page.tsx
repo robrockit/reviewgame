@@ -7,7 +7,8 @@
  * @module app/admin/page
  */
 
-import { createAdminServerClient } from '@/lib/admin/auth';
+import { createAdminServerClient, logAdminAction } from '@/lib/admin/auth';
+import { headers } from 'next/headers';
 import {
   UsersIcon,
   CreditCardIcon,
@@ -17,38 +18,86 @@ import {
 
 /**
  * Fetches dashboard statistics from the database.
+ *
+ * Returns fallback values (0) if any queries fail to ensure
+ * the dashboard remains functional even with partial data.
  */
 async function getDashboardStats() {
   const supabase = await createAdminServerClient();
 
+  let totalUsers = 0;
+  let activeSubscribers = 0;
+  let totalGames = 0;
+  let adminUsers = 0;
+
   // Get total users count
-  const { count: totalUsers } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true });
+  try {
+    const { count, error } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true });
+
+    if (error) {
+      console.error('Error fetching total users count:', error);
+    } else {
+      totalUsers = count || 0;
+    }
+  } catch (err) {
+    console.error('Unexpected error fetching total users:', err);
+  }
 
   // Get active subscribers count
-  const { count: activeSubscribers } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
-    .in('subscription_status', ['active', 'trialing']);
+  try {
+    const { count, error } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .in('subscription_status', ['active', 'trialing']);
+
+    if (error) {
+      console.error('Error fetching active subscribers count:', error);
+    } else {
+      activeSubscribers = count || 0;
+    }
+  } catch (err) {
+    console.error('Unexpected error fetching active subscribers:', err);
+  }
 
   // Get total games count
-  const { count: totalGames } = await supabase
-    .from('games')
-    .select('*', { count: 'exact', head: true });
+  try {
+    const { count, error } = await supabase
+      .from('games')
+      .select('*', { count: 'exact', head: true });
+
+    if (error) {
+      console.error('Error fetching total games count:', error);
+    } else {
+      totalGames = count || 0;
+    }
+  } catch (err) {
+    console.error('Unexpected error fetching total games:', err);
+  }
 
   // Get admin users count
-  const { count: adminUsers } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
-    .eq('role', 'admin')
-    .eq('is_active', true);
+  try {
+    const { count, error } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .eq('role', 'admin')
+      .eq('is_active', true);
+
+    if (error) {
+      console.error('Error fetching admin users count:', error);
+    } else {
+      adminUsers = count || 0;
+    }
+  } catch (err) {
+    console.error('Unexpected error fetching admin users:', err);
+  }
 
   return {
-    totalUsers: totalUsers || 0,
-    activeSubscribers: activeSubscribers || 0,
-    totalGames: totalGames || 0,
-    adminUsers: adminUsers || 0,
+    totalUsers,
+    activeSubscribers,
+    totalGames,
+    adminUsers,
   };
 }
 
@@ -58,6 +107,27 @@ async function getDashboardStats() {
  * Displays key metrics and quick action cards for admin operations.
  */
 export default async function AdminDashboardPage() {
+  // Log admin dashboard access for audit trail
+  try {
+    const headersList = await headers();
+    const ipAddress = headersList.get('x-forwarded-for') ||
+                      headersList.get('x-real-ip') ||
+                      'unknown';
+    const userAgent = headersList.get('user-agent') || 'unknown';
+
+    await logAdminAction({
+      actionType: 'view_dashboard',
+      targetType: 'admin_portal',
+      targetId: 'dashboard',
+      notes: 'Admin accessed the dashboard',
+      ipAddress,
+      userAgent,
+    });
+  } catch (err) {
+    // Log silently - don't block page load if audit logging fails
+    console.error('Failed to log admin dashboard access:', err);
+  }
+
   const stats = await getDashboardStats();
 
   const statCards = [

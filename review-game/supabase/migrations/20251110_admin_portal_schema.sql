@@ -69,7 +69,7 @@ COMMENT ON COLUMN profiles.plan_override_limits IS 'JSON object with custom feat
 
 CREATE TABLE IF NOT EXISTS admin_audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  admin_user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE SET NULL,
+  admin_user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
   action_type TEXT NOT NULL,
   target_type TEXT NOT NULL,
   target_id TEXT NOT NULL,
@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS refunds (
     'other'
   )),
   notes TEXT,
-  refunded_by UUID NOT NULL REFERENCES profiles(id) ON DELETE SET NULL,
+  refunded_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

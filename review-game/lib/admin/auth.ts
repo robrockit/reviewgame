@@ -76,6 +76,18 @@ export async function createAdminServerClient() {
  * This function checks both authentication status and admin role.
  * Returns the admin profile if valid, or null otherwise.
  *
+ * SECURITY NOTE: This function has a small TOCTOU (Time-of-Check-Time-of-Use)
+ * window where admin status could theoretically change between verification
+ * and page render. However:
+ * 1. The window is extremely small (milliseconds)
+ * 2. Database RLS policies provide additional security at the data layer
+ * 3. All database operations verify admin status via RLS policies
+ *
+ * For enhanced security in high-stakes environments, consider:
+ * - Implementing session-based role caching with Redis
+ * - Adding role change webhooks to invalidate sessions
+ * - Using database functions with SECURITY DEFINER for atomic checks
+ *
  * @returns {Promise<AdminProfile | null>} Admin profile or null
  *
  * @example
@@ -100,6 +112,8 @@ export async function verifyAdminUser(): Promise<AdminProfile | null> {
   }
 
   // Check admin role and active status
+  // NOTE: This query is subject to a small TOCTOU race condition.
+  // See function documentation for mitigation strategies.
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('id, email, role, is_active, full_name')

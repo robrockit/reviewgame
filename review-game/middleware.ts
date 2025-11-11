@@ -21,6 +21,77 @@ import { NextResponse, type NextRequest } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 
 /**
+ * Simple in-memory rate limiter for admin routes.
+ *
+ * This provides basic protection against brute force attacks and credential stuffing.
+ * In production, consider using a distributed rate limiter with Redis or a service
+ * like Vercel Rate Limit API.
+ *
+ * Configuration:
+ * - Window: 15 minutes (900,000 ms)
+ * - Max requests per window: 20 requests
+ * - Applies only to /admin routes
+ */
+class RateLimiter {
+  private requests: Map<string, { count: number; resetAt: number }> = new Map();
+  private readonly windowMs = 15 * 60 * 1000; // 15 minutes
+  private readonly maxRequests = 20;
+
+  /**
+   * Checks if a request from the given IP should be rate limited.
+   *
+   * @param ip - The IP address to check
+   * @returns {boolean} True if rate limit exceeded, false otherwise
+   */
+  public isRateLimited(ip: string): boolean {
+    const now = Date.now();
+    const record = this.requests.get(ip);
+
+    // No record or window expired - allow and create new record
+    if (!record || now > record.resetAt) {
+      this.requests.set(ip, {
+        count: 1,
+        resetAt: now + this.windowMs,
+      });
+      return false;
+    }
+
+    // Increment count
+    record.count++;
+
+    // Check if limit exceeded
+    if (record.count > this.maxRequests) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Cleans up expired entries from the rate limit map.
+   * Should be called periodically to prevent memory leaks.
+   */
+  public cleanup(): void {
+    const now = Date.now();
+    for (const [ip, record] of this.requests.entries()) {
+      if (now > record.resetAt) {
+        this.requests.delete(ip);
+      }
+    }
+  }
+}
+
+// Global rate limiter instance
+const adminRateLimiter = new RateLimiter();
+
+// Cleanup expired entries every 5 minutes
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => {
+    adminRateLimiter.cleanup();
+  }, 5 * 60 * 1000);
+}
+
+/**
  * Next.js middleware function for authentication and session management.
  *
  * This middleware:
@@ -85,6 +156,38 @@ export async function middleware(req: NextRequest) {
 
     // Admin route protection
     if (req.nextUrl.pathname.startsWith('/admin')) {
+      // Rate limiting for admin routes
+      const ip =
+        req.headers.get('x-forwarded-for')?.split(',')[0] ||
+        req.headers.get('x-real-ip') ||
+        'unknown';
+
+      if (adminRateLimiter.isRateLimited(ip)) {
+        Sentry.captureMessage('Admin route rate limit exceeded', {
+          level: 'warning',
+          contexts: {
+            custom: {
+              ip,
+              path: req.nextUrl.pathname,
+            },
+          },
+        });
+
+        return new NextResponse(
+          JSON.stringify({
+            error: 'Too many requests',
+            message: 'Rate limit exceeded. Please try again later.',
+          }),
+          {
+            status: 429,
+            headers: {
+              'Content-Type': 'application/json',
+              'Retry-After': '900', // 15 minutes in seconds
+            },
+          }
+        );
+      }
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
