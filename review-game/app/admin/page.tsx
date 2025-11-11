@@ -7,6 +7,7 @@
  * @module app/admin/page
  */
 
+import Link from 'next/link';
 import { createAdminServerClient, logAdminAction } from '@/lib/admin/auth';
 import { headers } from 'next/headers';
 import {
@@ -228,7 +229,7 @@ export default async function AdminDashboardPage() {
         </div>
         <div className="px-6 py-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <a
+            <Link
               href="/admin/users"
               className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500"
             >
@@ -244,9 +245,9 @@ export default async function AdminDashboardPage() {
                   View and edit user accounts
                 </p>
               </div>
-            </a>
+            </Link>
 
-            <a
+            <Link
               href="/admin/payments"
               className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500"
             >
@@ -262,9 +263,9 @@ export default async function AdminDashboardPage() {
                   Process refunds and manage subscriptions
                 </p>
               </div>
-            </a>
+            </Link>
 
-            <a
+            <Link
               href="/admin/audit"
               className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-purple-500"
             >
@@ -280,7 +281,7 @@ export default async function AdminDashboardPage() {
                   Track admin actions and changes
                 </p>
               </div>
-            </a>
+            </Link>
           </div>
         </div>
       </div>

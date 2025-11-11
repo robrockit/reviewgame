@@ -14,7 +14,7 @@
 
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon } from '@heroicons/react/24/outline';
 import type { AdminProfile } from '@/lib/admin/auth';
 import AdminMobileSidebar from './AdminMobileSidebar';
 
