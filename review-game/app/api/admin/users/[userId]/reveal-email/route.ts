@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminUser, createAdminServerClient, logAdminAction } from '@/lib/admin/auth';
 import { headers } from 'next/headers';
 import * as Sentry from '@sentry/nextjs';
+import { logger } from '@/lib/logger';
 
 /**
  * POST /api/admin/users/[userId]/reveal-email
@@ -61,7 +62,11 @@ export async function POST(
       .single();
 
     if (userError || !user) {
-      console.error('Error fetching user for email reveal:', userError);
+      logger.error('Error fetching user for email reveal', new Error(userError?.message || 'User not found'), {
+        operation: 'fetchUserForEmailReveal',
+        errorCode: userError?.code,
+        userId,
+      });
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
@@ -88,7 +93,13 @@ export async function POST(
     } catch (auditError) {
       // CRITICAL: Audit logging failure is a compliance violation
       // Do NOT reveal email without logging - this is required for GDPR/CCPA/SOC2
-      console.error('CRITICAL: Failed to log email reveal action:', auditError);
+      logger.error('CRITICAL: Failed to log email reveal action', auditError instanceof Error ? auditError : new Error(String(auditError)), {
+        operation: 'auditEmailReveal',
+        userId,
+        adminUserId: adminUser.id,
+        targetEmail: user.email,
+        critical: true,
+      });
 
       // Alert monitoring system
       Sentry.captureException(auditError, {
@@ -122,7 +133,9 @@ export async function POST(
       full_name: user.full_name,
     });
   } catch (error) {
-    console.error('Error in POST /api/admin/users/[userId]/reveal-email:', error);
+    logger.error('Error in POST /api/admin/users/[userId]/reveal-email', error instanceof Error ? error : new Error(String(error)), {
+      operation: 'revealEmail',
+    });
 
     if (error instanceof Error) {
       return NextResponse.json(

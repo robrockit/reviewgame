@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminUser, createAdminServerClient, logAdminAction } from '@/lib/admin/auth';
 import { headers } from 'next/headers';
+import { logger } from '@/lib/logger';
 
 /**
  * User data returned in API responses
@@ -99,7 +100,10 @@ export async function GET(req: NextRequest) {
       .select('*', { count: 'exact', head: true });
 
     if (countError) {
-      console.error('Error counting users:', countError);
+      logger.error('Error counting users', new Error(countError.message), {
+        operation: 'countUsers',
+        errorCode: countError.code,
+      });
       return NextResponse.json(
         { error: 'Failed to count users' },
         { status: 500 }
@@ -114,7 +118,13 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (usersError) {
-      console.error('Error fetching users:', usersError);
+      logger.error('Error fetching users', new Error(usersError.message), {
+        operation: 'fetchUsers',
+        errorCode: usersError.code,
+        sortBy: safeSortBy,
+        page,
+        limit,
+      });
       return NextResponse.json(
         { error: 'Failed to fetch users' },
         { status: 500 }
@@ -149,10 +159,13 @@ export async function GET(req: NextRequest) {
         userAgent,
       });
     } catch (auditError) {
-      // Log silently - don't block response if audit logging fails
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to log admin action:', auditError);
-      }
+      // Log audit failure but don't block response for list operations
+      // List operations expose masked data only, so less critical than email reveal
+      logger.error('Failed to log admin list action', auditError instanceof Error ? auditError : new Error(String(auditError)), {
+        operation: 'auditListUsers',
+        page,
+        limit,
+      });
     }
 
     // Return response
@@ -168,7 +181,9 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error in GET /api/admin/users:', error);
+    logger.error('Error in GET /api/admin/users', error instanceof Error ? error : new Error(String(error)), {
+      operation: 'listUsers',
+    });
 
     if (error instanceof Error) {
       return NextResponse.json(

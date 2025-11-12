@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminUser, createAdminServerClient, logAdminAction } from '@/lib/admin/auth';
 import { headers } from 'next/headers';
+import { logger } from '@/lib/logger';
 import type { AdminUserListItem } from '../route';
 
 /**
@@ -112,7 +113,13 @@ export async function POST(req: NextRequest) {
       .range(offset, offset + limitNum - 1);
 
     if (searchError) {
-      console.error('Error searching users:', searchError);
+      logger.error('Error searching users', new Error(searchError.message), {
+        operation: 'searchUsers',
+        errorCode: searchError.code,
+        query: searchQuery,
+        page: pageNum,
+        limit: limitNum,
+      });
       return NextResponse.json(
         { error: 'Failed to search users' },
         { status: 500 }
@@ -147,10 +154,14 @@ export async function POST(req: NextRequest) {
         userAgent,
       });
     } catch (auditError) {
-      // Log silently - don't block response if audit logging fails
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to log admin action:', auditError);
-      }
+      // Log audit failure but don't block response for search operations
+      // Search operations expose masked data only, so less critical than email reveal
+      logger.error('Failed to log admin search action', auditError instanceof Error ? auditError : new Error(String(auditError)), {
+        operation: 'auditSearchUsers',
+        query: searchQuery,
+        page: pageNum,
+        limit: limitNum,
+      });
     }
 
     // Return response
@@ -167,7 +178,9 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error in POST /api/admin/users/search:', error);
+    logger.error('Error in POST /api/admin/users/search', error instanceof Error ? error : new Error(String(error)), {
+      operation: 'searchUsers',
+    });
 
     if (error instanceof Error) {
       return NextResponse.json(
