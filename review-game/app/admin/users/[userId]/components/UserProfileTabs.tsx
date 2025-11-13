@@ -8,7 +8,6 @@
 
 'use client';
 
-import { useState } from 'react';
 import { Tab } from '@headlessui/react';
 import { clsx } from 'clsx';
 import ProfileTab from './ProfileTab';
