@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminUser, createAdminServerClient, logAdminAction } from '@/lib/admin/auth';
+import { verifyAdminUser, createAdminServerClient } from '@/lib/admin/auth';
 import { headers } from 'next/headers';
 import { logger } from '@/lib/logger';
 
@@ -109,21 +109,56 @@ export async function POST(
       );
     }
 
-    // Activate the user
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({
-        is_active: true,
-        suspension_reason: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId);
+    // Prepare changes object for audit log
+    const changes = {
+      is_active: { from: false, to: true },
+      suspension_reason: { from: currentUser.suspension_reason, to: null },
+    };
 
-    if (updateError) {
-      logger.error('Error activating user', new Error(updateError.message), {
+    // Get request metadata
+    const headersList = await headers();
+    const ipAddress = headersList.get('x-forwarded-for')?.split(',')[0] ||
+                      headersList.get('x-real-ip') ||
+                      'unknown';
+    const userAgent = headersList.get('user-agent') || 'unknown';
+
+    // Atomically activate user and create audit log using database function
+    // This ensures both operations succeed or both fail (transaction safety)
+    // Also includes admin re-verification to prevent TOCTOU race conditions
+    // @ts-expect-error - Function added in migration 20251113_suspension_security_enhancements.sql
+    // Types will be available after running: npx supabase gen types typescript
+    const { data, error: rpcError } = await supabase.rpc('activate_user_with_audit', {
+      p_user_id: userId,
+      p_admin_id: adminUser.id,
+      p_notes: notes || `Reactivated user ${currentUser.email}`,
+      p_ip_address: ipAddress,
+      p_user_agent: userAgent,
+      p_changes: changes,
+    }) as { data: unknown; error: unknown };
+
+    if (rpcError) {
+      // Check if error is due to admin privileges being revoked (TOCTOU prevention)
+      const errorMessage = typeof rpcError === 'object' && rpcError !== null && 'message' in rpcError
+        ? String(rpcError.message)
+        : 'Unknown error';
+
+      if (errorMessage.includes('Admin privileges revoked')) {
+        logger.warn('Admin privileges revoked during activation operation', {
+          operation: 'activateUser',
+          adminId: adminUser.id,
+          userId,
+        });
+
+        return NextResponse.json(
+          { error: 'Admin access revoked. Operation cancelled.' },
+          { status: 403 }
+        );
+      }
+
+      logger.error('Error activating user (transaction rolled back)', new Error(errorMessage), {
         operation: 'activateUser',
-        errorCode: updateError.code,
         userId,
+        adminId: adminUser.id,
       });
 
       return NextResponse.json(
@@ -132,36 +167,17 @@ export async function POST(
       );
     }
 
-    // Log admin action
-    try {
-      const headersList = await headers();
-      const ipAddress = headersList.get('x-forwarded-for') ||
-                        headersList.get('x-real-ip') ||
-                        'unknown';
-      const userAgent = headersList.get('user-agent') || 'unknown';
+    // Success - both operations completed atomically
+    // Type assertion: data is JSONB object from database function
+    const result = data as { user: { email: string }; audit_id: string };
 
-      await logAdminAction({
-        actionType: 'activate_user',
-        targetType: 'profile',
-        targetId: userId,
-        notes: notes || `Reactivated user ${currentUser.email}`,
-        changes: {
-          is_active: { from: false, to: true },
-          suspension_reason: { from: currentUser.suspension_reason, to: null },
-        },
-        ipAddress,
-        userAgent,
-      });
-    } catch (auditError) {
-      // CRITICAL: Log audit failure with full details for compliance
-      logger.error('CRITICAL: Failed to log user activation action', auditError instanceof Error ? auditError : new Error(String(auditError)), {
-        operation: 'auditActivateUser',
-        userId,
-        adminId: adminUser.id,
-        notes,
-        attemptedAction: 'activate_user',
-      });
-    }
+    logger.info('User activated successfully', {
+      operation: 'activateUser',
+      userId,
+      userEmail: result.user.email,
+      auditId: result.audit_id,
+      adminId: adminUser.id,
+    });
 
     // Return success response
     return NextResponse.json({
