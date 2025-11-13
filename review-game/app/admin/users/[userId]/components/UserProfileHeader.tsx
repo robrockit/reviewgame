@@ -8,9 +8,11 @@
 
 'use client';
 
-import { UserCircleIcon } from '@heroicons/react/24/outline';
+import { useState } from 'react';
 import { format } from 'date-fns';
 import type { AdminUserDetail } from '@/app/api/admin/users/[userId]/route';
+import EditProfileModal from './EditProfileModal';
+import Toast from './Toast';
 
 interface UserProfileHeaderProps {
   user: AdminUserDetail;
@@ -41,7 +43,11 @@ function StatusBadge({ isActive }: { isActive: boolean | null }) {
  * Shows user avatar (or initials), name, email, join date, and account status.
  * Provides quick action buttons for common admin operations.
  */
-export default function UserProfileHeader({ user }: UserProfileHeaderProps) {
+export default function UserProfileHeader({ user: initialUser }: UserProfileHeaderProps) {
+  const [user, setUser] = useState<AdminUserDetail>(initialUser);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+
   // Generate initials from full name or email
   const getInitials = () => {
     if (user.full_name) {
@@ -52,6 +58,16 @@ export default function UserProfileHeader({ user }: UserProfileHeaderProps) {
       return user.full_name.substring(0, 2).toUpperCase();
     }
     return user.email.substring(0, 2).toUpperCase();
+  };
+
+  /**
+   * Handles successful profile update
+   */
+  const handleEditSuccess = (updatedUser: AdminUserDetail) => {
+    setUser(updatedUser);
+    setShowSuccessToast(true);
+    // Auto-hide toast after 5 seconds
+    setTimeout(() => setShowSuccessToast(false), 5000);
   };
 
   return (
@@ -125,14 +141,31 @@ export default function UserProfileHeader({ user }: UserProfileHeaderProps) {
           </button>
           <button
             type="button"
+            onClick={() => setIsEditModalOpen(true)}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-            title="Edit user details (coming soon)"
-            disabled
+            title="Edit user profile"
           >
-            Edit
+            Edit Profile
           </button>
         </div>
       </div>
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        user={user}
+        onSuccess={handleEditSuccess}
+      />
+
+      {/* Success Toast */}
+      {showSuccessToast && (
+        <Toast
+          message="User profile updated successfully"
+          type="success"
+          onClose={() => setShowSuccessToast(false)}
+        />
+      )}
     </div>
   );
 }
