@@ -9,9 +9,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import type { AdminUserDetail } from '@/app/api/admin/users/[userId]/route';
 import EditProfileModal from './EditProfileModal';
+import SuspendUserModal from './SuspendUserModal';
 import Toast from './Toast';
 
 interface UserProfileHeaderProps {
@@ -44,9 +46,13 @@ function StatusBadge({ isActive }: { isActive: boolean | null }) {
  * Provides quick action buttons for common admin operations.
  */
 export default function UserProfileHeader({ user: initialUser }: UserProfileHeaderProps) {
+  const router = useRouter();
   const [user, setUser] = useState<AdminUserDetail>(initialUser);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSuspendModalOpen, setIsSuspendModalOpen] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('User profile updated successfully');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Generate initials from full name or email
   const getInitials = () => {
@@ -61,13 +67,70 @@ export default function UserProfileHeader({ user: initialUser }: UserProfileHead
   };
 
   /**
+   * Shows success toast with custom message
+   */
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setShowSuccessToast(true);
+    setTimeout(() => setShowSuccessToast(false), 5000);
+  };
+
+  /**
    * Handles successful profile update
    */
   const handleEditSuccess = (updatedUser: AdminUserDetail) => {
     setUser(updatedUser);
-    setShowSuccessToast(true);
-    // Auto-hide toast after 5 seconds
-    setTimeout(() => setShowSuccessToast(false), 5000);
+    showToast('User profile updated successfully');
+  };
+
+  /**
+   * Handles successful suspension
+   */
+  const handleSuspendSuccess = () => {
+    // Update user state to reflect suspension
+    setUser(prev => ({ ...prev, is_active: false }));
+    showToast('User account suspended successfully');
+    // Refresh server components without full page reload
+    router.refresh();
+  };
+
+  /**
+   * Handles user activation
+   */
+  const handleActivate = async () => {
+    if (isProcessing) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to activate ${user.email}? This will restore their access to the system.`
+    );
+
+    if (!confirmed) return;
+
+    setIsProcessing(true);
+
+    try {
+      const response = await fetch(`/api/admin/users/${user.id}/activate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to activate user');
+      }
+
+      // Update user state to reflect activation
+      setUser(prev => ({ ...prev, is_active: true, suspension_reason: null }));
+      showToast('User account activated successfully');
+      // Refresh server components without full page reload
+      router.refresh();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to activate user');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -131,14 +194,27 @@ export default function UserProfileHeader({ user: initialUser }: UserProfileHead
           >
             Impersonate
           </button>
-          <button
-            type="button"
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-            title="Suspend/unsuspend user (coming soon)"
-            disabled
-          >
-            {user.is_active ? 'Suspend' : 'Reactivate'}
-          </button>
+          {user.is_active ? (
+            <button
+              type="button"
+              onClick={() => setIsSuspendModalOpen(true)}
+              disabled={isProcessing}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Suspend user account"
+            >
+              Suspend
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleActivate}
+              disabled={isProcessing}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-green-700 bg-white hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Reactivate user account"
+            >
+              {isProcessing ? 'Activating...' : 'Reactivate'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setIsEditModalOpen(true)}
@@ -158,10 +234,19 @@ export default function UserProfileHeader({ user: initialUser }: UserProfileHead
         onSuccess={handleEditSuccess}
       />
 
+      {/* Suspend User Modal */}
+      <SuspendUserModal
+        isOpen={isSuspendModalOpen}
+        onClose={() => setIsSuspendModalOpen(false)}
+        userEmail={user.email}
+        userId={user.id}
+        onSuccess={handleSuspendSuccess}
+      />
+
       {/* Success Toast */}
       {showSuccessToast && (
         <Toast
-          message="User profile updated successfully"
+          message={toastMessage}
           type="success"
           onClose={() => setShowSuccessToast(false)}
         />
