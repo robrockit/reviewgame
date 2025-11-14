@@ -162,7 +162,7 @@ export async function middleware(req: NextRequest) {
     if (session?.user && !req.nextUrl.pathname.startsWith('/login') && !req.nextUrl.pathname.startsWith('/auth')) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('is_active, suspension_reason')
+        .select('is_active, suspension_reason, suspended_at')
         .eq('id', session.user.id)
         .single();
 
@@ -178,11 +178,15 @@ export async function middleware(req: NextRequest) {
             custom: {
               path: req.nextUrl.pathname,
               suspensionReason: profile.suspension_reason,
+              suspendedAt: profile.suspended_at,
             },
           },
         });
 
-        // Sign out the user
+        // Sign out the user's current session
+        // Note: This signs out the current session. For immediate invalidation
+        // of ALL active sessions across devices, additional session management
+        // would be required (to be tracked in future ticket)
         await supabase.auth.signOut();
 
         // Redirect to login with suspended flag

@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminUser, createAdminServerClient, logAdminAction } from '@/lib/admin/auth';
+import { verifyAdminUser, createAdminServerClient } from '@/lib/admin/auth';
 import { headers } from 'next/headers';
 import { logger } from '@/lib/logger';
 
@@ -181,61 +181,83 @@ export async function POST(
     // Format suspension reason for database
     const formattedReason = `${body.reason}${notes ? `: ${notes}` : ''}`;
 
-    // Suspend the user
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({
-        is_active: false,
-        suspension_reason: formattedReason,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId);
+    // Prepare changes object for audit log
+    const changes = {
+      is_active: { from: true, to: false },
+      suspension_reason: { from: currentUser.suspension_reason, to: formattedReason },
+    };
 
-    if (updateError) {
-      logger.error('Error suspending user', new Error(updateError.message), {
+    // Get request metadata
+    const headersList = await headers();
+    const forwardedFor = headersList.get('x-forwarded-for')?.split(',')[0]?.trim();
+    const ipAddress = (forwardedFor && forwardedFor.length > 0)
+                      ? forwardedFor
+                      : headersList.get('x-real-ip') || 'unknown';
+    const userAgent = headersList.get('user-agent') || 'unknown';
+
+    // Atomically suspend user and create audit log using database function
+    // This ensures both operations succeed or both fail (transaction safety)
+    // Also includes admin re-verification to prevent TOCTOU race conditions
+    // @ts-expect-error - Function added in migration 20251113_suspension_security_enhancements.sql
+    // Types will be available after running: npx supabase gen types typescript
+    const { data, error: rpcError } = await supabase.rpc('suspend_user_with_audit', {
+      p_user_id: userId,
+      p_formatted_reason: formattedReason,
+      p_admin_id: adminUser.id,
+      p_action_type: 'suspend_user',
+      p_reason: body.reason,
+      p_notes: notes || null,
+      p_ip_address: ipAddress,
+      p_user_agent: userAgent,
+      p_changes: changes,
+    }) as { data: unknown; error: unknown };
+
+    if (rpcError) {
+      // Check if error is due to admin privileges being revoked (TOCTOU prevention)
+      const errorMessage = typeof rpcError === 'object' && rpcError !== null && 'message' in rpcError
+        ? String(rpcError.message)
+        : 'Unknown error';
+
+      if (errorMessage.includes('Admin privileges revoked')) {
+        logger.warn('Admin privileges revoked during suspension operation', {
+          operation: 'suspendUser',
+          adminId: adminUser.id,
+          userId,
+        });
+
+        return NextResponse.json(
+          { error: 'Admin access revoked. Operation cancelled.' },
+          { status: 403 }
+        );
+      }
+
+      // Log full error details for debugging
+      logger.error('Error suspending user (transaction rolled back)', new Error(errorMessage), {
         operation: 'suspendUser',
-        errorCode: updateError.code,
         userId,
+        adminId: adminUser.id,
+        errorDetails: errorMessage,
       });
 
+      // Return generic error message to prevent information disclosure
       return NextResponse.json(
-        { error: 'Failed to suspend user' },
+        { error: 'Failed to suspend user. Please try again or contact support.' },
         { status: 500 }
       );
     }
 
-    // Log admin action
-    try {
-      const headersList = await headers();
-      const ipAddress = headersList.get('x-forwarded-for') ||
-                        headersList.get('x-real-ip') ||
-                        'unknown';
-      const userAgent = headersList.get('user-agent') || 'unknown';
+    // Success - both operations completed atomically
+    // Type assertion: data is JSONB object from database function
+    const result = data as { user: { email: string }; audit_id: string; suspended_at: string };
 
-      await logAdminAction({
-        actionType: 'suspend_user',
-        targetType: 'profile',
-        targetId: userId,
-        reason: body.reason,
-        notes: notes || undefined,
-        changes: {
-          is_active: { from: true, to: false },
-          suspension_reason: { from: currentUser.suspension_reason, to: formattedReason },
-        },
-        ipAddress,
-        userAgent,
-      });
-    } catch (auditError) {
-      // CRITICAL: Log audit failure with full details for compliance
-      logger.error('CRITICAL: Failed to log user suspension action', auditError instanceof Error ? auditError : new Error(String(auditError)), {
-        operation: 'auditSuspendUser',
-        userId,
-        adminId: adminUser.id,
-        reason: body.reason,
-        notes,
-        attemptedAction: 'suspend_user',
-      });
-    }
+    logger.info('User suspended successfully', {
+      operation: 'suspendUser',
+      userId,
+      userEmail: result.user.email,
+      auditId: result.audit_id,
+      suspendedAt: result.suspended_at,
+      adminId: adminUser.id,
+    });
 
     // Return success response
     return NextResponse.json({
