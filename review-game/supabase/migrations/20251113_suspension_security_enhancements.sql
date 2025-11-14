@@ -13,8 +13,12 @@
 ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ;
 
--- Add index for performance
+-- Add indexes for performance
 CREATE INDEX IF NOT EXISTS idx_profiles_suspended_at ON profiles(suspended_at);
+
+-- Composite index for middleware suspension check query (profiles WHERE id = ? AND is_active)
+-- This query is executed on every authenticated request, so performance is critical
+CREATE INDEX IF NOT EXISTS idx_profiles_id_is_active ON profiles(id, is_active);
 
 -- Add comment
 COMMENT ON COLUMN profiles.suspended_at IS 'Timestamp when account was suspended (NULL if never suspended or currently active)';
@@ -26,6 +30,12 @@ COMMENT ON COLUMN profiles.suspended_at IS 'Timestamp when account was suspended
 /**
  * Atomically suspend a user account and create audit log entry.
  * Both operations succeed or both fail (transaction safety).
+ *
+ * SECURITY NOTE: This function uses SECURITY DEFINER to bypass RLS policies
+ * and execute with elevated privileges. This is intentional and necessary for:
+ * 1. Ensuring atomic updates to profiles and audit_log tables
+ * 2. Re-verifying admin status to prevent TOCTOU race conditions
+ * The search_path is locked to 'public' to prevent privilege escalation attacks.
  *
  * @param p_user_id - User ID to suspend
  * @param p_formatted_reason - Full suspension reason with notes
@@ -122,7 +132,7 @@ BEGIN
     'suspended_at', v_suspended_at
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION public.suspend_user_with_audit IS 'Atomically suspends a user and creates audit log. Includes admin re-verification for TOCTOU prevention.';
 
@@ -132,6 +142,12 @@ GRANT EXECUTE ON FUNCTION public.suspend_user_with_audit TO authenticated;
 /**
  * Atomically activate a user account and create audit log entry.
  * Both operations succeed or both fail (transaction safety).
+ *
+ * SECURITY NOTE: This function uses SECURITY DEFINER to bypass RLS policies
+ * and execute with elevated privileges. This is intentional and necessary for:
+ * 1. Ensuring atomic updates to profiles and audit_log tables
+ * 2. Re-verifying admin status to prevent TOCTOU race conditions
+ * The search_path is locked to 'public' to prevent privilege escalation attacks.
  *
  * @param p_user_id - User ID to activate
  * @param p_admin_id - Admin performing the activation
@@ -211,7 +227,7 @@ BEGIN
     'audit_id', v_audit_id
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION public.activate_user_with_audit IS 'Atomically activates a suspended user and creates audit log. Includes admin re-verification for TOCTOU prevention.';
 

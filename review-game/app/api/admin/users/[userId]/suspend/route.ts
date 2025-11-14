@@ -189,9 +189,10 @@ export async function POST(
 
     // Get request metadata
     const headersList = await headers();
-    const ipAddress = headersList.get('x-forwarded-for')?.split(',')[0] ||
-                      headersList.get('x-real-ip') ||
-                      'unknown';
+    const forwardedFor = headersList.get('x-forwarded-for')?.split(',')[0]?.trim();
+    const ipAddress = (forwardedFor && forwardedFor.length > 0)
+                      ? forwardedFor
+                      : headersList.get('x-real-ip') || 'unknown';
     const userAgent = headersList.get('user-agent') || 'unknown';
 
     // Atomically suspend user and create audit log using database function
@@ -230,14 +231,17 @@ export async function POST(
         );
       }
 
+      // Log full error details for debugging
       logger.error('Error suspending user (transaction rolled back)', new Error(errorMessage), {
         operation: 'suspendUser',
         userId,
         adminId: adminUser.id,
+        errorDetails: errorMessage,
       });
 
+      // Return generic error message to prevent information disclosure
       return NextResponse.json(
-        { error: 'Failed to suspend user' },
+        { error: 'Failed to suspend user. Please try again or contact support.' },
         { status: 500 }
       );
     }

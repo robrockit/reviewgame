@@ -186,7 +186,7 @@ export async function middleware(req: NextRequest) {
         // Sign out the user's current session
         // Note: This signs out the current session. For immediate invalidation
         // of ALL active sessions across devices, additional session management
-        // would be required (tracked in RG-106)
+        // would be required (to be tracked in future ticket)
         await supabase.auth.signOut();
 
         // Redirect to login with suspended flag
