@@ -13,6 +13,10 @@ import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 
+interface LoginFormProps {
+  isSuspended?: boolean;
+}
+
 /**
  * Login form component for authenticating users.
  *
@@ -23,18 +27,20 @@ import { useRouter } from 'next/navigation';
  * - Shows loading state during authentication
  * - Redirects to dashboard on successful login
  * - Provides a link to the signup page
+ * - Shows suspension message if user was redirected due to account suspension
  *
  * The form is disabled during the login process to prevent multiple submissions.
  *
+ * @param {boolean} isSuspended - Whether to show the account suspension message
  * @returns {JSX.Element} The rendered login form
  *
  * @example
  * ```tsx
  * // In a page component
- * <LoginForm />
+ * <LoginForm isSuspended={false} />
  * ```
  */
-export default function LoginForm() {
+export default function LoginForm({ isSuspended = false }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -76,6 +82,26 @@ export default function LoginForm() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
       <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
         <h2 className="text-2xl font-bold text-center">Login</h2>
+
+        {/* Suspension Message */}
+        {isSuspended && (
+          <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+            <div className="flex">
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">
+                  Account Suspended
+                </h3>
+                <div className="mt-2 text-sm text-red-700">
+                  <p>
+                    Your account has been suspended and you can no longer access the system.
+                    Please contact support for more information or to appeal this decision.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <form className="space-y-4" onSubmit={handleLogin}>
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">

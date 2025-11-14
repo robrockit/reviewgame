@@ -14,6 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_audit_log: {
+        Row: {
+          action_type: string
+          admin_user_id: string
+          changes: Json | null
+          created_at: string | null
+          id: string
+          ip_address: string | null
+          notes: string | null
+          reason: string | null
+          target_id: string
+          target_type: string
+          user_agent: string | null
+        }
+        Insert: {
+          action_type: string
+          admin_user_id: string
+          changes?: Json | null
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          notes?: string | null
+          reason?: string | null
+          target_id: string
+          target_type: string
+          user_agent?: string | null
+        }
+        Update: {
+          action_type?: string
+          admin_user_id?: string
+          changes?: Json | null
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          notes?: string | null
+          reason?: string | null
+          target_id?: string
+          target_type?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_audit_log_admin_user_id_fkey"
+            columns: ["admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       buzz_events: {
         Row: {
           answered: boolean | null
@@ -138,40 +188,175 @@ export type Database = {
           },
         ]
       }
+      impersonation_sessions: {
+        Row: {
+          admin_user_id: string
+          ended_at: string | null
+          ended_by: string | null
+          id: string
+          ip_address: string | null
+          reason: string | null
+          started_at: string | null
+          target_user_id: string
+        }
+        Insert: {
+          admin_user_id: string
+          ended_at?: string | null
+          ended_by?: string | null
+          id?: string
+          ip_address?: string | null
+          reason?: string | null
+          started_at?: string | null
+          target_user_id: string
+        }
+        Update: {
+          admin_user_id?: string
+          ended_at?: string | null
+          ended_by?: string | null
+          id?: string
+          ip_address?: string | null
+          reason?: string | null
+          started_at?: string | null
+          target_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "impersonation_sessions_admin_user_id_fkey"
+            columns: ["admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impersonation_sessions_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      login_history: {
+        Row: {
+          id: string
+          impersonated_by: string | null
+          ip_address: string | null
+          login_at: string | null
+          login_method: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          impersonated_by?: string | null
+          ip_address?: string | null
+          login_at?: string | null
+          login_method?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          id?: string
+          impersonated_by?: string | null
+          ip_address?: string | null
+          login_at?: string | null
+          login_method?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "login_history_impersonated_by_fkey"
+            columns: ["impersonated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "login_history_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
+          admin_notes: string | null
+          billing_cycle: string | null
           created_at: string | null
           current_period_end: string | null
+          custom_plan_expires_at: string | null
+          custom_plan_name: string | null
+          custom_plan_notes: string | null
+          custom_plan_type: string | null
           email: string
+          email_verified_manually: boolean | null
           full_name: string | null
+          games_created_count: number | null
           id: string
+          is_active: boolean | null
+          last_login_at: string | null
+          plan_override_limits: Json | null
+          role: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           subscription_status: string | null
+          subscription_tier: string | null
+          suspension_reason: string | null
           trial_end_date: string | null
           updated_at: string | null
         }
         Insert: {
+          admin_notes?: string | null
+          billing_cycle?: string | null
           created_at?: string | null
           current_period_end?: string | null
+          custom_plan_expires_at?: string | null
+          custom_plan_name?: string | null
+          custom_plan_notes?: string | null
+          custom_plan_type?: string | null
           email: string
+          email_verified_manually?: boolean | null
           full_name?: string | null
+          games_created_count?: number | null
           id: string
+          is_active?: boolean | null
+          last_login_at?: string | null
+          plan_override_limits?: Json | null
+          role?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string | null
+          subscription_tier?: string | null
+          suspension_reason?: string | null
           trial_end_date?: string | null
           updated_at?: string | null
         }
         Update: {
+          admin_notes?: string | null
+          billing_cycle?: string | null
           created_at?: string | null
           current_period_end?: string | null
+          custom_plan_expires_at?: string | null
+          custom_plan_name?: string | null
+          custom_plan_notes?: string | null
+          custom_plan_type?: string | null
           email?: string
+          email_verified_manually?: boolean | null
           full_name?: string | null
+          games_created_count?: number | null
           id?: string
+          is_active?: boolean | null
+          last_login_at?: string | null
+          plan_override_limits?: Json | null
+          role?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string | null
+          subscription_tier?: string | null
+          suspension_reason?: string | null
           trial_end_date?: string | null
           updated_at?: string | null
         }
@@ -270,6 +455,60 @@ export type Database = {
             columns: ["bank_id"]
             isOneToOne: false
             referencedRelation: "question_banks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      refunds: {
+        Row: {
+          amount_cents: number
+          created_at: string | null
+          currency: string | null
+          id: string
+          notes: string | null
+          reason_category: string
+          refunded_by: string
+          stripe_charge_id: string
+          stripe_refund_id: string
+          user_id: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          notes?: string | null
+          reason_category: string
+          refunded_by: string
+          stripe_charge_id: string
+          stripe_refund_id: string
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          notes?: string | null
+          reason_category?: string
+          refunded_by?: string
+          stripe_charge_id?: string
+          stripe_refund_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "refunds_refunded_by_fkey"
+            columns: ["refunded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "refunds_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -384,17 +623,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      update_team_score: {
+      is_admin: { Args: never; Returns: boolean }
+      log_admin_action: {
         Args: {
-          p_team_id: string
-          p_score_change: number
-          p_game_id: string
+          p_action_type: string
+          p_changes?: Json
+          p_ip_address?: string
+          p_notes?: string
+          p_reason?: string
+          p_target_id: string
+          p_target_type: string
+          p_user_agent?: string
         }
+        Returns: string
+      }
+      update_team_score: {
+        Args: { p_game_id: string; p_score_change: number; p_team_id: string }
         Returns: {
-          team_id: string
-          new_score: number | null
+          error_message: string
+          new_score: number
           success: boolean
-          error_message: string | null
+          team_id: string
         }[]
       }
     }

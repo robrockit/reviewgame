@@ -116,7 +116,7 @@ if (typeof setInterval !== 'undefined') {
  * - /_next/static/... → middleware skipped (excluded in config)
  */
 export async function middleware(req: NextRequest) {
-  let res = NextResponse.next();
+  const res = NextResponse.next();
 
   try {
     const supabase = createServerClient(
@@ -137,7 +137,10 @@ export async function middleware(req: NextRequest) {
       }
     );
 
-    const { error } = await supabase.auth.getSession();
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
 
     if (error) {
       // Log session refresh errors
@@ -152,6 +155,45 @@ export async function middleware(req: NextRequest) {
           middleware: 'auth',
         },
       });
+    }
+
+    // Check if user is suspended for all authenticated routes
+    // (except login and public routes)
+    if (session?.user && !req.nextUrl.pathname.startsWith('/login') && !req.nextUrl.pathname.startsWith('/auth')) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_active, suspension_reason, suspended_at')
+        .eq('id', session.user.id)
+        .single();
+
+      // Redirect suspended users to login with suspension message
+      if (profile && !profile.is_active) {
+        Sentry.captureMessage('Suspended user attempted access', {
+          level: 'warning',
+          user: {
+            id: session.user.id,
+            email: session.user.email,
+          },
+          contexts: {
+            custom: {
+              path: req.nextUrl.pathname,
+              suspensionReason: profile.suspension_reason,
+              suspendedAt: profile.suspended_at,
+            },
+          },
+        });
+
+        // Sign out the user's current session
+        // Note: This signs out the current session. For immediate invalidation
+        // of ALL active sessions across devices, additional session management
+        // would be required (to be tracked in future ticket)
+        await supabase.auth.signOut();
+
+        // Redirect to login with suspended flag
+        const redirectUrl = new URL('/login', req.url);
+        redirectUrl.searchParams.set('suspended', 'true');
+        return NextResponse.redirect(redirectUrl);
+      }
     }
 
     // Admin route protection

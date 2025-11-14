@@ -67,6 +67,9 @@ export async function POST(req: NextRequest) {
             // Fetch subscription details from Stripe
             const subscription = await stripe.subscriptions.retrieve(subscriptionId);
 
+            // Extract current_period_end (exists on Subscription, type assertion needed due to SDK types)
+            const currentPeriodEnd = (subscription as unknown as { current_period_end: number }).current_period_end;
+
             // Update profile in Supabase
             const { error: updateError } = await supabase
               .from('profiles')
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest) {
                 subscription_status: subscription.status,
                 stripe_subscription_id: subscription.id,
                 trial_end_date: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-                current_period_end: new Date((subscription as any).current_period_end * 1000).toISOString(),
+                current_period_end: new Date(currentPeriodEnd * 1000).toISOString(),
               })
               .eq('id', profile.id);
 
@@ -133,6 +136,9 @@ export async function POST(req: NextRequest) {
               operation: 'fetchProfile'
             });
           } else if (profile) {
+            // Extract current_period_end (exists on Subscription, type assertion needed due to SDK types)
+            const currentPeriodEnd = (subscription as unknown as { current_period_end: number }).current_period_end;
+
             // Update profile in Supabase
             const { error: updateError } = await supabase
               .from('profiles')
@@ -140,7 +146,7 @@ export async function POST(req: NextRequest) {
                 subscription_status: subscription.status,
                 stripe_subscription_id: subscription.id,
                 trial_end_date: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-                current_period_end: new Date((subscription as any).current_period_end * 1000).toISOString(),
+                current_period_end: new Date(currentPeriodEnd * 1000).toISOString(),
               })
               .eq('id', profile.id);
 

@@ -10,7 +10,6 @@
  * @module app/admin/layout
  */
 
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { verifyAdminUser } from '@/lib/admin/auth';
 import AdminHeader from './components/AdminHeader';
