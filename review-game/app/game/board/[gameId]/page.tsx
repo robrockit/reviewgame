@@ -39,6 +39,7 @@ export default function GameBoardPage() {
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const { setGame: setStoreGame, setTeams } = useGameStore();
 
@@ -463,6 +464,92 @@ export default function GameBoardPage() {
     };
   }, [gameId, supabase, setTeams, setGame, teacherId]);
 
+  // Fullscreen management
+  useEffect(() => {
+    // Function to enter fullscreen
+    const enterFullscreen = async () => {
+      try {
+        // Only enter fullscreen after loading is complete
+        if (!loading && !error) {
+          const elem = document.documentElement;
+          if (elem.requestFullscreen) {
+            await elem.requestFullscreen();
+          }
+        }
+      } catch (err) {
+        logger.warn('Failed to enter fullscreen', {
+          error: err instanceof Error ? err.message : String(err),
+          operation: 'enterFullscreen',
+          page: 'GameBoardPage',
+        });
+      }
+    };
+
+    // Function to exit fullscreen
+    const exitFullscreen = async () => {
+      try {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        }
+      } catch (err) {
+        logger.warn('Failed to exit fullscreen', {
+          error: err instanceof Error ? err.message : String(err),
+          operation: 'exitFullscreen',
+          page: 'GameBoardPage',
+        });
+      }
+    };
+
+    // Handle fullscreen change events
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    // Add event listeners
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    // Enter fullscreen when component loads
+    enterFullscreen();
+
+    // Cleanup: exit fullscreen when component unmounts
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      exitFullscreen();
+    };
+  }, [loading, error]);
+
+  // Function to handle navigation with fullscreen exit
+  const handleNavigateToControlPanel = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      logger.warn('Failed to exit fullscreen before navigation', {
+        error: err instanceof Error ? err.message : String(err),
+        operation: 'handleNavigateToControlPanel',
+        page: 'GameBoardPage',
+      });
+    } finally {
+      router.push(`/game/teacher/${gameId}`);
+    }
+  };
+
+  // Function to handle exit fullscreen button click
+  const handleExitFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      logger.warn('Failed to exit fullscreen', {
+        error: err instanceof Error ? err.message : String(err),
+        operation: 'handleExitFullscreen',
+        page: 'GameBoardPage',
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -494,12 +581,27 @@ export default function GameBoardPage() {
               Subject: {game.question_banks.subject} | Status: <span className="capitalize">{game.status}</span>
             </p>
           </div>
-          <button
-            onClick={() => router.push(`/game/teacher/${gameId}`)}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
-          >
-            Back to Control Panel
-          </button>
+          <div className="flex items-center gap-4">
+            {/* Exit Fullscreen Hint/Button */}
+            {isFullscreen && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-blue-600/20 border border-blue-500/50 rounded-lg">
+                <span className="text-sm text-blue-300">Press ESC or</span>
+                <button
+                  onClick={handleExitFullscreen}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded transition-colors text-sm font-medium"
+                  title="Exit Fullscreen"
+                >
+                  Exit Fullscreen
+                </button>
+              </div>
+            )}
+            <button
+              onClick={handleNavigateToControlPanel}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
+            >
+              Back to Control Panel
+            </button>
+          </div>
         </div>
 
         {/* Connection Status Indicator */}
