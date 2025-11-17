@@ -67,7 +67,7 @@ export default function UserProfileTabs({ user, userId }: UserProfileTabsProps) 
         <Tab.Panels className="p-6">
           {/* Profile Tab */}
           <Tab.Panel>
-            <ProfileTab user={user} />
+            <ProfileTab user={user} userId={userId} />
           </Tab.Panel>
 
           {/* Subscription Tab */}

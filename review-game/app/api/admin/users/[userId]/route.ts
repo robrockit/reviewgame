@@ -44,6 +44,7 @@ export type AdminUserDetail = {
   // Account management fields
   suspension_reason: string | null;
   email_verified_manually: boolean | null;
+  email_confirmed_at: string | null;
   admin_notes: string | null;
 
   // Computed fields
@@ -122,6 +123,10 @@ export async function GET(
         { status: 500 }
       );
     }
+    // Fetch auth user to get email verification status
+    const { data: authData } = await supabase.auth.admin.getUserById(userId);
+    const emailConfirmedAt = authData?.user?.email_confirmed_at || null;
+
 
     // Format response
     const userDetail: AdminUserDetail = {
@@ -147,6 +152,7 @@ export async function GET(
       plan_override_limits: user.plan_override_limits as Record<string, unknown> | null,
       suspension_reason: user.suspension_reason,
       email_verified_manually: user.email_verified_manually,
+      email_confirmed_at: emailConfirmedAt,
       admin_notes: user.admin_notes,
       games_created_count: user.games_created_count,
     };

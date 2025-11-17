@@ -8,11 +8,16 @@
 
 'use client';
 
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import type { AdminUserDetail } from '@/app/api/admin/users/[userId]/route';
+import VerifyEmailButton from './VerifyEmailButton';
+import Toast from './Toast';
 
 interface ProfileTabProps {
   user: AdminUserDetail;
+  userId: string;
 }
 
 /**
@@ -33,31 +38,81 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
  * Displays comprehensive account details including:
  * - Basic account information (email, name, role)
  * - Account status and activity
- * - Email verification status
+ * - Email verification status with manual verification option
  * - Admin notes
  * - Account creation and update timestamps
  */
-export default function ProfileTab({ user }: ProfileTabProps) {
+export default function ProfileTab({ user, userId }: ProfileTabProps) {
+  const router = useRouter();
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
+
+  /**
+   * Handles successful email verification
+   */
+  const handleVerifyEmailSuccess = () => {
+    setToastMessage('Email verified successfully');
+    setToastType('success');
+    setShowToast(true);
+    router.refresh();
+  };
+
+  // Check if email is verified (either manually or through auth)
+  const isEmailVerified = !!user.email_confirmed_at;
+
   return (
     <div className="space-y-6">
+      {/* Toast Notification */}
+      {showToast && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setShowToast(false)}
+          duration={5000}
+        />
+      )}
+
       {/* Account Details Section */}
       <div>
         <h3 className="text-lg font-medium text-gray-900 mb-4">Account Details</h3>
         <dl className="divide-y divide-gray-200 border-t border-gray-200">
           <InfoRow label="Full Name" value={user.full_name || 'Not provided'} />
           <InfoRow label="Email" value={user.email} />
-          <InfoRow
-            label="Email Verified"
-            value={
-              user.email_verified_manually ? (
-                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
-                  Manually Verified
-                </span>
-              ) : (
-                <span className="text-gray-500">Not manually verified</span>
-              )
-            }
-          />
+
+          {/* Email Verification Status with Verify Button */}
+          <div className="py-3 grid grid-cols-3 gap-4">
+            <dt className="text-sm font-medium text-gray-500">Email Verified</dt>
+            <dd className="text-sm text-gray-900 col-span-2">
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  {isEmailVerified ? (
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs
+font-medium text-green-800">
+                      {user.email_verified_manually ? 'Manually Verified' : 'Verified'}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-1 text-xs
+font-medium text-yellow-800">
+                      Not Verified
+                    </span>
+                  )}
+                  {user.email_confirmed_at && (
+                    <span className="ml-2 text-xs text-gray-500">
+                      {format(new Date(user.email_confirmed_at), 'MMM d, yyyy')}
+                    </span>
+                  )}
+                </div>
+                <VerifyEmailButton
+                  userId={userId}
+                  userEmail={user.email}
+                  isEmailVerified={isEmailVerified}
+                  onSuccess={handleVerifyEmailSuccess}
+                />
+              </div>
+            </dd>
+          </div>
+
           <InfoRow
             label="Role"
             value={
@@ -84,11 +139,13 @@ export default function ProfileTab({ user }: ProfileTabProps) {
             label="Status"
             value={
               user.is_active ? (
-                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium
+text-green-800">
                   Active
                 </span>
               ) : (
-                <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-800">
+                <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs font-medium
+text-red-800">
                   Suspended
                 </span>
               )
