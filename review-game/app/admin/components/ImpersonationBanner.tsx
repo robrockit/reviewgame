@@ -46,6 +46,7 @@ export default function ImpersonationBanner({
 
   /**
    * Calculate and update time remaining until session expires
+   * Fixed: Clear interval before router.refresh() to prevent race condition
    */
   useEffect(() => {
     const updateTimeRemaining = () => {
@@ -55,21 +56,32 @@ export default function ImpersonationBanner({
 
       if (diff <= 0) {
         setTimeRemaining('Expired');
-        // Auto-refresh to end expired session
-        router.refresh();
-        return;
+        return true; // Signal that session has expired
       }
 
       const minutes = Math.floor(diff / 60000);
       const seconds = Math.floor((diff % 60000) / 1000);
       setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+      return false;
     };
 
-    // Update immediately
-    updateTimeRemaining();
+    // Update immediately and check if already expired
+    const isExpired = updateTimeRemaining();
+    if (isExpired) {
+      // Session already expired, refresh immediately without setting up interval
+      router.refresh();
+      return;
+    }
 
-    // Update every second
-    const interval = setInterval(updateTimeRemaining, 1000);
+    // Update every second and check for expiry
+    const interval = setInterval(() => {
+      const isExpired = updateTimeRemaining();
+      if (isExpired) {
+        // Clear interval BEFORE calling router.refresh() to prevent race condition
+        clearInterval(interval);
+        router.refresh();
+      }
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [session.expiresAt, router]);

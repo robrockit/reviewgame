@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import ImpersonationBanner from './ImpersonationBanner';
 import { logger } from '@/lib/logger';
@@ -37,8 +37,9 @@ export default function ImpersonationCheck() {
 
   /**
    * Fetches the current impersonation status
+   * Wrapped in useCallback to prevent memory leaks from useEffect
    */
-  const checkImpersonationStatus = async () => {
+  const checkImpersonationStatus = useCallback(async () => {
     try {
       const response = await fetch('/api/admin/impersonate/status');
 
@@ -64,7 +65,7 @@ export default function ImpersonationCheck() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []); // Empty dependency array - function doesn't depend on external values
 
   /**
    * Handles ending the impersonation session
@@ -74,15 +75,17 @@ export default function ImpersonationCheck() {
     router.refresh();
   };
 
-  // Check impersonation status on mount
+  // Check impersonation status on mount and poll based on session state
   useEffect(() => {
     checkImpersonationStatus();
 
-    // Poll every 30 seconds to handle session expiry
-    const interval = setInterval(checkImpersonationStatus, 30000);
+    // Smart polling: 30s when session is active, 5 minutes when inactive
+    // This reduces unnecessary API calls when no impersonation is happening
+    const pollInterval = session ? 30000 : 300000;
+    const interval = setInterval(checkImpersonationStatus, pollInterval);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [checkImpersonationStatus, session]);
 
   // Don't render anything while loading
   if (isLoading) {

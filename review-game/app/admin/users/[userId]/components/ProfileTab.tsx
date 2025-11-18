@@ -69,8 +69,8 @@ export default function ProfileTab({ user, userId }: ProfileTabProps) {
 
   const canImpersonate = user.is_active && user.role !== 'admin';
 
-  // Check if email is verified (either manually or through auth)
-  const isEmailVerified = !!user.email_confirmed_at;
+  // Check if email is verified manually
+  const isEmailVerified = !!user.email_verified_manually;
 
   return (
     <div className="space-y-6">
@@ -106,11 +106,6 @@ font-medium text-green-800">
                     <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-1 text-xs
 font-medium text-yellow-800">
                       Not Verified
-                    </span>
-                  )}
-                  {user.email_confirmed_at && (
-                    <span className="ml-2 text-xs text-gray-500">
-                      {format(new Date(user.email_confirmed_at), 'MMM d, yyyy')}
                     </span>
                   )}
                 </div>
