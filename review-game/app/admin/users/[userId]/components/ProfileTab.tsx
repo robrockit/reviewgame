@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import type { AdminUserDetail } from '@/app/api/admin/users/[userId]/route';
+import ImpersonateModal from './ImpersonateModal';
 import VerifyEmailButton from './VerifyEmailButton';
 import Toast from './Toast';
 
@@ -47,6 +48,7 @@ export default function ProfileTab({ user, userId }: ProfileTabProps) {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
+  const [showImpersonateModal, setShowImpersonateModal] = useState(false);
 
   /**
    * Handles successful email verification
@@ -57,6 +59,15 @@ export default function ProfileTab({ user, userId }: ProfileTabProps) {
     setShowToast(true);
     router.refresh();
   };
+
+  const handleImpersonateSuccess = () => {
+    setToastMessage('Impersonation session started successfully');
+    setToastType('success');
+    setShowToast(true);
+    router.refresh();
+  };
+
+  const canImpersonate = user.is_active && user.role !== 'admin';
 
   // Check if email is verified (either manually or through auth)
   const isEmailVerified = !!user.email_confirmed_at;
@@ -201,6 +212,45 @@ text-red-800">
           )}
         </div>
       </div>
+      {/* Admin Actions Section */}
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Admin Actions</h3>
+        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-sm font-medium text-gray-900">Impersonate User</h4>
+              <p className="text-sm text-gray-500 mt-1">
+                Log in as this user to troubleshoot issues from their perspective
+              </p>
+              {!canImpersonate && (
+                <p className="text-xs text-amber-600 mt-1">
+                  {user.role === 'admin' ? '⚠ Cannot impersonate admin users' : '⚠ Cannot impersonate suspended users'}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowImpersonateModal(true)}
+              disabled={!canImpersonate}
+              className="inline-flex items-center rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white
+      shadow-sm hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2
+      disabled:bg-gray-300 disabled:cursor-not-allowed disabled:hover:bg-gray-300"
+            >
+              Impersonate
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Impersonate Modal */}
+      <ImpersonateModal
+        isOpen={showImpersonateModal}
+        onClose={() => setShowImpersonateModal(false)}
+        userEmail={user.email}
+        userName={user.full_name}
+        userId={userId}
+        onSuccess={handleImpersonateSuccess}
+      />
     </div>
   );
 }

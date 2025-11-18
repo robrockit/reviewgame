@@ -14,6 +14,7 @@ import { redirect } from 'next/navigation';
 import { verifyAdminUser } from '@/lib/admin/auth';
 import AdminHeader from './components/AdminHeader';
 import AdminSidebar from './components/AdminSidebar';
+import ImpersonationCheck from './components/ImpersonationCheck';
 
 /**
  * Admin layout component.
@@ -47,6 +48,8 @@ export default async function AdminLayout({
 
       {/* Main Content Area */}
       <div className="lg:pl-64">
+        {/* Impersonation Banner (shown when admin is impersonating a user) */}
+        <ImpersonationCheck />
         {/* Header */}
         <AdminHeader adminUser={adminUser} />
 
