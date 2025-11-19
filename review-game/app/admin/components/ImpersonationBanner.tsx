@@ -46,9 +46,11 @@ export default function ImpersonationBanner({
 
   /**
    * Calculate and update time remaining until session expires
-   * Fixed: Clear interval before router.refresh() to prevent race condition
+   * Fixed: Clear interval before router.refresh() and use isMounted flag
    */
   useEffect(() => {
+    let isMounted = true;
+
     const updateTimeRemaining = () => {
       const now = new Date();
       const expiresAt = new Date(session.expiresAt);
@@ -68,8 +70,10 @@ export default function ImpersonationBanner({
     // Update immediately and check if already expired
     const isExpired = updateTimeRemaining();
     if (isExpired) {
-      // Session already expired, refresh immediately without setting up interval
-      router.refresh();
+      // Session already expired, refresh immediately if still mounted
+      if (isMounted) {
+        router.refresh();
+      }
       return;
     }
 
@@ -79,11 +83,17 @@ export default function ImpersonationBanner({
       if (isExpired) {
         // Clear interval BEFORE calling router.refresh() to prevent race condition
         clearInterval(interval);
-        router.refresh();
+        // Only refresh if component is still mounted
+        if (isMounted) {
+          router.refresh();
+        }
       }
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [session.expiresAt, router]);
 
   /**
@@ -168,6 +178,19 @@ export default function ImpersonationBanner({
               <XMarkIcon className="h-4 w-4" />
               <span>{isEnding ? 'Ending...' : 'Exit Impersonation'}</span>
             </button>
+          </div>
+
+          {/* Context switching warning */}
+          <div className="mt-2 rounded-md bg-purple-50 border border-purple-200 p-3">
+            <div className="flex">
+              <div className="ml-3">
+                <p className="text-sm text-purple-800">
+                  ⚠️ <strong>Session Tracking Only:</strong> Context switching is not yet implemented.
+                  You are still viewing as an admin, not as {displayName}. This session tracks the
+                  impersonation for audit purposes only.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Error message */}

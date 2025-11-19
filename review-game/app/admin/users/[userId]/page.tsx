@@ -47,6 +47,10 @@ async function getUserDetails(userId: string): Promise<AdminUserDetail | null> {
     return null;
   }
 
+  // Fetch auth user data to get email_confirmed_at (from Supabase Auth)
+  const { data: authData } = await supabase.auth.admin.getUserById(userId);
+  const emailConfirmedAt = authData?.user?.email_confirmed_at || null;
+
   return {
     id: user.id,
     email: user.email,
@@ -70,6 +74,7 @@ async function getUserDetails(userId: string): Promise<AdminUserDetail | null> {
     plan_override_limits: user.plan_override_limits as Record<string, unknown> | null,
     suspension_reason: user.suspension_reason,
     email_verified_manually: user.email_verified_manually,
+    email_confirmed_at: emailConfirmedAt,
     admin_notes: user.admin_notes,
     games_created_count: user.games_created_count,
   };

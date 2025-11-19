@@ -77,14 +77,25 @@ export default function ImpersonationCheck() {
 
   // Check impersonation status on mount and poll based on session state
   useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    const setupPolling = () => {
+      if (interval) clearInterval(interval);
+      // Smart polling: 30s when session is active, 5 minutes when inactive
+      // This reduces unnecessary API calls when no impersonation is happening
+      const pollInterval = session ? 30000 : 300000;
+      interval = setInterval(checkImpersonationStatus, pollInterval);
+    };
+
+    // Check immediately
     checkImpersonationStatus();
 
-    // Smart polling: 30s when session is active, 5 minutes when inactive
-    // This reduces unnecessary API calls when no impersonation is happening
-    const pollInterval = session ? 30000 : 300000;
-    const interval = setInterval(checkImpersonationStatus, pollInterval);
+    // Setup polling with appropriate interval
+    setupPolling();
 
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [checkImpersonationStatus, session]);
 
   // Don't render anything while loading
