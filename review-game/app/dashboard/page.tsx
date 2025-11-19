@@ -4,16 +4,20 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
+import type { UserContextResponse } from '@/app/api/user/context/route';
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
+  const [userContext, setUserContext] = useState<UserContextResponse | null>(null);
+  const [viewingUserEmail, setViewingUserEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     const supabase = createClient();
 
-    const getUser = async () => {
+    const loadUserAndContext = async () => {
+      // Get authenticated user
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
@@ -22,10 +26,35 @@ export default function DashboardPage() {
       }
 
       setUser(user);
+
+      // Fetch user context to check for impersonation
+      try {
+        const contextResponse = await fetch('/api/user/context');
+        if (contextResponse.ok) {
+          const context: UserContextResponse = await contextResponse.json();
+          setUserContext(context);
+
+          // If impersonating, fetch the target user's email to display
+          if (context.isImpersonating && context.effectiveUserId) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('email')
+              .eq('id', context.effectiveUserId)
+              .single();
+
+            if (profile) {
+              setViewingUserEmail(profile.email);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch user context:', error);
+      }
+
       setLoading(false);
     };
 
-    getUser();
+    loadUserAndContext();
   }, [router]);
 
   const handleSignOut = async () => {
@@ -45,12 +74,35 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Impersonation Alert */}
+        {userContext?.isImpersonating && viewingUserEmail && (
+          <div className="mb-6 bg-amber-50 border-l-4 border-amber-400 p-4 rounded-lg">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-amber-700">
+                  <span className="font-medium">Viewing as user:</span> {viewingUserEmail}
+                </p>
+                <p className="text-xs text-amber-600 mt-1">
+                  You are viewing this dashboard as the target user. All data shown is scoped to their account.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-gray-600 mt-1">Welcome back, {user?.email}</p>
+              <p className="text-gray-600 mt-1">
+                Welcome back, {userContext?.isImpersonating && viewingUserEmail ? viewingUserEmail : user?.email}
+              </p>
             </div>
             <button
               onClick={handleSignOut}

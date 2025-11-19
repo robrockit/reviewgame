@@ -64,7 +64,8 @@ export default function ProfileTab({ user, userId }: ProfileTabProps) {
     setToastMessage('Impersonation session started successfully');
     setToastType('success');
     setShowToast(true);
-    router.refresh();
+    // Redirect to dashboard to view as the impersonated user
+    router.push('/dashboard');
   };
 
   const canImpersonate = user.is_active && user.role !== 'admin';

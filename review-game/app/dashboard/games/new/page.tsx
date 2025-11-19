@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Tables, TablesInsert } from '@/types/database.types';
+import type { UserContextResponse } from '@/app/api/user/context/route';
 import { logger } from '@/lib/logger';
 
 type QuestionBank = Tables<'question_banks'>;
@@ -30,6 +31,8 @@ const generateDailyDoublePositions = (): { category: number; position: number }[
 
 export default function NewGamePage() {
   const [user, setUser] = useState<{ id: string } | null>(null);
+  const [userContext, setUserContext] = useState<UserContextResponse | null>(null);
+  const [effectiveUserId, setEffectiveUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [questionBanks, setQuestionBanks] = useState<QuestionBank[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +55,7 @@ export default function NewGamePage() {
   useEffect(() => {
     const initializePage = async () => {
       try {
-        // Get current user
+        // Get current authenticated user
         const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
 
         if (userError || !currentUser) {
@@ -62,12 +65,27 @@ export default function NewGamePage() {
 
         setUser(currentUser);
 
-        // Fetch user profile
+        // Fetch user context to check for impersonation
+        let targetUserId = currentUser.id;
+        try {
+          const contextResponse = await fetch('/api/user/context');
+          if (contextResponse.ok) {
+            const context: UserContextResponse = await contextResponse.json();
+            setUserContext(context);
+            targetUserId = context.effectiveUserId;
+            setEffectiveUserId(context.effectiveUserId);
+          }
+        } catch (contextError) {
+          console.error('Failed to fetch user context:', contextError);
+          // Continue with current user if context fetch fails
+        }
+
+        // Fetch user profile for the effective user (impersonated user or current user)
         // Note: Profile should be automatically created by database trigger when user signs up
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('*')
-          .eq('id', currentUser.id)
+          .eq('id', targetUserId)
           .single();
 
         if (profileError) {
@@ -102,12 +120,12 @@ export default function NewGamePage() {
           .select('*')
           .eq('is_public', true);
 
-        // If premium, also include user's custom banks
+        // If premium, also include user's custom banks (using effective user ID for impersonation)
         if (isPremiumUser) {
           const { data: customBanks, error: customError } = await supabase
             .from('question_banks')
             .select('*')
-            .eq('owner_id', currentUser.id)
+            .eq('owner_id', targetUserId)
             .eq('is_custom', true);
 
           const { data: publicBanks, error: publicError } = await supabase
@@ -161,7 +179,7 @@ export default function NewGamePage() {
       return;
     }
 
-    if (!user) {
+    if (!user || !effectiveUserId) {
       setError('You must be logged in to create a game');
       return;
     }
@@ -174,8 +192,9 @@ export default function NewGamePage() {
       const dailyDoublePositions = generateDailyDoublePositions();
 
       // Prepare game data
+      // Use effectiveUserId so that during impersonation, games are created under the target user's account
       const gameData: TablesInsert<'games'> = {
-        teacher_id: user.id,
+        teacher_id: effectiveUserId,
         bank_id: selectedBankId,
         num_teams: numTeams,
         team_names: isPremium ? teamNames : null, // Only save custom names for premium users
@@ -242,6 +261,27 @@ export default function NewGamePage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Game</h1>
           <p className="text-gray-600">Set up your Jeopardy-style review game</p>
         </div>
+
+        {/* Impersonation Alert */}
+        {userContext?.isImpersonating && profile && (
+          <div className="mb-6 bg-amber-50 border-l-4 border-amber-400 p-4 rounded-lg">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-amber-700">
+                  <span className="font-medium">Creating game as user:</span> {profile.email}
+                </p>
+                <p className="text-xs text-amber-600 mt-1">
+                  This game will be created under the target user's account and will use their subscription level and question banks.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (
