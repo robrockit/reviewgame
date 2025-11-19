@@ -46,10 +46,11 @@ export default function ImpersonationBanner({
 
   /**
    * Calculate and update time remaining until session expires
-   * Fixed: Clear interval before router.refresh() and use isMounted flag
+   * Fixed: Clear interval before router.refresh(), use isMounted flag, and handle early return edge case
    */
   useEffect(() => {
     let isMounted = true;
+    let interval: NodeJS.Timeout | null = null;
 
     const updateTimeRemaining = () => {
       const now = new Date();
@@ -69,30 +70,31 @@ export default function ImpersonationBanner({
 
     // Update immediately and check if already expired
     const isExpired = updateTimeRemaining();
-    if (isExpired) {
-      // Session already expired, refresh immediately if still mounted
-      if (isMounted) {
-        router.refresh();
-      }
-      return;
+
+    if (!isExpired) {
+      // Only setup interval if not already expired
+      interval = setInterval(() => {
+        const isExpired = updateTimeRemaining();
+        if (isExpired && interval) {
+          clearInterval(interval);
+          interval = null;
+          // Only refresh if component is still mounted
+          if (isMounted) {
+            router.refresh();
+          }
+        }
+      }, 1000);
+    } else if (isMounted) {
+      // Already expired, refresh immediately
+      router.refresh();
     }
 
-    // Update every second and check for expiry
-    const interval = setInterval(() => {
-      const isExpired = updateTimeRemaining();
-      if (isExpired) {
-        // Clear interval BEFORE calling router.refresh() to prevent race condition
-        clearInterval(interval);
-        // Only refresh if component is still mounted
-        if (isMounted) {
-          router.refresh();
-        }
-      }
-    }, 1000);
-
+    // Cleanup function is always defined, even with early return
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      if (interval) {
+        clearInterval(interval);
+      }
     };
   }, [session.expiresAt, router]);
 
@@ -117,8 +119,13 @@ export default function ImpersonationBanner({
         throw new Error(errorData.error || 'Failed to end impersonation');
       }
 
-      // Success - notify parent and refresh
+      // Success - notify parent first (this will trigger state update)
       onEnd();
+
+      // Small delay to ensure state propagates before refresh
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Then refresh to update UI
       router.refresh();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred';

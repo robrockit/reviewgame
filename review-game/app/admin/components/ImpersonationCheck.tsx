@@ -76,25 +76,30 @@ export default function ImpersonationCheck() {
   };
 
   // Check impersonation status on mount and poll based on session state
+  // Using recursive setTimeout pattern to avoid race conditions with setInterval
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let timeoutId: NodeJS.Timeout;
+    let isMounted = true;
 
-    const setupPolling = () => {
-      if (interval) clearInterval(interval);
-      // Smart polling: 30s when session is active, 5 minutes when inactive
-      // This reduces unnecessary API calls when no impersonation is happening
-      const pollInterval = session ? 30000 : 300000;
-      interval = setInterval(checkImpersonationStatus, pollInterval);
+    const pollWithDynamicInterval = async () => {
+      // Check impersonation status
+      await checkImpersonationStatus();
+
+      // Only schedule next poll if component is still mounted
+      if (isMounted) {
+        // Smart polling: 30s when session is active, 5 minutes when inactive
+        // This reduces unnecessary API calls when no impersonation is happening
+        const pollInterval = session ? 30000 : 300000;
+        timeoutId = setTimeout(pollWithDynamicInterval, pollInterval);
+      }
     };
 
-    // Check immediately
-    checkImpersonationStatus();
-
-    // Setup polling with appropriate interval
-    setupPolling();
+    // Start polling immediately
+    pollWithDynamicInterval();
 
     return () => {
-      if (interval) clearInterval(interval);
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [checkImpersonationStatus, session]);
 
