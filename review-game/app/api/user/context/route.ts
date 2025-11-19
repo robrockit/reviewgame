@@ -9,7 +9,8 @@
  */
 
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { getRequestContext } from '@/lib/admin/impersonation';
 import { logger } from '@/lib/logger';
 
@@ -38,8 +39,27 @@ export interface UserContextResponse {
  */
 export async function GET() {
   try {
+    // Create Supabase client for API route
+    const cookieStore = cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          async get(name: string) {
+            return (await cookieStore).get(name)?.value;
+          },
+          async set(name: string, value: string, options) {
+            (await cookieStore).set(name, value, options);
+          },
+          async remove(name: string, options) {
+            (await cookieStore).set(name, '', options);
+          },
+        },
+      }
+    );
+
     // Get authenticated user
-    const supabase = await createServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
