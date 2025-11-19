@@ -3,6 +3,12 @@
 -- Reference: Jira ticket RG-61 (Epic RG-53 - Admin Portal)
 -- Created: 2025-11-18
 -- Features: Start/end impersonation, auto-expiry, rate limiting, audit logging
+--
+-- PREREQUISITE: Requires impersonation_sessions table created in migration:
+--               20251110_admin_portal_schema.sql
+--
+-- This migration adds RPC functions that interact with the impersonation_sessions
+-- table. The table itself was created in the admin portal schema migration.
 
 -- ==============================================================================
 -- HELPER FUNCTION: Get Active Impersonation Session

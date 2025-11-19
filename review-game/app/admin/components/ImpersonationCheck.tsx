@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ImpersonationBanner from './ImpersonationBanner';
 import { logger } from '@/lib/logger';
@@ -35,6 +35,9 @@ export default function ImpersonationCheck() {
   const [session, setSession] = useState<ImpersonationSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Use ref to track session state for polling interval without causing effect re-runs
+  const sessionRef = useRef<ImpersonationSession | null>(null);
+
   /**
    * Fetches the current impersonation status
    * Wrapped in useCallback to prevent memory leaks from useEffect
@@ -53,8 +56,10 @@ export default function ImpersonationCheck() {
 
       if (data.active && data.session) {
         setSession(data.session);
+        sessionRef.current = data.session;
       } else {
         setSession(null);
+        sessionRef.current = null;
       }
     } catch (error) {
       logger.error('Error checking impersonation status', error instanceof Error ? error : new Error(String(error)), {
@@ -62,6 +67,7 @@ export default function ImpersonationCheck() {
       });
       // On error, clear session
       setSession(null);
+      sessionRef.current = null;
     } finally {
       setIsLoading(false);
     }
@@ -77,6 +83,7 @@ export default function ImpersonationCheck() {
 
   // Check impersonation status on mount and poll based on session state
   // Using recursive setTimeout pattern to avoid race conditions with setInterval
+  // Using ref for session to avoid unnecessary effect re-runs when session changes
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     let isMounted = true;
@@ -88,8 +95,8 @@ export default function ImpersonationCheck() {
       // Only schedule next poll if component is still mounted
       if (isMounted) {
         // Smart polling: 30s when session is active, 5 minutes when inactive
-        // This reduces unnecessary API calls when no impersonation is happening
-        const pollInterval = session ? 30000 : 300000;
+        // Use ref to check current session without adding to dependencies
+        const pollInterval = sessionRef.current ? 30000 : 300000;
         timeoutId = setTimeout(pollWithDynamicInterval, pollInterval);
       }
     };
@@ -101,7 +108,7 @@ export default function ImpersonationCheck() {
       isMounted = false;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [checkImpersonationStatus, session]);
+  }, [checkImpersonationStatus]); // Removed session from deps - using ref instead
 
   // Don't render anything while loading
   if (isLoading) {
