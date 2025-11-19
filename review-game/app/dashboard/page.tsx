@@ -34,17 +34,10 @@ export default function DashboardPage() {
           const context: UserContextResponse = await contextResponse.json();
           setUserContext(context);
 
-          // If impersonating, fetch the target user's email to display
-          if (context.isImpersonating && context.effectiveUserId) {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('email')
-              .eq('id', context.effectiveUserId)
-              .single();
-
-            if (profile) {
-              setViewingUserEmail(profile.email);
-            }
+          // Set the viewing user email from the context response
+          // API handles fetching the email (bypasses RLS if needed)
+          if (context.isImpersonating) {
+            setViewingUserEmail(context.effectiveUserEmail);
           }
         }
       } catch (error) {

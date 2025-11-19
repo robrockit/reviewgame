@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getRequestContext } from '@/lib/admin/impersonation';
+import { createAdminServiceClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 
 /**
@@ -19,6 +20,7 @@ import { logger } from '@/lib/logger';
  */
 export interface UserContextResponse {
   effectiveUserId: string;
+  effectiveUserEmail: string;
   adminUserId: string;
   isImpersonating: boolean;
   impersonatedUserId?: string;
@@ -72,9 +74,29 @@ export async function GET() {
     // Get request context (checks for impersonation headers)
     const context = await getRequestContext(user.id);
 
+    // Fetch the effective user's email
+    // If impersonating, we need to query for the target user's email using service client
+    // (bypasses RLS since admin can't read other users' profiles with anon key)
+    // If not impersonating, we already have the current user's email
+    let effectiveUserEmail = user.email || '';
+
+    if (context.isImpersonating && context.effectiveUserId !== user.id) {
+      const serviceClient = createAdminServiceClient();
+      const { data: profile } = await serviceClient
+        .from('profiles')
+        .select('email')
+        .eq('id', context.effectiveUserId)
+        .single();
+
+      if (profile) {
+        effectiveUserEmail = profile.email;
+      }
+    }
+
     // Return context information
     const response: UserContextResponse = {
       effectiveUserId: context.effectiveUserId,
+      effectiveUserEmail,
       adminUserId: context.adminUserId,
       isImpersonating: context.isImpersonating,
       impersonatedUserId: context.impersonatedUserId,
