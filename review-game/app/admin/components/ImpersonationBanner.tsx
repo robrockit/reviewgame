@@ -157,10 +157,13 @@ export default function ImpersonationBanner({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-white">
-                    Impersonating:
+                    🎭 Impersonating:
                   </span>
                   <span className="text-sm font-medium text-white bg-amber-600 px-2 py-0.5 rounded truncate">
                     {displayName}
+                  </span>
+                  <span className="text-xs font-semibold text-amber-900 bg-amber-200 px-2 py-0.5 rounded">
+                    CONTEXT ACTIVE
                   </span>
                   <span className="text-xs text-amber-100">
                     ({session.targetUserEmail})

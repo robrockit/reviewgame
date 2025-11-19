@@ -9,7 +9,7 @@
 
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import { verifyAdminUser, createAdminServerClient } from '@/lib/admin/auth';
+import { verifyAdminUser, createAdminServiceClient } from '@/lib/admin/auth';
 import UserProfileHeader from './components/UserProfileHeader';
 import UserProfileTabs from './components/UserProfileTabs';
 import Link from 'next/link';
@@ -34,7 +34,7 @@ function LoadingFallback() {
  * Fetches user details from the API
  */
 async function getUserDetails(userId: string): Promise<AdminUserDetail | null> {
-  const supabase = await createAdminServerClient();
+  const supabase = createAdminServiceClient();
 
   // Fetch user details
   const { data: user, error } = await supabase

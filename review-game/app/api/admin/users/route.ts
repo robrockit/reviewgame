@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminUser, createAdminServerClient, logAdminAction } from '@/lib/admin/auth';
+import { verifyAdminUser, createAdminServiceClient, logAdminAction } from '@/lib/admin/auth';
 import { headers } from 'next/headers';
 import { logger } from '@/lib/logger';
 
@@ -91,8 +91,8 @@ export async function GET(req: NextRequest) {
     ];
     const safeSortBy = allowedSortColumns.includes(sortBy) ? sortBy : 'created_at';
 
-    // Get Supabase client
-    const supabase = await createAdminServerClient();
+    // Get Supabase service client (bypasses RLS for admin operations)
+    const supabase = createAdminServiceClient();
 
     // Get total count
     const { count: totalCount, error: countError } = await supabase
