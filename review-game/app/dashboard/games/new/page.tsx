@@ -67,6 +67,8 @@ export default function NewGamePage() {
 
         // Fetch user context to check for impersonation
         let targetUserId = currentUser.id;
+        let contextProfile = null;
+
         try {
           const contextResponse = await fetch('/api/user/context');
           if (contextResponse.ok) {
@@ -74,43 +76,64 @@ export default function NewGamePage() {
             setUserContext(context);
             targetUserId = context.effectiveUserId;
             setEffectiveUserId(context.effectiveUserId);
+
+            // Use profile from context if available (handles both regular and impersonation cases)
+            if (context.profile) {
+              contextProfile = context.profile;
+            }
           }
         } catch (contextError) {
           console.error('Failed to fetch user context:', contextError);
           // Continue with current user if context fetch fails
         }
 
-        // Fetch user profile for the effective user (impersonated user or current user)
-        // Note: Profile should be automatically created by database trigger when user signs up
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', targetUserId)
-          .single();
+        // If we don't have profile from context, fetch it directly
+        // (This should only happen if context API fails or profile is missing)
+        let profileData = null;
+        if (contextProfile) {
+          // Create a profile object from context data
+          profileData = {
+            id: targetUserId,
+            email: currentUser.email,
+            subscription_status: contextProfile.subscription_status,
+            subscription_tier: contextProfile.subscription_tier,
+            role: contextProfile.role,
+            is_active: contextProfile.is_active,
+          };
+        } else {
+          // Fallback: try to fetch profile directly (will only work for own profile due to RLS)
+          const { data: fetchedProfile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', targetUserId)
+            .single();
 
-        if (profileError) {
-          logger.error('Error fetching profile', {
-            error: profileError.message,
-            userId: currentUser.id,
-            code: profileError.code,
-            operation: 'fetchProfile',
-            page: 'NewGamePage'
-          });
+          if (profileError) {
+            logger.error('Error fetching profile', {
+              error: profileError.message,
+              userId: currentUser.id,
+              code: profileError.code,
+              operation: 'fetchProfile',
+              page: 'NewGamePage'
+            });
 
-          // If profile doesn't exist, it means the database trigger hasn't run yet or failed
-          if (profileError.code === 'PGRST116') {
-            setError(
-              'Your profile has not been created yet. Please sign out and sign back in, or contact support if the issue persists.'
-            );
-          } else {
-            setError('Failed to load user profile. Please try again.');
+            // If profile doesn't exist, it means the database trigger hasn't run yet or failed
+            if (profileError.code === 'PGRST116') {
+              setError(
+                'Your profile has not been created yet. Please sign out and sign back in, or contact support if the issue persists.'
+              );
+            } else {
+              setError('Failed to load user profile. Please try again.');
+            }
+
+            setLoading(false);
+            return;
           }
 
-          setLoading(false);
-          return;
+          profileData = fetchedProfile;
         }
 
-        setProfile(profileData);
+        setProfile(profileData as any);
 
         // Fetch question banks (public + user's custom if premium)
         const isPremiumUser = profileData?.subscription_status === 'active' || profileData?.subscription_status === 'trial';

@@ -25,6 +25,12 @@ export interface UserContextResponse {
   isImpersonating: boolean;
   impersonatedUserId?: string;
   sessionId?: string;
+  profile?: {
+    subscription_status: string | null;
+    subscription_tier: string | null;
+    role: string | null;
+    is_active: boolean | null;
+  };
 }
 
 /**
@@ -74,22 +80,45 @@ export async function GET() {
     // Get request context (checks for impersonation headers)
     const context = await getRequestContext(user.id);
 
-    // Fetch the effective user's email
-    // If impersonating, we need to query for the target user's email using service client
+    // Fetch the effective user's profile
+    // If impersonating, we need to query for the target user's profile using service client
     // (bypasses RLS since admin can't read other users' profiles with anon key)
-    // If not impersonating, we already have the current user's email
+    // If not impersonating, query using the regular client
     let effectiveUserEmail = user.email || '';
+    let profileData = null;
 
     if (context.isImpersonating && context.effectiveUserId !== user.id) {
       const serviceClient = createAdminServiceClient();
       const { data: profile } = await serviceClient
         .from('profiles')
-        .select('email')
+        .select('email, subscription_status, subscription_tier, role, is_active')
         .eq('id', context.effectiveUserId)
         .single();
 
       if (profile) {
         effectiveUserEmail = profile.email;
+        profileData = {
+          subscription_status: profile.subscription_status,
+          subscription_tier: profile.subscription_tier,
+          role: profile.role,
+          is_active: profile.is_active,
+        };
+      }
+    } else {
+      // Not impersonating - fetch current user's profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('subscription_status, subscription_tier, role, is_active')
+        .eq('id', user.id)
+        .single();
+
+      if (profile) {
+        profileData = {
+          subscription_status: profile.subscription_status,
+          subscription_tier: profile.subscription_tier,
+          role: profile.role,
+          is_active: profile.is_active,
+        };
       }
     }
 
@@ -101,6 +130,7 @@ export async function GET() {
       isImpersonating: context.isImpersonating,
       impersonatedUserId: context.impersonatedUserId,
       sessionId: context.sessionId,
+      profile: profileData || undefined,
     };
 
     return NextResponse.json(response);
