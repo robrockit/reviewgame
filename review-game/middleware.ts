@@ -193,9 +193,6 @@ export async function middleware(req: NextRequest) {
           // Set custom headers for impersonation context
           // These headers can be read by API routes and server components
           // to filter data and apply permissions as the target user
-          res.headers.set('x-impersonating-user-id', impersonationSession.target_user_id);
-          res.headers.set('x-admin-user-id', impersonationSession.admin_user_id);
-          res.headers.set('x-impersonation-session-id', impersonationSession.id);
 
           // Log impersonation context for audit and monitoring
           Sentry.captureMessage('Admin impersonating user', {
@@ -218,6 +215,26 @@ export async function middleware(req: NextRequest) {
               impersonation: 'active',
             },
           });
+
+          // Set headers on the request so they're available to API routes and server components
+          const requestHeaders = new Headers(req.headers);
+          requestHeaders.set('x-impersonating-user-id', impersonationSession.target_user_id);
+          requestHeaders.set('x-admin-user-id', impersonationSession.admin_user_id);
+          requestHeaders.set('x-impersonation-session-id', impersonationSession.id);
+
+          // Create a new response with the modified request headers
+          const modifiedResponse = NextResponse.next({
+            request: {
+              headers: requestHeaders,
+            },
+          });
+
+          // Copy cookies from the original response
+          req.cookies.getAll().forEach(cookie => {
+            modifiedResponse.cookies.set(cookie.name, cookie.value);
+          });
+
+          return modifiedResponse;
         }
       }
     }
@@ -360,8 +377,7 @@ export async function middleware(req: NextRequest) {
  *
  * This configuration uses Next.js matcher patterns to specify which routes
  * should be processed by the middleware. The pattern includes most routes
- * but excludes:
- * - API routes (/api/*)
+ * including API routes (for impersonation context headers) but excludes:
  * - Next.js static files (_next/static/*)
  * - Next.js image optimization (_next/image/*)
  * - Favicon (favicon.ico)
@@ -373,10 +389,9 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths you want to protect, including those
-     * starting with a root folder (e.g. /dashboard).
-     * Exclude static files and API routes.
+     * Match all request paths including API routes to set impersonation headers.
+     * Only exclude static files and auth callbacks.
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|auth/callback).*)',
+    '/((?!_next/static|_next/image|favicon.ico|auth/callback).*)',
   ],
 };
