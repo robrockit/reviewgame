@@ -4,6 +4,11 @@
  * Shows impersonation status, target user info, session expiry time, and exit button.
  * Always visible at the top of the page when an admin is impersonating a user.
  *
+ * Context Switching:
+ * When this banner is displayed, the middleware has set impersonation context headers
+ * that API routes and server components can use to filter data as the target user.
+ * The admin maintains their authentication but views data scoped to the target user.
+ *
  * @module app/admin/components/ImpersonationBanner
  */
 
@@ -185,19 +190,6 @@ export default function ImpersonationBanner({
               <XMarkIcon className="h-4 w-4" />
               <span>{isEnding ? 'Ending...' : 'Exit Impersonation'}</span>
             </button>
-          </div>
-
-          {/* Context switching warning */}
-          <div className="mt-2 rounded-md bg-purple-50 border border-purple-200 p-3">
-            <div className="flex">
-              <div className="ml-3">
-                <p className="text-sm text-purple-800">
-                  ⚠️ <strong>Session Tracking Only:</strong> Context switching is not yet implemented.
-                  You are still viewing as an admin, not as {displayName}. This session tracks the
-                  impersonation for audit purposes only.
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Error message */}

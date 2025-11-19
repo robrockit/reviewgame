@@ -4,7 +4,16 @@
  * This middleware runs on every request (matching the config pattern) to:
  * - Create a Supabase server client with cookie management
  * - Refresh user authentication sessions
+ * - Check for active admin impersonation sessions and set context headers
  * - Track and log session errors via Sentry
+ *
+ * Impersonation Context Switching:
+ * When an admin has an active impersonation session, the middleware sets custom
+ * headers that API routes and server components can use to filter data and apply
+ * permissions as the target user:
+ * - x-impersonating-user-id: Target user's UUID
+ * - x-admin-user-id: Admin's UUID (for audit logging)
+ * - x-impersonation-session-id: Session UUID
  *
  * The middleware operates on all routes except:
  * - API routes (/api/*)
@@ -97,21 +106,29 @@ if (typeof setInterval !== 'undefined') {
  * This middleware:
  * 1. Creates a Supabase server client with proper cookie handling
  * 2. Retrieves and validates the user session
- * 3. Protects admin routes (/admin/*) - redirects non-admins to dashboard
- * 4. Logs any session errors to Sentry for monitoring
- * 5. Returns the response with updated authentication cookies
+ * 3. Checks for active admin impersonation sessions and sets context headers
+ * 4. Checks for suspended users and redirects to login
+ * 5. Protects admin routes (/admin/*) with rate limiting - redirects non-admins to dashboard
+ * 6. Logs any session errors to Sentry for monitoring
+ * 7. Returns the response with updated authentication cookies and headers
+ *
+ * Impersonation Context Switching:
+ * When an admin user has an active impersonation session (checked via RPC function),
+ * the middleware sets custom headers (x-impersonating-user-id, x-admin-user-id,
+ * x-impersonation-session-id) that downstream API routes and server components can
+ * use to filter queries and apply permissions as the target user.
  *
  * The middleware is non-blocking - even if errors occur, the request continues
  * to prevent authentication issues from breaking the entire application.
  *
  * @param {NextRequest} req - The incoming Next.js request object
- * @returns {Promise<NextResponse>} The Next.js response with updated cookies
+ * @returns {Promise<NextResponse>} The Next.js response with updated cookies and headers
  *
  * @example
  * This middleware runs automatically on matching routes:
- * - /dashboard → middleware runs (session refresh only)
- * - /admin → middleware runs (admin check + session refresh)
- * - /game/board/123 → middleware runs (session refresh only)
+ * - /dashboard → middleware runs (session refresh + impersonation check)
+ * - /admin → middleware runs (admin check + rate limiting + impersonation)
+ * - /game/board/123 → middleware runs (session refresh + impersonation check)
  * - /api/games → middleware skipped (excluded in config)
  * - /_next/static/... → middleware skipped (excluded in config)
  */
@@ -155,6 +172,54 @@ export async function middleware(req: NextRequest) {
           middleware: 'auth',
         },
       });
+    }
+
+    // Check for active admin impersonation session
+    // If admin is impersonating a user, set context headers for application-level context switching
+    if (session?.user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      // Only check impersonation for admin users
+      if (profile?.role === 'admin') {
+        // Call RPC function to get active impersonation session
+        const { data: impersonationSession, error: impersonationError } = await supabase
+          .rpc('get_active_impersonation');
+
+        if (!impersonationError && impersonationSession) {
+          // Set custom headers for impersonation context
+          // These headers can be read by API routes and server components
+          // to filter data and apply permissions as the target user
+          res.headers.set('x-impersonating-user-id', impersonationSession.target_user_id);
+          res.headers.set('x-admin-user-id', impersonationSession.admin_user_id);
+          res.headers.set('x-impersonation-session-id', impersonationSession.id);
+
+          // Log impersonation context for audit and monitoring
+          Sentry.captureMessage('Admin impersonating user', {
+            level: 'info',
+            user: {
+              id: session.user.id,
+              email: session.user.email,
+            },
+            contexts: {
+              custom: {
+                targetUserId: impersonationSession.target_user_id,
+                targetUserEmail: impersonationSession.target_user_email,
+                targetUserName: impersonationSession.target_user_name,
+                sessionId: impersonationSession.id,
+                expiresAt: impersonationSession.expires_at,
+                path: req.nextUrl.pathname,
+              },
+            },
+            tags: {
+              impersonation: 'active',
+            },
+          });
+        }
+      }
     }
 
     // Check if user is suspended for all authenticated routes
