@@ -12,10 +12,31 @@ import Stripe from 'stripe';
 import { verifyAdminUser, createAdminServiceClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+// Validate Stripe API key is configured
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('STRIPE_SECRET_KEY environment variable is not configured');
+}
+
+// Initialize Stripe with API version pinning for stability
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: '2024-11-20.acacia',
   typescript: true,
 });
+
+/**
+ * Timeout wrapper for Stripe API calls
+ * Prevents requests from hanging indefinitely
+ */
+async function fetchWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number = 10000
+): Promise<T> {
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('Stripe API request timeout')), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]);
+}
 
 /**
  * Subscription details response interface
@@ -104,7 +125,10 @@ export async function GET(
     // Fetch customer details if customer ID exists
     if (user.stripe_customer_id) {
       try {
-        const customer = await stripe.customers.retrieve(user.stripe_customer_id);
+        const customer = await fetchWithTimeout(
+          stripe.customers.retrieve(user.stripe_customer_id),
+          10000 // 10 second timeout
+        );
 
         if (!customer.deleted) {
           response.customer = {
@@ -118,29 +142,54 @@ export async function GET(
           };
         }
       } catch (stripeError) {
-        logger.error('Failed to fetch Stripe customer', stripeError instanceof Error ? stripeError : new Error(String(stripeError)), {
+        const error = stripeError instanceof Error ? stripeError : new Error(String(stripeError));
+        logger.error('Failed to fetch Stripe customer', error, {
           userId,
           customerId: user.stripe_customer_id,
           operation: 'fetchStripeCustomer',
+          timeout: error.message === 'Stripe API request timeout',
         });
         // Continue without customer data
+        if (error.message === 'Stripe API request timeout') {
+          response.error = 'Stripe API timeout - customer data unavailable';
+        }
       }
     }
 
     // Fetch subscription details if subscription ID exists
     if (user.stripe_subscription_id) {
       try {
-        const subscription = await stripe.subscriptions.retrieve(user.stripe_subscription_id);
+        // Fetch subscription with expanded product for proper product name
+        const subscription = await fetchWithTimeout(
+          stripe.subscriptions.retrieve(
+            user.stripe_subscription_id,
+            { expand: ['items.data.price.product'] }
+          ),
+          10000 // 10 second timeout
+        );
 
         // Get the first price/plan (subscriptions can have multiple, but we'll show the primary one)
         const subscriptionItem = subscription.items.data[0];
         const price = subscriptionItem?.price;
 
         if (price) {
+          // Type guard and safe extraction of product name
+          let productName: string;
+          if (typeof price.product === 'string') {
+            // Product is just an ID (shouldn't happen with expand, but safety first)
+            productName = price.product;
+          } else if (price.product && typeof price.product === 'object') {
+            // Product is expanded - use name or fall back to ID
+            productName = price.product.name || price.product.id;
+          } else {
+            // Fallback
+            productName = 'Unknown Product';
+          }
+
           response.subscription = {
             id: subscription.id,
             status: subscription.status,
-            planName: price.nickname || price.product.toString(),
+            planName: price.nickname || productName,
             planId: price.id,
             amount: price.unit_amount || 0,
             currency: price.currency,
@@ -155,13 +204,17 @@ export async function GET(
           };
         }
       } catch (stripeError) {
-        logger.error('Failed to fetch Stripe subscription', stripeError instanceof Error ? stripeError : new Error(String(stripeError)), {
+        const error = stripeError instanceof Error ? stripeError : new Error(String(stripeError));
+        logger.error('Failed to fetch Stripe subscription', error, {
           userId,
           subscriptionId: user.stripe_subscription_id,
           operation: 'fetchStripeSubscription',
+          timeout: error.message === 'Stripe API request timeout',
         });
         // Return error in response but don't fail the request
-        response.error = 'Failed to fetch subscription from Stripe';
+        response.error = error.message === 'Stripe API request timeout'
+          ? 'Stripe API timeout - subscription data unavailable'
+          : 'Failed to fetch subscription from Stripe';
       }
     }
 

@@ -29,6 +29,8 @@ export default function PaymentHistoryTable({ userId }: PaymentHistoryTableProps
   const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchPaymentHistory = async () => {
       try {
         setLoading(true);
@@ -39,17 +41,30 @@ export default function PaymentHistoryTable({ userId }: PaymentHistoryTableProps
         }
 
         const result: PaymentHistoryResponse = await response.json();
-        setPayments(result.payments);
-        setHasMore(result.hasMore);
-        setError(result.error || null);
+
+        // Only update state if this effect hasn't been cancelled
+        if (!cancelled) {
+          setPayments(result.payments);
+          setHasMore(result.hasMore);
+          setError(result.error || null);
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load payment history');
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load payment history');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     fetchPaymentHistory();
+
+    // Cleanup function to prevent race conditions
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   if (loading) {

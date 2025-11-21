@@ -28,6 +28,8 @@ export default function SubscriptionDetailsCard({ userId }: SubscriptionDetailsC
   const [data, setData] = useState<SubscriptionDetailsResponse | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchSubscriptionDetails = async () => {
       try {
         setLoading(true);
@@ -38,16 +40,29 @@ export default function SubscriptionDetailsCard({ userId }: SubscriptionDetailsC
         }
 
         const result: SubscriptionDetailsResponse = await response.json();
-        setData(result);
-        setError(result.error || null);
+
+        // Only update state if this effect hasn't been cancelled
+        if (!cancelled) {
+          setData(result);
+          setError(result.error || null);
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load subscription details');
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load subscription details');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     fetchSubscriptionDetails();
+
+    // Cleanup function to prevent race conditions
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   if (loading) {
@@ -114,7 +129,7 @@ export default function SubscriptionDetailsCard({ userId }: SubscriptionDetailsC
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900">Stripe Customer</h3>
             <a
-              href={`https://dashboard.stripe.com/customers/${data.customer.id}`}
+              href={`https://dashboard.stripe.com/customers/${encodeURIComponent(data.customer.id)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center text-sm text-purple-600 hover:text-purple-700"
@@ -156,7 +171,7 @@ export default function SubscriptionDetailsCard({ userId }: SubscriptionDetailsC
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900">Active Subscription</h3>
             <a
-              href={`https://dashboard.stripe.com/subscriptions/${data.subscription.id}`}
+              href={`https://dashboard.stripe.com/subscriptions/${encodeURIComponent(data.subscription.id)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center text-sm text-purple-600 hover:text-purple-700"

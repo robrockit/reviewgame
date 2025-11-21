@@ -12,6 +12,7 @@ import { format } from 'date-fns';
 import type { AdminUserDetail } from '@/app/api/admin/users/[userId]/route';
 import SubscriptionDetailsCard from './SubscriptionDetailsCard';
 import PaymentHistoryTable from './PaymentHistoryTable';
+import { SubscriptionErrorBoundary } from './SubscriptionErrorBoundary';
 
 interface SubscriptionTabProps {
   user: AdminUserDetail;
@@ -69,13 +70,17 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
       {/* Real-time Stripe Subscription Details */}
       <div>
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Stripe Subscription Details</h2>
-        <SubscriptionDetailsCard userId={userId} />
+        <SubscriptionErrorBoundary>
+          <SubscriptionDetailsCard userId={userId} />
+        </SubscriptionErrorBoundary>
       </div>
 
       {/* Payment History */}
       <div>
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Payment History</h2>
-        <PaymentHistoryTable userId={userId} />
+        <SubscriptionErrorBoundary>
+          <PaymentHistoryTable userId={userId} />
+        </SubscriptionErrorBoundary>
       </div>
 
       {/* Database Information Section */}

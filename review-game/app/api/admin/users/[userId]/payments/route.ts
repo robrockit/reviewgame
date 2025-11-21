@@ -12,10 +12,31 @@ import Stripe from 'stripe';
 import { verifyAdminUser, createAdminServiceClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+// Validate Stripe API key is configured
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('STRIPE_SECRET_KEY environment variable is not configured');
+}
+
+// Initialize Stripe with API version pinning for stability
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+  apiVersion: '2024-11-20.acacia',
   typescript: true,
 });
+
+/**
+ * Timeout wrapper for Stripe API calls
+ * Prevents requests from hanging indefinitely
+ */
+async function fetchWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number = 10000
+): Promise<T> {
+  const timeout = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('Stripe API request timeout')), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]);
+}
 
 /**
  * Payment record interface
@@ -113,12 +134,15 @@ export async function GET(
     };
 
     try {
-      // Fetch charges from Stripe
-      const charges = await stripe.charges.list({
-        customer: user.stripe_customer_id,
-        limit,
-        starting_after: startingAfter,
-      });
+      // Fetch charges from Stripe with timeout
+      const charges = await fetchWithTimeout(
+        stripe.charges.list({
+          customer: user.stripe_customer_id,
+          limit,
+          starting_after: startingAfter,
+        }),
+        10000 // 10 second timeout
+      );
 
       // Transform charges into payment records
       response.payments = charges.data.map((charge) => {
