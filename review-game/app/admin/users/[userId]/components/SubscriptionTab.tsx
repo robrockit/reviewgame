@@ -1,7 +1,7 @@
 /**
  * @fileoverview Subscription tab component displaying billing and plan details.
  *
- * Shows subscription status, Stripe information, and custom plan details.
+ * Shows subscription status, Stripe information, custom plan details, and payment history.
  *
  * @module app/admin/users/[userId]/components/SubscriptionTab
  */
@@ -10,9 +10,12 @@
 
 import { format } from 'date-fns';
 import type { AdminUserDetail } from '@/app/api/admin/users/[userId]/route';
+import SubscriptionDetailsCard from './SubscriptionDetailsCard';
+import PaymentHistoryTable from './PaymentHistoryTable';
 
 interface SubscriptionTabProps {
   user: AdminUserDetail;
+  userId: string;
 }
 
 /**
@@ -31,13 +34,13 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
  * Subscription tab component
  *
  * Displays comprehensive subscription and billing information including:
- * - Current plan and status
- * - Stripe customer and subscription IDs
- * - Billing cycle and renewal dates
+ * - Real-time Stripe subscription data
+ * - Payment history
+ * - Current plan and status from database
  * - Custom plan overrides
  * - Feature limits and permissions
  */
-export default function SubscriptionTab({ user }: SubscriptionTabProps) {
+export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) {
   // Helper to format subscription status
   const getStatusBadge = (status: string | null) => {
     if (!status) {
@@ -62,7 +65,27 @@ export default function SubscriptionTab({ user }: SubscriptionTabProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Real-time Stripe Subscription Details */}
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Stripe Subscription Details</h2>
+        <SubscriptionDetailsCard userId={userId} />
+      </div>
+
+      {/* Payment History */}
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Payment History</h2>
+        <PaymentHistoryTable userId={userId} />
+      </div>
+
+      {/* Database Information Section */}
+      <div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-4">Database Records</h2>
+        <div className="text-sm text-gray-500 mb-4 italic">
+          Information stored in the database (may differ from Stripe if not recently synced)
+        </div>
+      </div>
+
       {/* Current Plan Section */}
       <div>
         <h3 className="text-lg font-medium text-gray-900 mb-4">Current Plan</h3>
