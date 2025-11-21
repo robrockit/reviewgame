@@ -9,7 +9,7 @@
 
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import { verifyAdminUser, createAdminServerClient } from '@/lib/admin/auth';
+import { verifyAdminUser, createAdminServiceClient } from '@/lib/admin/auth';
 import UserProfileHeader from './components/UserProfileHeader';
 import UserProfileTabs from './components/UserProfileTabs';
 import Link from 'next/link';
@@ -34,7 +34,7 @@ function LoadingFallback() {
  * Fetches user details from the API
  */
 async function getUserDetails(userId: string): Promise<AdminUserDetail | null> {
-  const supabase = await createAdminServerClient();
+  const supabase = createAdminServiceClient();
 
   // Fetch user details
   const { data: user, error } = await supabase
@@ -46,6 +46,10 @@ async function getUserDetails(userId: string): Promise<AdminUserDetail | null> {
   if (error || !user) {
     return null;
   }
+
+  // Fetch auth user data to get email_confirmed_at (from Supabase Auth)
+  const { data: authData } = await supabase.auth.admin.getUserById(userId);
+  const emailConfirmedAt = authData?.user?.email_confirmed_at || null;
 
   return {
     id: user.id,
@@ -70,6 +74,7 @@ async function getUserDetails(userId: string): Promise<AdminUserDetail | null> {
     plan_override_limits: user.plan_override_limits as Record<string, unknown> | null,
     suspension_reason: user.suspension_reason,
     email_verified_manually: user.email_verified_manually,
+    email_confirmed_at: emailConfirmedAt,
     admin_notes: user.admin_notes,
     games_created_count: user.games_created_count,
   };

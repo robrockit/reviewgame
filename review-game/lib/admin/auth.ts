@@ -30,6 +30,10 @@ export type AdminProfile = {
  * This function creates a server-side Supabase client with proper cookie handling
  * for use in Server Components, Route Handlers, and Server Actions.
  *
+ * IMPORTANT: This client uses the ANON key and is subject to RLS policies.
+ * For admin operations that need to bypass RLS (like listing all users),
+ * use createAdminServiceClient() instead.
+ *
  * @returns {Promise<SupabaseClient>} Configured Supabase server client
  *
  * @example
@@ -73,6 +77,49 @@ export async function createAdminServerClient() {
             }
           }
         },
+      },
+    }
+  );
+}
+
+/**
+ * Creates a Supabase service role client for admin operations that bypass RLS.
+ *
+ * SECURITY WARNING: This client has elevated privileges and bypasses Row Level Security.
+ * It should ONLY be used:
+ * - After verifying admin authentication with verifyAdminUser()
+ * - For operations that legitimately need to bypass RLS (e.g., viewing all users)
+ * - In server-side code (never expose to client)
+ *
+ * @returns {SupabaseClient} Configured Supabase service role client
+ *
+ * @example
+ * ```tsx
+ * // CORRECT usage - verify admin first
+ * const adminUser = await verifyAdminUser();
+ * if (!adminUser) {
+ *   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+ * }
+ * const supabase = createAdminServiceClient();
+ * const { data } = await supabase.from('profiles').select('*');
+ *
+ * // INCORRECT usage - no auth check
+ * const supabase = createAdminServiceClient(); // ❌ DANGEROUS
+ * ```
+ */
+export function createAdminServiceClient() {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set');
+  }
+
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      cookies: {
+        get() { return undefined; },
+        set() {},
+        remove() {},
       },
     }
   );
