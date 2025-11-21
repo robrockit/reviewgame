@@ -68,11 +68,13 @@ export default function NewGamePage() {
         // Fetch user context to check for impersonation
         let targetUserId = currentUser.id;
         let contextProfile = null;
+        let contextData: UserContextResponse | null = null;
 
         try {
           const contextResponse = await fetch('/api/user/context');
           if (contextResponse.ok) {
             const context: UserContextResponse = await contextResponse.json();
+            contextData = context;
             setUserContext(context);
             targetUserId = context.effectiveUserId;
             setEffectiveUserId(context.effectiveUserId);
@@ -90,11 +92,11 @@ export default function NewGamePage() {
         // If we don't have profile from context, fetch it directly
         // (This should only happen if context API fails or profile is missing)
         let profileData = null;
-        if (contextProfile) {
+        if (contextProfile && contextData) {
           // Create a profile object from context data
           profileData = {
             id: targetUserId,
-            email: currentUser.email,
+            email: contextData.effectiveUserEmail,
             subscription_status: contextProfile.subscription_status,
             subscription_tier: contextProfile.subscription_tier,
             role: contextProfile.role,

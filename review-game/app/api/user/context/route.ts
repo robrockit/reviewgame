@@ -30,6 +30,10 @@ export interface UserContextResponse {
     subscription_tier: string | null;
     role: string | null;
     is_active: boolean | null;
+    stripe_customer_id: string | null;
+    stripe_subscription_id: string | null;
+    trial_end_date: string | null;
+    current_period_end: string | null;
   };
 }
 
@@ -91,7 +95,7 @@ export async function GET() {
       const serviceClient = createAdminServiceClient();
       const { data: profile } = await serviceClient
         .from('profiles')
-        .select('email, subscription_status, subscription_tier, role, is_active')
+        .select('email, subscription_status, subscription_tier, role, is_active, stripe_customer_id, stripe_subscription_id, trial_end_date, current_period_end')
         .eq('id', context.effectiveUserId)
         .single();
 
@@ -102,13 +106,17 @@ export async function GET() {
           subscription_tier: profile.subscription_tier,
           role: profile.role,
           is_active: profile.is_active,
+          stripe_customer_id: profile.stripe_customer_id,
+          stripe_subscription_id: profile.stripe_subscription_id,
+          trial_end_date: profile.trial_end_date,
+          current_period_end: profile.current_period_end,
         };
       }
     } else {
       // Not impersonating - fetch current user's profile
       const { data: profile } = await supabase
         .from('profiles')
-        .select('subscription_status, subscription_tier, role, is_active')
+        .select('subscription_status, subscription_tier, role, is_active, stripe_customer_id, stripe_subscription_id, trial_end_date, current_period_end')
         .eq('id', user.id)
         .single();
 
@@ -118,6 +126,10 @@ export async function GET() {
           subscription_tier: profile.subscription_tier,
           role: profile.role,
           is_active: profile.is_active,
+          stripe_customer_id: profile.stripe_customer_id,
+          stripe_subscription_id: profile.stripe_subscription_id,
+          trial_end_date: profile.trial_end_date,
+          current_period_end: profile.current_period_end,
         };
       }
     }
