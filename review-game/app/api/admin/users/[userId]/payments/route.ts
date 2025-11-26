@@ -156,10 +156,11 @@ export async function GET(
 
         // Handle invoice which can be string | Invoice | null
         let invoiceIdStr: string | null = null;
-        if (typeof charge.invoice === 'string') {
-          invoiceIdStr = charge.invoice;
-        } else if (charge.invoice && typeof charge.invoice === 'object' && 'id' in charge.invoice) {
-          invoiceIdStr = (charge.invoice as { id: string }).id;
+        const invoice = (charge as { invoice?: string | { id: string } | null }).invoice;
+        if (typeof invoice === 'string') {
+          invoiceIdStr = invoice;
+        } else if (invoice && typeof invoice === 'object' && 'id' in invoice) {
+          invoiceIdStr = (invoice as { id: string }).id;
         }
 
         return {

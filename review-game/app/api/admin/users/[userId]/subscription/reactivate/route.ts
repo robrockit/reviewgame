@@ -37,6 +37,14 @@ async function fetchWithTimeout<T>(
   return Promise.race([promise, timeout]);
 }
 
+/**
+ * Extended Stripe Subscription interface with properties we need
+ */
+interface StripeSubscriptionWithFields extends Stripe.Subscription {
+  cancel_at_period_end: boolean;
+  current_period_end: number;
+}
+
 export interface ReactivateSubscriptionRequest {
   action: 'reactivate';
   reason: string;
@@ -53,6 +61,22 @@ export interface ReactivateSubscriptionResponse {
   };
   error?: string;
 }
+
+/**
+ * Validation constants for input sanitization
+ */
+const VALIDATION = {
+  REASON_MIN_LENGTH: 10,
+  REASON_MAX_LENGTH: 500,
+  NOTES_MAX_LENGTH: 1000,
+  // Patterns to detect and reject potentially dangerous content
+  FORBIDDEN_PATTERNS: [
+    /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, // Control characters (except \t, \n, \r)
+    /<script[^>]*>.*?<\/script>/gi, // Script tags
+    /javascript:/gi, // JavaScript protocol
+    /on\w+\s*=/gi, // Event handlers like onclick=, onload=, etc.
+  ],
+} as const;
 
 /**
  * POST /api/admin/users/[userId]/subscription/reactivate
@@ -86,7 +110,8 @@ export async function POST(
 
     // Parse request body
     const body: ReactivateSubscriptionRequest = await req.json();
-    const { reason, notes } = body;
+    const { notes } = body;
+    let { reason } = body;
 
     // Validate required fields
     if (!reason) {
@@ -94,6 +119,70 @@ export async function POST(
         { error: 'Missing required field: reason' },
         { status: 400 }
       );
+    }
+
+    // Sanitize and validate reason
+    reason = reason.trim();
+
+    // Validate reason length
+    if (reason.length < VALIDATION.REASON_MIN_LENGTH) {
+      return NextResponse.json(
+        { error: `Reason must be at least ${VALIDATION.REASON_MIN_LENGTH} characters` },
+        { status: 400 }
+      );
+    }
+
+    if (reason.length > VALIDATION.REASON_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: `Reason must be ${VALIDATION.REASON_MAX_LENGTH} characters or less` },
+        { status: 400 }
+      );
+    }
+
+    // Check for forbidden patterns in reason (XSS prevention)
+    for (const pattern of VALIDATION.FORBIDDEN_PATTERNS) {
+      if (pattern.test(reason)) {
+        logger.warn('Rejected reason with forbidden pattern', {
+          operation: 'reactivateSubscription',
+          adminId: adminUser.id,
+          pattern: pattern.source,
+        });
+
+        return NextResponse.json(
+          { error: 'Reason contains invalid characters or patterns. Please remove any HTML tags, scripts, or control characters.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Sanitize and validate notes
+    let sanitizedNotes = notes || '';
+    if (sanitizedNotes) {
+      sanitizedNotes = sanitizedNotes.trim();
+
+      // Validate length
+      if (sanitizedNotes.length > VALIDATION.NOTES_MAX_LENGTH) {
+        return NextResponse.json(
+          { error: `Notes must be ${VALIDATION.NOTES_MAX_LENGTH} characters or less` },
+          { status: 400 }
+        );
+      }
+
+      // Check for forbidden patterns (XSS prevention)
+      for (const pattern of VALIDATION.FORBIDDEN_PATTERNS) {
+        if (pattern.test(sanitizedNotes)) {
+          logger.warn('Rejected notes with forbidden pattern', {
+            operation: 'reactivateSubscription',
+            adminId: adminUser.id,
+            pattern: pattern.source,
+          });
+
+          return NextResponse.json(
+            { error: 'Notes contain invalid characters or patterns. Please remove any HTML tags, scripts, or control characters.' },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     // Fetch user's Stripe subscription ID from database
@@ -134,7 +223,7 @@ export async function POST(
           cancel_at_period_end: false,
         }),
         10000
-      );
+      ) as unknown as StripeSubscriptionWithFields;
 
       // Update database to reflect reactivation
       const { error: updateError } = await supabase
@@ -169,7 +258,7 @@ export async function POST(
           },
         },
         reason,
-        notes,
+        notes: sanitizedNotes || undefined,
       });
 
       response.success = true;

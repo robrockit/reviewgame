@@ -39,6 +39,18 @@ async function fetchWithTimeout<T>(
 }
 
 /**
+ * Extended Stripe Subscription interface with properties we need
+ */
+interface StripeSubscriptionWithFields extends Stripe.Subscription {
+  cancel_at_period_end: boolean;
+  canceled_at: number | null;
+  current_period_start: number;
+  current_period_end: number;
+  trial_start: number | null;
+  trial_end: number | null;
+}
+
+/**
  * Subscription details response interface
  */
 export interface SubscriptionDetailsResponse {
@@ -134,7 +146,7 @@ export async function GET(
           response.customer = {
             id: customer.id,
             email: customer.email,
-            name: customer.name,
+            name: customer.name ?? null,
             created: new Date(customer.created * 1000).toISOString(),
             defaultPaymentMethod: typeof customer.invoice_settings.default_payment_method === 'string'
               ? customer.invoice_settings.default_payment_method
@@ -166,7 +178,7 @@ export async function GET(
             { expand: ['items.data.price.product'] }
           ),
           10000 // 10 second timeout
-        );
+        ) as unknown as StripeSubscriptionWithFields;
 
         // Get the first price/plan (subscriptions can have multiple, but we'll show the primary one)
         const subscriptionItem = subscription.items.data[0];
@@ -179,8 +191,13 @@ export async function GET(
             // Product is just an ID (shouldn't happen with expand, but safety first)
             productName = price.product;
           } else if (price.product && typeof price.product === 'object') {
-            // Product is expanded - use name or fall back to ID
-            productName = price.product.name || price.product.id;
+            // Product is expanded - check if it's not deleted before accessing name
+            const product = price.product as { id: string; name?: string; deleted?: boolean };
+            if (product.deleted) {
+              productName = product.id;
+            } else {
+              productName = product.name || product.id;
+            }
           } else {
             // Fallback
             productName = 'Unknown Product';
