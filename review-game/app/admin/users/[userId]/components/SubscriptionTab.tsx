@@ -8,11 +8,14 @@
 
 'use client';
 
+import { useState } from 'react';
 import { format } from 'date-fns';
 import type { AdminUserDetail } from '@/app/api/admin/users/[userId]/route';
 import SubscriptionDetailsCard from './SubscriptionDetailsCard';
 import PaymentHistoryTable from './PaymentHistoryTable';
 import { SubscriptionErrorBoundary } from './SubscriptionErrorBoundary';
+import ManageSubscriptionModal from './ManageSubscriptionModal';
+import { CogIcon } from '@heroicons/react/24/outline';
 
 interface SubscriptionTabProps {
   user: AdminUserDetail;
@@ -42,6 +45,16 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
  * - Feature limits and permissions
  */
 export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) {
+  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Handler for successful subscription management
+  const handleManageSuccess = () => {
+    setRefreshKey(prev => prev + 1);
+    // Optionally reload the page to refresh all data
+    window.location.reload();
+  };
+
   // Helper to format subscription status
   const getStatusBadge = (status: string | null) => {
     if (!status) {
@@ -69,9 +82,20 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
     <div className="space-y-8">
       {/* Real-time Stripe Subscription Details */}
       <div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Stripe Subscription Details</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">Stripe Subscription Details</h2>
+          {user.stripe_subscription_id && (
+            <button
+              onClick={() => setIsManageModalOpen(true)}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+            >
+              <CogIcon className="h-5 w-5 mr-2" />
+              Manage Subscription
+            </button>
+          )}
+        </div>
         <SubscriptionErrorBoundary>
-          <SubscriptionDetailsCard userId={userId} />
+          <SubscriptionDetailsCard userId={userId} key={`details-${refreshKey}`} />
         </SubscriptionErrorBoundary>
       </div>
 
@@ -203,6 +227,18 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
           </p>
         </div>
       )}
+
+      {/* Manage Subscription Modal */}
+      <ManageSubscriptionModal
+        isOpen={isManageModalOpen}
+        onClose={() => setIsManageModalOpen(false)}
+        userEmail={user.email}
+        userId={userId}
+        subscriptionId={user.stripe_subscription_id}
+        currentStatus={user.subscription_status}
+        currentBillingCycle={user.billing_cycle}
+        onSuccess={handleManageSuccess}
+      />
     </div>
   );
 }
