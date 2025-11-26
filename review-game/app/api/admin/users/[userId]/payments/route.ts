@@ -19,7 +19,7 @@ if (!process.env.STRIPE_SECRET_KEY) {
 
 // Initialize Stripe with API version pinning for stability
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-11-20.acacia',
+  apiVersion: '2025-09-30.clover',
   typescript: true,
 });
 
@@ -150,16 +150,16 @@ export async function GET(
         let paymentMethodId: string | null = null;
         if (typeof charge.payment_method === 'string') {
           paymentMethodId = charge.payment_method;
-        } else if (charge.payment_method && typeof charge.payment_method === 'object') {
-          paymentMethodId = charge.payment_method.id;
+        } else if (charge.payment_method && typeof charge.payment_method === 'object' && 'id' in charge.payment_method) {
+          paymentMethodId = (charge.payment_method as { id: string }).id;
         }
 
         // Handle invoice which can be string | Invoice | null
         let invoiceIdStr: string | null = null;
         if (typeof charge.invoice === 'string') {
           invoiceIdStr = charge.invoice;
-        } else if (charge.invoice && typeof charge.invoice === 'object') {
-          invoiceIdStr = charge.invoice.id;
+        } else if (charge.invoice && typeof charge.invoice === 'object' && 'id' in charge.invoice) {
+          invoiceIdStr = (charge.invoice as { id: string }).id;
         }
 
         return {
