@@ -15,7 +15,8 @@ import SubscriptionDetailsCard from './SubscriptionDetailsCard';
 import PaymentHistoryTable from './PaymentHistoryTable';
 import { SubscriptionErrorBoundary } from './SubscriptionErrorBoundary';
 import ManageSubscriptionModal from './ManageSubscriptionModal';
-import { CogIcon } from '@heroicons/react/24/outline';
+import ExtendTrialModal from './ExtendTrialModal';
+import { CogIcon, ClockIcon } from '@heroicons/react/24/outline';
 
 interface SubscriptionTabProps {
   user: AdminUserDetail;
@@ -46,7 +47,9 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
  */
 export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) {
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
+  const [isExtendTrialModalOpen, setIsExtendTrialModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Handler for successful subscription management
   const handleManageSuccess = () => {
@@ -54,6 +57,34 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
     // Optionally reload the page to refresh all data
     window.location.reload();
   };
+
+  // Handler for successful trial extension
+  const handleExtendTrialSuccess = (newTrialEndDate: string) => {
+    const formattedDate = format(new Date(newTrialEndDate), 'MMM d, yyyy');
+    setToastMessage(`Trial extended successfully! New trial end date: ${formattedDate}`);
+    setRefreshKey(prev => prev + 1);
+
+    // Auto-hide toast after 5 seconds
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 5000);
+
+    // Reload to refresh all data
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+  };
+
+  // Determine trial status
+  const getTrialStatus = (): 'active' | 'expired' | 'none' => {
+    if (!user.trial_end_date) return 'none';
+    const trialEndDate = new Date(user.trial_end_date);
+    const now = new Date();
+    return trialEndDate > now ? 'active' : 'expired';
+  };
+
+  const trialStatus = getTrialStatus();
+  const shouldShowExtendTrialButton = trialStatus !== 'none' || user.stripe_customer_id;
 
   // Helper to format subscription status
   const getStatusBadge = (status: string | null) => {
@@ -80,19 +111,59 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
 
   return (
     <div className="space-y-8">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-4 right-4 z-50 max-w-md animate-fade-in">
+          <div className="rounded-lg bg-green-50 border border-green-200 p-4 shadow-lg">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm font-medium text-green-800">{toastMessage}</p>
+              </div>
+              <div className="ml-auto pl-3">
+                <button
+                  onClick={() => setToastMessage(null)}
+                  className="inline-flex rounded-md bg-green-50 p-1.5 text-green-500 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2 focus:ring-offset-green-50"
+                >
+                  <span className="sr-only">Dismiss</span>
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Real-time Stripe Subscription Details */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-gray-900">Stripe Subscription Details</h2>
-          {user.stripe_subscription_id && (
-            <button
-              onClick={() => setIsManageModalOpen(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-            >
-              <CogIcon className="h-5 w-5 mr-2" />
-              Manage Subscription
-            </button>
-          )}
+          <div className="flex items-center space-x-3">
+            {shouldShowExtendTrialButton && (
+              <button
+                onClick={() => setIsExtendTrialModalOpen(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <ClockIcon className="h-5 w-5 mr-2" />
+                {trialStatus === 'expired' ? 'Reactivate Trial' : 'Extend Trial'}
+              </button>
+            )}
+            {user.stripe_subscription_id && (
+              <button
+                onClick={() => setIsManageModalOpen(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+              >
+                <CogIcon className="h-5 w-5 mr-2" />
+                Manage Subscription
+              </button>
+            )}
+          </div>
         </div>
         <SubscriptionErrorBoundary>
           <SubscriptionDetailsCard userId={userId} key={`details-${refreshKey}`} />
@@ -238,6 +309,18 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
         currentStatus={user.subscription_status}
         currentBillingCycle={user.billing_cycle}
         onSuccess={handleManageSuccess}
+      />
+
+      {/* Extend Trial Modal */}
+      <ExtendTrialModal
+        isOpen={isExtendTrialModalOpen}
+        onClose={() => setIsExtendTrialModalOpen(false)}
+        userEmail={user.email}
+        userId={userId}
+        subscriptionId={user.stripe_subscription_id}
+        trialStatus={trialStatus}
+        currentTrialEndDate={user.trial_end_date}
+        onSuccess={handleExtendTrialSuccess}
       />
     </div>
   );
