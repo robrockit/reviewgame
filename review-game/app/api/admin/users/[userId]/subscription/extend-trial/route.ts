@@ -63,7 +63,7 @@ export interface ExtendTrialResponse {
 }
 
 /**
- * Validation constants for input sanitization
+ * Validation constants for input sanitization and date calculations
  */
 const VALIDATION = {
   REASON_MIN_LENGTH: 10,
@@ -76,6 +76,15 @@ const VALIDATION = {
     /javascript:/gi, // JavaScript protocol
     /on\w+\s*=/gi, // Event handlers like onclick=, onload=, etc.
   ],
+  // Date calculation constants
+  MIN_EXTEND_DAYS: 1,
+  MAX_EXTEND_DAYS: 365,
+  SECONDS_PER_DAY: 86400,
+  // Unix timestamp for 2038-01-19 (32-bit signed integer overflow)
+  MAX_UNIX_TIMESTAMP: 2147483647,
+  // Retry configuration for race condition handling
+  MAX_RETRIES: 3,
+  RETRY_TOLERANCE_SECONDS: 10, // Allow 10 second tolerance for verification
 } as const;
 
 /**
@@ -121,10 +130,22 @@ export async function POST(
       );
     }
 
-    // Validate extendDays range
-    if (extendDays < 1 || extendDays > 365) {
+    // Validate extendDays is a valid integer in acceptable range
+    if (!Number.isInteger(extendDays) || extendDays < VALIDATION.MIN_EXTEND_DAYS || extendDays > VALIDATION.MAX_EXTEND_DAYS) {
       return NextResponse.json(
-        { error: 'extendDays must be between 1 and 365' },
+        { error: `extendDays must be an integer between ${VALIDATION.MIN_EXTEND_DAYS} and ${VALIDATION.MAX_EXTEND_DAYS}` },
+        { status: 400 }
+      );
+    }
+
+    // Validate that extension won't cause Unix timestamp overflow
+    const now = Math.floor(Date.now() / 1000);
+    const extensionSeconds = extendDays * VALIDATION.SECONDS_PER_DAY;
+    const potentialNewTrialEnd = now + extensionSeconds;
+
+    if (potentialNewTrialEnd > VALIDATION.MAX_UNIX_TIMESTAMP) {
+      return NextResponse.json(
+        { error: 'Trial extension would exceed maximum supported date (year 2038). Please use a smaller number of days.' },
         { status: 400 }
       );
     }
@@ -230,36 +251,75 @@ export async function POST(
 
       // Check if user has an existing subscription
       if (user.stripe_subscription_id) {
-        // Fetch existing subscription
-        const currentSubscription = await fetchWithTimeout(
-          stripe.subscriptions.retrieve(user.stripe_subscription_id),
-          10000
-        ) as unknown as StripeSubscriptionWithFields;
+        // Implement retry logic to handle race conditions
+        // If another operation modifies trial_end between read and write, we'll retry
+        let retryCount = 0;
+        let updateSuccessful = false;
 
-        // Calculate new trial end
-        // If trial_end exists and is in the future, extend from there
-        // Otherwise, extend from now (reactivation case)
-        const now = Math.floor(Date.now() / 1000);
-        const currentTrialEnd = currentSubscription.trial_end || now;
-        const extensionSeconds = extendDays * 24 * 60 * 60;
-        const newTrialEnd = (currentTrialEnd > now ? currentTrialEnd : now) + extensionSeconds;
+        while (retryCount < VALIDATION.MAX_RETRIES && !updateSuccessful) {
+          // Fetch current subscription state
+          const currentSubscription = await fetchWithTimeout(
+            stripe.subscriptions.retrieve(user.stripe_subscription_id),
+            10000
+          ) as unknown as StripeSubscriptionWithFields;
 
-        isReactivation = !currentSubscription.trial_end || currentSubscription.trial_end <= now;
+          // Calculate new trial end based on current state
+          const now = Math.floor(Date.now() / 1000);
+          const currentTrialEnd = currentSubscription.trial_end || now;
+          const newTrialEnd = (currentTrialEnd > now ? currentTrialEnd : now) + extensionSeconds;
 
-        // Update subscription with new trial_end
-        subscription = await fetchWithTimeout(
-          stripe.subscriptions.update(user.stripe_subscription_id, {
-            trial_end: newTrialEnd,
-          }),
-          10000
-        ) as unknown as StripeSubscriptionWithFields;
+          // Determine if this is a reactivation
+          isReactivation = !currentSubscription.trial_end || currentSubscription.trial_end <= now;
+
+          // Store expected minimum trial_end for verification
+          const expectedMinTrialEnd = currentTrialEnd + extensionSeconds - VALIDATION.RETRY_TOLERANCE_SECONDS;
+
+          // Update subscription with new trial_end
+          subscription = await fetchWithTimeout(
+            stripe.subscriptions.update(user.stripe_subscription_id, {
+              trial_end: newTrialEnd,
+            }),
+            10000
+          ) as unknown as StripeSubscriptionWithFields;
+
+          // Verify the update was based on current data
+          // If trial_end is within tolerance, consider it successful
+          if (subscription.trial_end && subscription.trial_end >= expectedMinTrialEnd) {
+            updateSuccessful = true;
+            logger.info('Trial extension successful', {
+              userId,
+              retryCount,
+              expectedMinTrialEnd,
+              actualTrialEnd: subscription.trial_end,
+            });
+          } else {
+            retryCount++;
+            if (retryCount < VALIDATION.MAX_RETRIES) {
+              logger.warn('Trial extension verification failed, retrying', {
+                userId,
+                retryCount,
+                expectedMinTrialEnd,
+                actualTrialEnd: subscription.trial_end,
+              });
+              // Brief delay before retry to reduce contention
+              await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+            } else {
+              logger.error('Trial extension retry limit reached', new Error('Max retries exceeded'), {
+                userId,
+                retryCount,
+                expectedMinTrialEnd,
+                actualTrialEnd: subscription.trial_end,
+              });
+              throw new Error('Unable to extend trial due to concurrent modifications. Please try again.');
+            }
+          }
+        }
       } else {
         // No subscription exists - create a trial subscription
         // This allows admins to grant trials to users who haven't subscribed yet
         isReactivation = true;
 
         const now = Math.floor(Date.now() / 1000);
-        const extensionSeconds = extendDays * 24 * 60 * 60;
         const newTrialEnd = now + extensionSeconds;
 
         // Get the default price ID for creating trial subscriptions
@@ -288,12 +348,19 @@ export async function POST(
       }
 
       // Update database to reflect trial extension
+      const dbUpdate: Record<string, unknown> = {
+        trial_end_date: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+        subscription_status: subscription.status,
+      };
+
+      // If we created a new subscription, also update the subscription ID
+      if (!user.stripe_subscription_id) {
+        dbUpdate.stripe_subscription_id = subscription.id;
+      }
+
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({
-          trial_end_date: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-          subscription_status: subscription.status,
-        })
+        .update(dbUpdate)
         .eq('id', userId);
 
       if (updateError) {
@@ -302,7 +369,64 @@ export async function POST(
           subscriptionId: subscription.id,
           operation: 'updateDatabaseAfterExtendTrial',
         });
-        // Don't fail the request - Stripe is updated, webhook will sync eventually
+
+        // Attempt to rollback Stripe changes to maintain data consistency
+        try {
+          if (!user.stripe_subscription_id) {
+            // New subscription created - cancel it to rollback
+            await fetchWithTimeout(
+              stripe.subscriptions.cancel(subscription.id),
+              10000
+            );
+            logger.info('Rolled back new subscription creation due to database error', {
+              subscriptionId: subscription.id,
+              userId,
+            });
+          } else {
+            // Extension made - revert to original trial_end if possible
+            const originalTrialEnd = user.trial_end_date
+              ? Math.floor(new Date(user.trial_end_date).getTime() / 1000)
+              : undefined;
+
+            await fetchWithTimeout(
+              stripe.subscriptions.update(subscription.id, {
+                trial_end: originalTrialEnd,
+              }),
+              10000
+            );
+            logger.info('Rolled back trial extension due to database error', {
+              subscriptionId: subscription.id,
+              userId,
+              originalTrialEnd,
+            });
+          }
+
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Failed to update database. Stripe changes have been rolled back. Please try again.'
+            },
+            { status: 500 }
+          );
+        } catch (rollbackError) {
+          // Rollback failed - log critical error
+          logger.error('CRITICAL: Failed to rollback Stripe changes after database error',
+            rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError)),
+            {
+              subscriptionId: subscription.id,
+              userId,
+              originalDatabaseError: updateError.message,
+            }
+          );
+
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Critical error: Database update failed and automatic rollback failed. Please contact support immediately.'
+            },
+            { status: 500 }
+          );
+        }
       }
 
       // Log the admin action
