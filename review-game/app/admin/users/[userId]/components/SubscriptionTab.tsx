@@ -17,7 +17,8 @@ import PaymentHistoryTable from './PaymentHistoryTable';
 import { SubscriptionErrorBoundary } from './SubscriptionErrorBoundary';
 import ManageSubscriptionModal from './ManageSubscriptionModal';
 import ExtendTrialModal from './ExtendTrialModal';
-import { CogIcon, ClockIcon } from '@heroicons/react/24/outline';
+import GrantAccessModal from './GrantAccessModal';
+import { CogIcon, ClockIcon, GiftIcon } from '@heroicons/react/24/outline';
 
 interface SubscriptionTabProps {
   user: AdminUserDetail;
@@ -62,6 +63,7 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
   const router = useRouter();
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isExtendTrialModalOpen, setIsExtendTrialModalOpen] = useState(false);
+  const [isGrantAccessModalOpen, setIsGrantAccessModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -76,6 +78,27 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
   const handleExtendTrialSuccess = (newTrialEndDate: string) => {
     const formattedDate = format(new Date(newTrialEndDate), 'MMM d, yyyy');
     setToastMessage(`Trial extended successfully! New trial end date: ${formattedDate}`);
+    setRefreshKey(prev => prev + 1);
+
+    // Auto-hide toast after 5 seconds
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 5000);
+
+    // Use router.refresh() instead of full page reload for better performance
+    setTimeout(() => {
+      router.refresh();
+    }, 1000);
+  };
+
+  // Handler for successful access grant
+  const handleGrantAccessSuccess = (grantDetails: { type: 'temporary' | 'lifetime'; expiresAt?: string }) => {
+    if (grantDetails.type === 'temporary' && grantDetails.expiresAt) {
+      const formattedDate = format(new Date(grantDetails.expiresAt), 'MMM d, yyyy');
+      setToastMessage(`Temporary Premium access granted! Expires: ${formattedDate}`);
+    } else {
+      setToastMessage('Permanent Premium access granted successfully!');
+    }
     setRefreshKey(prev => prev + 1);
 
     // Auto-hide toast after 5 seconds
@@ -151,6 +174,13 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-gray-900">Stripe Subscription Details</h2>
           <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setIsGrantAccessModalOpen(true)}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+            >
+              <GiftIcon className="h-5 w-5 mr-2" />
+              Grant Access
+            </button>
             {shouldShowExtendTrialButton && (
               <button
                 onClick={() => setIsExtendTrialModalOpen(true)}
@@ -327,6 +357,15 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
         trialStatus={trialStatus}
         currentTrialEndDate={user.trial_end_date}
         onSuccess={handleExtendTrialSuccess}
+      />
+
+      {/* Grant Access Modal */}
+      <GrantAccessModal
+        isOpen={isGrantAccessModalOpen}
+        onClose={() => setIsGrantAccessModalOpen(false)}
+        userEmail={user.email}
+        userId={userId}
+        onSuccess={handleGrantAccessSuccess}
       />
     </div>
   );
