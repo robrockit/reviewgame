@@ -31,25 +31,33 @@ function LoadingFallback() {
 }
 
 /**
- * Fetches user details from the API
+ * Fetches user details from the API.
+ * Parallelizes database queries for optimal performance.
  */
 async function getUserDetails(userId: string): Promise<AdminUserDetail | null> {
   const supabase = createAdminServiceClient();
 
-  // Fetch user details
-  const { data: user, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single();
+  // Execute both queries in parallel for better performance
+  const [profileResult, authResult] = await Promise.allSettled([
+    supabase.from('profiles').select('*').eq('id', userId).single(),
+    supabase.auth.admin.getUserById(userId),
+  ]);
 
+  // Extract profile data
+  if (profileResult.status === 'rejected') {
+    return null;
+  }
+
+  const { data: user, error } = profileResult.value;
   if (error || !user) {
     return null;
   }
 
-  // Fetch auth user data to get email_confirmed_at (from Supabase Auth)
-  const { data: authData } = await supabase.auth.admin.getUserById(userId);
-  const emailConfirmedAt = authData?.user?.email_confirmed_at || null;
+  // Extract auth data
+  const emailConfirmedAt =
+    authResult.status === 'fulfilled'
+      ? authResult.value.data?.user?.email_confirmed_at || null
+      : null;
 
   return {
     id: user.id,

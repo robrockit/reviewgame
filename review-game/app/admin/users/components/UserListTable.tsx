@@ -14,7 +14,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import {
@@ -33,11 +33,66 @@ interface UserListTableProps {
 }
 
 /**
+ * Formats a date string to a readable format.
+ * Defined outside component to prevent recreation on every render.
+ */
+const formatDate = (dateString: string | null): string => {
+  if (!dateString) return 'Never';
+  try {
+    return format(new Date(dateString), 'MMM d, yyyy');
+  } catch {
+    return 'Invalid date';
+  }
+};
+
+/**
+ * Gets the subscription tier badge color.
+ * Defined outside component to prevent recreation on every render.
+ */
+const getTierBadgeColor = (tier: string | null): string => {
+  if (!tier) return 'bg-gray-100 text-gray-800';
+  switch (tier.toLowerCase()) {
+    case 'premium':
+      return 'bg-purple-100 text-purple-800';
+    case 'trial':
+      return 'bg-blue-100 text-blue-800';
+    case 'free':
+      return 'bg-green-100 text-green-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+};
+
+/**
+ * Gets the subscription status badge color.
+ * Defined outside component to prevent recreation on every render.
+ */
+const getStatusBadgeColor = (status: string | null): string => {
+  if (!status) return 'bg-gray-100 text-gray-800';
+  switch (status.toLowerCase()) {
+    case 'active':
+      return 'bg-green-100 text-green-800';
+    case 'trialing':
+      return 'bg-blue-100 text-blue-800';
+    case 'past_due':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'canceled':
+    case 'cancelled':
+      return 'bg-red-100 text-red-800';
+    case 'paused':
+      return 'bg-gray-100 text-gray-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+};
+
+/**
  * User list table component.
  *
  * Renders the user list with interactive features like email revealing.
+ * Wrapped in React.memo() to prevent unnecessary re-renders when props haven't changed.
  */
-export default function UserListTable({
+function UserListTable({
   users,
   loading,
   isSearching,
@@ -82,57 +137,6 @@ export default function UserListTable({
       alert(error instanceof Error ? error.message : 'Failed to reveal email');
     } finally {
       setRevealingEmail(null);
-    }
-  };
-
-  /**
-   * Formats a date string to a readable format
-   */
-  const formatDate = (dateString: string | null): string => {
-    if (!dateString) return 'Never';
-    try {
-      return format(new Date(dateString), 'MMM d, yyyy');
-    } catch {
-      return 'Invalid date';
-    }
-  };
-
-  /**
-   * Gets the subscription tier badge color
-   */
-  const getTierBadgeColor = (tier: string | null): string => {
-    if (!tier) return 'bg-gray-100 text-gray-800';
-    switch (tier.toLowerCase()) {
-      case 'premium':
-        return 'bg-purple-100 text-purple-800';
-      case 'trial':
-        return 'bg-blue-100 text-blue-800';
-      case 'free':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  /**
-   * Gets the subscription status badge color
-   */
-  const getStatusBadgeColor = (status: string | null): string => {
-    if (!status) return 'bg-gray-100 text-gray-800';
-    switch (status.toLowerCase()) {
-      case 'active':
-        return 'bg-green-100 text-green-800';
-      case 'trialing':
-        return 'bg-blue-100 text-blue-800';
-      case 'past_due':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'canceled':
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      case 'paused':
-        return 'bg-gray-100 text-gray-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -324,3 +328,9 @@ export default function UserListTable({
     </div>
   );
 }
+
+/**
+ * Memoized export to prevent unnecessary re-renders.
+ * Component will only re-render if props have changed (shallow comparison).
+ */
+export default React.memo(UserListTable);

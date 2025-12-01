@@ -22,76 +22,82 @@ import {
  *
  * Returns fallback values (0) if any queries fail to ensure
  * the dashboard remains functional even with partial data.
+ *
+ * All queries execute in parallel for optimal performance.
  */
 async function getDashboardStats() {
   const supabase = await createAdminServerClient();
 
+  // Execute all queries in parallel for better performance
+  const [totalUsersResult, activeSubscribersResult, totalGamesResult, adminUsersResult] =
+    await Promise.allSettled([
+      // Get total users count
+      supabase.from('profiles').select('*', { count: 'exact', head: true }),
+
+      // Get active subscribers count
+      supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .in('subscription_status', ['active', 'trialing']),
+
+      // Get total games count
+      supabase.from('games').select('*', { count: 'exact', head: true }),
+
+      // Get admin users count
+      supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'admin')
+        .eq('is_active', true),
+    ]);
+
+  // Extract values with error handling and fallbacks
   let totalUsers = 0;
-  let activeSubscribers = 0;
-  let totalGames = 0;
-  let adminUsers = 0;
-
-  // Get total users count
-  try {
-    const { count, error } = await supabase
-      .from('profiles')
-      .select('*', { count: 'exact', head: true });
-
+  if (totalUsersResult.status === 'fulfilled') {
+    const { count, error } = totalUsersResult.value;
     if (error) {
       console.error('Error fetching total users count:', error);
     } else {
       totalUsers = count || 0;
     }
-  } catch (err) {
-    console.error('Unexpected error fetching total users:', err);
+  } else {
+    console.error('Unexpected error fetching total users:', totalUsersResult.reason);
   }
 
-  // Get active subscribers count
-  try {
-    const { count, error } = await supabase
-      .from('profiles')
-      .select('*', { count: 'exact', head: true })
-      .in('subscription_status', ['active', 'trialing']);
-
+  let activeSubscribers = 0;
+  if (activeSubscribersResult.status === 'fulfilled') {
+    const { count, error } = activeSubscribersResult.value;
     if (error) {
       console.error('Error fetching active subscribers count:', error);
     } else {
       activeSubscribers = count || 0;
     }
-  } catch (err) {
-    console.error('Unexpected error fetching active subscribers:', err);
+  } else {
+    console.error('Unexpected error fetching active subscribers:', activeSubscribersResult.reason);
   }
 
-  // Get total games count
-  try {
-    const { count, error } = await supabase
-      .from('games')
-      .select('*', { count: 'exact', head: true });
-
+  let totalGames = 0;
+  if (totalGamesResult.status === 'fulfilled') {
+    const { count, error } = totalGamesResult.value;
     if (error) {
       console.error('Error fetching total games count:', error);
     } else {
       totalGames = count || 0;
     }
-  } catch (err) {
-    console.error('Unexpected error fetching total games:', err);
+  } else {
+    console.error('Unexpected error fetching total games:', totalGamesResult.reason);
   }
 
-  // Get admin users count
-  try {
-    const { count, error } = await supabase
-      .from('profiles')
-      .select('*', { count: 'exact', head: true })
-      .eq('role', 'admin')
-      .eq('is_active', true);
-
+  let adminUsers = 0;
+  if (adminUsersResult.status === 'fulfilled') {
+    const { count, error } = adminUsersResult.value;
     if (error) {
       console.error('Error fetching admin users count:', error);
     } else {
       adminUsers = count || 0;
     }
-  } catch (err) {
-    console.error('Unexpected error fetching admin users:', err);
+  } else {
+    console.error('Unexpected error fetching admin users:', adminUsersResult.reason);
   }
 
   return {
@@ -108,26 +114,26 @@ async function getDashboardStats() {
  * Displays key metrics and quick action cards for admin operations.
  */
 export default async function AdminDashboardPage() {
-  // Log admin dashboard access for audit trail
-  try {
-    const headersList = await headers();
-    const ipAddress = headersList.get('x-forwarded-for') ||
-                      headersList.get('x-real-ip') ||
-                      'unknown';
-    const userAgent = headersList.get('user-agent') || 'unknown';
+  // Log admin dashboard access for audit trail (non-blocking)
+  // Fire-and-forget to prevent audit logging from delaying page render
+  const headersList = await headers();
+  const ipAddress = headersList.get('x-forwarded-for') ||
+                    headersList.get('x-real-ip') ||
+                    'unknown';
+  const userAgent = headersList.get('user-agent') || 'unknown';
 
-    await logAdminAction({
-      actionType: 'view_dashboard',
-      targetType: 'admin_portal',
-      targetId: 'dashboard',
-      notes: 'Admin accessed the dashboard',
-      ipAddress,
-      userAgent,
-    });
-  } catch (err) {
+  // Don't await - let audit logging happen asynchronously
+  logAdminAction({
+    actionType: 'view_dashboard',
+    targetType: 'admin_portal',
+    targetId: 'dashboard',
+    notes: 'Admin accessed the dashboard',
+    ipAddress,
+    userAgent,
+  }).catch((err) => {
     // Log silently - don't block page load if audit logging fails
     console.error('Failed to log admin dashboard access:', err);
-  }
+  });
 
   const stats = await getDashboardStats();
 

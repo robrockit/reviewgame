@@ -9,6 +9,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import type { AdminUserDetail } from '@/app/api/admin/users/[userId]/route';
 import SubscriptionDetailsCard from './SubscriptionDetailsCard';
@@ -36,6 +37,18 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 /**
+ * Subscription status badge configuration.
+ * Defined outside component to prevent recreation on every render.
+ */
+const STATUS_BADGE_CONFIG: Record<string, { bg: string; text: string }> = {
+  active: { bg: 'bg-green-100', text: 'text-green-800' },
+  trialing: { bg: 'bg-blue-100', text: 'text-blue-800' },
+  past_due: { bg: 'bg-yellow-100', text: 'text-yellow-800' },
+  canceled: { bg: 'bg-gray-100', text: 'text-gray-800' },
+  unpaid: { bg: 'bg-red-100', text: 'text-red-800' },
+};
+
+/**
  * Subscription tab component
  *
  * Displays comprehensive subscription and billing information including:
@@ -46,6 +59,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
  * - Feature limits and permissions
  */
 export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) {
+  const router = useRouter();
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isExtendTrialModalOpen, setIsExtendTrialModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -54,8 +68,8 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
   // Handler for successful subscription management
   const handleManageSuccess = () => {
     setRefreshKey(prev => prev + 1);
-    // Optionally reload the page to refresh all data
-    window.location.reload();
+    // Use router.refresh() instead of full page reload for better performance
+    router.refresh();
   };
 
   // Handler for successful trial extension
@@ -69,9 +83,9 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
       setToastMessage(null);
     }, 5000);
 
-    // Reload to refresh all data
+    // Use router.refresh() instead of full page reload for better performance
     setTimeout(() => {
-      window.location.reload();
+      router.refresh();
     }, 1000);
   };
 
@@ -92,15 +106,7 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
       return <span className="text-gray-500">No subscription</span>;
     }
 
-    const statusConfig: Record<string, { bg: string; text: string }> = {
-      active: { bg: 'bg-green-100', text: 'text-green-800' },
-      trialing: { bg: 'bg-blue-100', text: 'text-blue-800' },
-      past_due: { bg: 'bg-yellow-100', text: 'text-yellow-800' },
-      canceled: { bg: 'bg-gray-100', text: 'text-gray-800' },
-      unpaid: { bg: 'bg-red-100', text: 'text-red-800' },
-    };
-
-    const config = statusConfig[status] || { bg: 'bg-gray-100', text: 'text-gray-800' };
+    const config = STATUS_BADGE_CONFIG[status] || { bg: 'bg-gray-100', text: 'text-gray-800' };
 
     return (
       <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${config.bg} ${config.text}`}>
