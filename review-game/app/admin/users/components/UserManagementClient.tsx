@@ -135,44 +135,57 @@ export default function UserManagementClient() {
   }, [fetchUsers]);
 
   /**
-   * Handles search submission
+   * Handles search submission.
+   * Memoized to prevent unnecessary child component re-renders.
    */
-  const handleSearch = (query: string) => {
-    // Reset to first page on new search
-    searchUsers(query, 1, pagination.limit);
-  };
+  const handleSearch = useCallback(
+    (query: string) => {
+      // Reset to first page on new search
+      searchUsers(query, 1, pagination.limit);
+    },
+    [searchUsers, pagination.limit]
+  );
 
   /**
-   * Handles clearing search
+   * Handles clearing search.
+   * Memoized to prevent unnecessary child component re-renders.
    */
-  const handleClearSearch = () => {
+  const handleClearSearch = useCallback(() => {
     setSearchQuery('');
     setIsSearching(false);
     fetchUsers(1, pagination.limit);
-  };
+  }, [fetchUsers, pagination.limit]);
 
   /**
-   * Handles page change
+   * Handles page change.
+   * Memoized to prevent unnecessary child component re-renders.
    */
-  const handlePageChange = (newPage: number) => {
-    if (isSearching && searchQuery) {
-      searchUsers(searchQuery, newPage, pagination.limit);
-    } else {
-      fetchUsers(newPage, pagination.limit);
-    }
-  };
+  const handlePageChange = useCallback(
+    (newPage: number) => {
+      if (isSearching && searchQuery) {
+        searchUsers(searchQuery, newPage, pagination.limit);
+      } else {
+        fetchUsers(newPage, pagination.limit);
+      }
+    },
+    [isSearching, searchQuery, searchUsers, fetchUsers, pagination.limit]
+  );
 
   /**
-   * Handles page size (limit) change
+   * Handles page size (limit) change.
+   * Memoized to prevent unnecessary child component re-renders.
    */
-  const handleLimitChange = (newLimit: number) => {
-    // Reset to first page when changing limit
-    if (isSearching && searchQuery) {
-      searchUsers(searchQuery, 1, newLimit);
-    } else {
-      fetchUsers(1, newLimit);
-    }
-  };
+  const handleLimitChange = useCallback(
+    (newLimit: number) => {
+      // Reset to first page when changing limit
+      if (isSearching && searchQuery) {
+        searchUsers(searchQuery, 1, newLimit);
+      } else {
+        fetchUsers(1, newLimit);
+      }
+    },
+    [isSearching, searchQuery, searchUsers, fetchUsers]
+  );
 
   /**
    * Initial load - fetch users

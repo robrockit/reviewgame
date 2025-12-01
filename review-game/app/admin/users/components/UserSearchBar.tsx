@@ -41,8 +41,15 @@ export default function UserSearchBar({
   const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Update local query when prop changes (e.g., from clear)
+  // Also clear any pending debounce to prevent stale searches
   useEffect(() => {
     setLocalQuery(searchQuery);
+
+    // Clear any pending debounce when search query changes externally
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+      debounceTimeout.current = null;
+    }
   }, [searchQuery]);
 
   /**
