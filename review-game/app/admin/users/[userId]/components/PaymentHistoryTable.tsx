@@ -11,7 +11,8 @@
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import type { PaymentHistoryResponse, PaymentRecord } from '@/app/api/admin/users/[userId]/payments/route';
-import { ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
+import { ArrowTopRightOnSquareIcon, BanknotesIcon } from '@heroicons/react/24/outline';
+import RefundModal from './RefundModal';
 
 interface PaymentHistoryTableProps {
   userId: string;
@@ -27,6 +28,10 @@ export default function PaymentHistoryTable({ userId }: PaymentHistoryTableProps
   const [error, setError] = useState<string | null>(null);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [hasMore, setHasMore] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,7 +70,35 @@ export default function PaymentHistoryTable({ userId }: PaymentHistoryTableProps
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, refreshTrigger]);
+
+  /**
+   * Handle opening refund modal
+   */
+  const handleOpenRefundModal = (payment: PaymentRecord) => {
+    setSelectedPayment(payment);
+    setIsRefundModalOpen(true);
+  };
+
+  /**
+   * Handle successful refund
+   */
+  const handleRefundSuccess = (refundId: string, amount: number) => {
+    const formattedAmount = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: selectedPayment?.currency.toUpperCase() || 'USD',
+    }).format(amount / 100);
+
+    setSuccessMessage(`Refund processed successfully! Refund ID: ${refundId} for ${formattedAmount}`);
+
+    // Auto-hide success message after 5 seconds
+    setTimeout(() => {
+      setSuccessMessage(null);
+    }, 5000);
+
+    // Refresh payment history
+    setRefreshTrigger(prev => prev + 1);
+  };
 
   if (loading) {
     return (
@@ -121,6 +154,33 @@ export default function PaymentHistoryTable({ userId }: PaymentHistoryTableProps
 
   return (
     <div className="space-y-4">
+      {/* Success Message */}
+      {successMessage && (
+        <div className="rounded-lg bg-green-50 border border-green-200 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-green-800">{successMessage}</p>
+            </div>
+            <div className="ml-auto pl-3">
+              <button
+                onClick={() => setSuccessMessage(null)}
+                className="inline-flex rounded-md bg-green-50 p-1.5 text-green-500 hover:bg-green-100 focus:outline-none focus:ring-2 focus:ring-green-600 focus:ring-offset-2 focus:ring-offset-green-50"
+              >
+                <span className="sr-only">Dismiss</span>
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -161,6 +221,12 @@ export default function PaymentHistoryTable({ userId }: PaymentHistoryTableProps
                   className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
                   Receipt
+                </th>
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  Actions
                 </th>
               </tr>
             </thead>
@@ -221,6 +287,21 @@ export default function PaymentHistoryTable({ userId }: PaymentHistoryTableProps
                       <span className="text-gray-400">-</span>
                     )}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    {payment.status === 'succeeded' && !payment.refunded && payment.type === 'charge' ? (
+                      <button
+                        onClick={() => handleOpenRefundModal(payment)}
+                        className="inline-flex items-center text-red-600 hover:text-red-900"
+                      >
+                        <BanknotesIcon className="mr-1 h-4 w-4" />
+                        Refund
+                      </button>
+                    ) : payment.refunded ? (
+                      <span className="text-gray-400">Refunded</span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -239,6 +320,16 @@ export default function PaymentHistoryTable({ userId }: PaymentHistoryTableProps
       <div className="text-xs text-gray-500 text-center">
         <p>Payment history is fetched in real-time from Stripe</p>
       </div>
+
+      {/* Refund Modal */}
+      {selectedPayment && (
+        <RefundModal
+          isOpen={isRefundModalOpen}
+          onClose={() => setIsRefundModalOpen(false)}
+          payment={selectedPayment}
+          onSuccess={handleRefundSuccess}
+        />
+      )}
     </div>
   );
 }
