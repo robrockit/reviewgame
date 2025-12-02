@@ -133,7 +133,7 @@ export default function NewGamePage() {
           profileData = fetchedProfile;
         }
 
-        setProfile(profileData as any);
+        setProfile(profileData as Profile);
 
         // Fetch question banks (public + user's custom if premium)
         const isPremiumUser = profileData?.subscription_status === 'active' || profileData?.subscription_status === 'trial';
@@ -299,7 +299,7 @@ export default function NewGamePage() {
                   <span className="font-medium">Creating game as user:</span> {profile.email}
                 </p>
                 <p className="text-xs text-amber-600 mt-1">
-                  This game will be created under the target user's account and will use their subscription level and question banks.
+                  This game will be created under the target user&apos;s account and will use their subscription level and question banks.
                 </p>
               </div>
             </div>

@@ -105,6 +105,9 @@ const logger = {
   info: (message: string, data?: unknown) => {
     console.log(`[GrantAccess] ${message}`, data ? JSON.stringify(data) : '');
   },
+  warn: (message: string, data?: unknown) => {
+    console.warn(`[GrantAccess] ${message}`, data ? JSON.stringify(data) : '');
+  },
   error: (message: string, error?: unknown) => {
     console.error(`[GrantAccess] ${message}`, error);
   },
@@ -207,16 +210,17 @@ export async function POST(
 
     // 8. Validate duration for temporary access
     if (accessType === 'temporary') {
-      if (!duration || !Number.isInteger(duration)) {
+      // Explicit validation to prevent 0 or invalid values
+      if (typeof duration !== 'number' || !Number.isInteger(duration) || duration < VALIDATION.MIN_DURATION_DAYS) {
         return NextResponse.json(
-          { success: false, error: 'Duration is required for temporary access and must be an integer' },
+          { success: false, error: `Duration is required for temporary access and must be a positive integer (minimum ${VALIDATION.MIN_DURATION_DAYS} day)` },
           { status: 400 }
         );
       }
 
-      if (duration < VALIDATION.MIN_DURATION_DAYS || duration > VALIDATION.MAX_DURATION_DAYS) {
+      if (duration > VALIDATION.MAX_DURATION_DAYS) {
         return NextResponse.json(
-          { success: false, error: `Duration must be between ${VALIDATION.MIN_DURATION_DAYS} and ${VALIDATION.MAX_DURATION_DAYS} days` },
+          { success: false, error: `Duration cannot exceed ${VALIDATION.MAX_DURATION_DAYS} days` },
           { status: 400 }
         );
       }
@@ -280,7 +284,7 @@ export async function POST(
         const existingSubscription = await fetchWithTimeout(
           stripe.subscriptions.retrieve(user.stripe_subscription_id),
           VALIDATION.STRIPE_TIMEOUT_MS
-        );
+        ) as unknown as StripeSubscriptionWithTrial;
 
         if (existingSubscription.status === 'active' && !existingSubscription.cancel_at_period_end) {
           logger.warn('User has active paid subscription', {
@@ -366,7 +370,7 @@ export async function POST(
         notes: `Unexpected error during grant access: ${error instanceof Error ? error.message : 'Unknown error'}`,
         changes: { error: error instanceof Error ? error.message : String(error) },
       }).catch(err => console.error('Failed to log error', err));
-    } catch (logError) {
+    } catch {
       // Silently fail if we can't log
     }
 
@@ -453,7 +457,7 @@ async function grantTemporaryAccess(
         },
       }),
       VALIDATION.STRIPE_TIMEOUT_MS
-    ) as StripeSubscriptionWithTrial;
+    ) as unknown as StripeSubscriptionWithTrial;
 
     // 5. Update user profile in database
     // NOTE: For temporary access, we use Stripe as the source of truth.

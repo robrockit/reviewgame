@@ -48,6 +48,30 @@ const ACCESS_CATEGORIES = [
 ] as const;
 
 /**
+ * XSS prevention patterns (matching backend validation)
+ * Provides early user feedback if forbidden characters are detected
+ */
+const FORBIDDEN_PATTERNS = [
+  /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, // Control characters
+  /<script[^>]*>.*?<\/script>/gi, // Script tags
+  /<iframe[^>]*>.*?<\/iframe>/gi, // Iframes
+  /<object[^>]*>.*?<\/object>/gi, // Objects
+  /<embed[^>]*>/gi, // Embeds
+  /javascript:/gi, // JavaScript protocol
+  /vbscript:/gi, // VBScript protocol
+  /data:text\/html/gi, // Data URIs
+  /on\w+\s*=/gi, // Event handlers (onclick, onerror, etc.)
+  /&lt;script/gi, // HTML entity encoded script tags
+];
+
+/**
+ * Checks if input contains forbidden XSS patterns
+ */
+function containsForbiddenPatterns(input: string): boolean {
+  return FORBIDDEN_PATTERNS.some(pattern => pattern.test(input));
+}
+
+/**
  * Grant Access modal component.
  *
  * Provides interface for granting free Premium access to users.
@@ -117,6 +141,11 @@ export default function GrantAccessModal({
       return 'Plan name must be between 3 and 100 characters';
     }
 
+    // Check for XSS patterns in plan name
+    if (containsForbiddenPatterns(planName)) {
+      return 'Plan name contains forbidden characters or patterns. Please remove HTML tags, scripts, or special characters.';
+    }
+
     if (accessType === 'temporary') {
       if (!Number.isInteger(duration) || duration < 1 || duration > 3650) {
         return 'Duration must be between 1 and 3650 days (10 years)';
@@ -125,6 +154,11 @@ export default function GrantAccessModal({
 
     if (notes.length > 1000) {
       return 'Notes cannot exceed 1000 characters';
+    }
+
+    // Check for XSS patterns in notes
+    if (notes && containsForbiddenPatterns(notes)) {
+      return 'Notes contain forbidden characters or patterns. Please remove HTML tags, scripts, or special characters.';
     }
 
     return null;

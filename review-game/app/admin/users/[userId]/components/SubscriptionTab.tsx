@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import type { AdminUserDetail } from '@/app/api/admin/users/[userId]/route';
@@ -67,8 +67,34 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
   const [refreshKey, setRefreshKey] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Refs to track timeouts for proper cleanup
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  /**
+   * Clears any pending timeouts to prevent race conditions
+   */
+  const clearPendingTimeouts = () => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+      refreshTimeoutRef.current = null;
+    }
+  };
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      clearPendingTimeouts();
+    };
+  }, []);
+
   // Handler for successful subscription management
   const handleManageSuccess = () => {
+    clearPendingTimeouts();
     setRefreshKey(prev => prev + 1);
     // Use router.refresh() instead of full page reload for better performance
     router.refresh();
@@ -76,23 +102,25 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
 
   // Handler for successful trial extension
   const handleExtendTrialSuccess = (newTrialEndDate: string) => {
+    clearPendingTimeouts();
     const formattedDate = format(new Date(newTrialEndDate), 'MMM d, yyyy');
     setToastMessage(`Trial extended successfully! New trial end date: ${formattedDate}`);
     setRefreshKey(prev => prev + 1);
 
     // Auto-hide toast after 5 seconds
-    setTimeout(() => {
+    toastTimeoutRef.current = setTimeout(() => {
       setToastMessage(null);
     }, 5000);
 
     // Use router.refresh() instead of full page reload for better performance
-    setTimeout(() => {
+    refreshTimeoutRef.current = setTimeout(() => {
       router.refresh();
     }, 1000);
   };
 
   // Handler for successful access grant
   const handleGrantAccessSuccess = (grantDetails: { type: 'temporary' | 'lifetime'; expiresAt?: string }) => {
+    clearPendingTimeouts();
     if (grantDetails.type === 'temporary' && grantDetails.expiresAt) {
       const formattedDate = format(new Date(grantDetails.expiresAt), 'MMM d, yyyy');
       setToastMessage(`Temporary Premium access granted! Expires: ${formattedDate}`);
@@ -102,12 +130,12 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
     setRefreshKey(prev => prev + 1);
 
     // Auto-hide toast after 5 seconds
-    setTimeout(() => {
+    toastTimeoutRef.current = setTimeout(() => {
       setToastMessage(null);
     }, 5000);
 
     // Use router.refresh() instead of full page reload for better performance
-    setTimeout(() => {
+    refreshTimeoutRef.current = setTimeout(() => {
       router.refresh();
     }, 1000);
   };

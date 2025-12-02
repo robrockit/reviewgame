@@ -287,6 +287,7 @@ export async function POST(
           if (subscription.trial_end && subscription.trial_end >= expectedMinTrialEnd) {
             updateSuccessful = true;
             logger.info('Trial extension successful', {
+              operation: 'extend_trial_verification',
               userId,
               retryCount,
               expectedMinTrialEnd,
@@ -296,6 +297,7 @@ export async function POST(
             retryCount++;
             if (retryCount < VALIDATION.MAX_RETRIES) {
               logger.warn('Trial extension verification failed, retrying', {
+                operation: 'extend_trial_retry',
                 userId,
                 retryCount,
                 expectedMinTrialEnd,
@@ -305,6 +307,7 @@ export async function POST(
               await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
             } else {
               logger.error('Trial extension retry limit reached', new Error('Max retries exceeded'), {
+                operation: 'extend_trial_retry_limit',
                 userId,
                 retryCount,
                 expectedMinTrialEnd,
@@ -349,13 +352,13 @@ export async function POST(
 
       // Update database to reflect trial extension
       const dbUpdate: Record<string, unknown> = {
-        trial_end_date: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-        subscription_status: subscription.status,
+        trial_end_date: subscription!.trial_end ? new Date(subscription!.trial_end * 1000).toISOString() : null,
+        subscription_status: subscription!.status,
       };
 
       // If we created a new subscription, also update the subscription ID
       if (!user.stripe_subscription_id) {
-        dbUpdate.stripe_subscription_id = subscription.id;
+        dbUpdate.stripe_subscription_id = subscription!.id;
       }
 
       const { error: updateError } = await supabase
@@ -366,7 +369,7 @@ export async function POST(
       if (updateError) {
         logger.error('Failed to update database after trial extension', new Error(updateError.message), {
           userId,
-          subscriptionId: subscription.id,
+          subscriptionId: subscription!.id,
           operation: 'updateDatabaseAfterExtendTrial',
         });
 
@@ -375,11 +378,12 @@ export async function POST(
           if (!user.stripe_subscription_id) {
             // New subscription created - cancel it to rollback
             await fetchWithTimeout(
-              stripe.subscriptions.cancel(subscription.id),
+              stripe.subscriptions.cancel(subscription!.id),
               10000
             );
             logger.info('Rolled back new subscription creation due to database error', {
-              subscriptionId: subscription.id,
+              operation: 'rollback_subscription_creation',
+              subscriptionId: subscription!.id,
               userId,
             });
           } else {
@@ -389,13 +393,14 @@ export async function POST(
               : undefined;
 
             await fetchWithTimeout(
-              stripe.subscriptions.update(subscription.id, {
+              stripe.subscriptions.update(subscription!.id, {
                 trial_end: originalTrialEnd,
               }),
               10000
             );
             logger.info('Rolled back trial extension due to database error', {
-              subscriptionId: subscription.id,
+              operation: 'rollback_trial_extension',
+              subscriptionId: subscription!.id,
               userId,
               originalTrialEnd,
             });
@@ -413,7 +418,8 @@ export async function POST(
           logger.error('CRITICAL: Failed to rollback Stripe changes after database error',
             rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError)),
             {
-              subscriptionId: subscription.id,
+              operation: 'rollback_failure_critical',
+              subscriptionId: subscription!.id,
               userId,
               originalDatabaseError: updateError.message,
             }
@@ -433,15 +439,15 @@ export async function POST(
       await logAdminAction({
         actionType: isReactivation ? 'reactivate_trial' : 'extend_trial',
         targetType: 'subscription',
-        targetId: subscription.id,
+        targetId: subscription!.id,
         changes: {
           before: {
             trial_end_date: user.trial_end_date,
             subscription_status: user.subscription_status,
           },
           after: {
-            trial_end_date: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-            subscription_status: subscription.status,
+            trial_end_date: subscription!.trial_end ? new Date(subscription!.trial_end * 1000).toISOString() : null,
+            subscription_status: subscription!.status,
             days_extended: extendDays,
           },
         },
@@ -451,16 +457,16 @@ export async function POST(
 
       response.success = true;
       response.subscription = {
-        id: subscription.id,
-        status: subscription.status,
-        trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-        currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+        id: subscription!.id,
+        status: subscription!.status,
+        trialEnd: subscription!.trial_end ? new Date(subscription!.trial_end * 1000).toISOString() : null,
+        currentPeriodEnd: new Date(subscription!.current_period_end * 1000).toISOString(),
       };
 
       logger.info('Trial extended successfully', {
         userId,
         adminUserId: adminUser.id,
-        subscriptionId: subscription.id,
+        subscriptionId: subscription!.id,
         extendDays,
         isReactivation,
         operation: 'extendTrial',
