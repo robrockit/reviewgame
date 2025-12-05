@@ -18,7 +18,8 @@ import { SubscriptionErrorBoundary } from './SubscriptionErrorBoundary';
 import ManageSubscriptionModal from './ManageSubscriptionModal';
 import ExtendTrialModal from './ExtendTrialModal';
 import GrantAccessModal from './GrantAccessModal';
-import { CogIcon, ClockIcon, GiftIcon } from '@heroicons/react/24/outline';
+import CustomPlanModal from './CustomPlanModal';
+import { CogIcon, ClockIcon, GiftIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
 
 interface SubscriptionTabProps {
   user: AdminUserDetail;
@@ -64,6 +65,7 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
   const [isExtendTrialModalOpen, setIsExtendTrialModalOpen] = useState(false);
   const [isGrantAccessModalOpen, setIsGrantAccessModalOpen] = useState(false);
+  const [isCustomPlanModalOpen, setIsCustomPlanModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -126,6 +128,28 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
       setToastMessage(`Temporary Premium access granted! Expires: ${formattedDate}`);
     } else {
       setToastMessage('Permanent Premium access granted successfully!');
+    }
+    setRefreshKey(prev => prev + 1);
+
+    // Auto-hide toast after 5 seconds
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 5000);
+
+    // Use router.refresh() instead of full page reload for better performance
+    refreshTimeoutRef.current = setTimeout(() => {
+      router.refresh();
+    }, 1000);
+  };
+
+  // Handler for successful custom plan assignment
+  const handleCustomPlanSuccess = (planDetails: { planName: string; pricing: string; expiresAt?: string }) => {
+    clearPendingTimeouts();
+    if (planDetails.expiresAt) {
+      const formattedDate = format(new Date(planDetails.expiresAt), 'MMM d, yyyy');
+      setToastMessage(`Custom plan "${planDetails.planName}" assigned successfully! ${planDetails.pricing} - Expires: ${formattedDate}`);
+    } else {
+      setToastMessage(`Custom plan "${planDetails.planName}" assigned successfully! ${planDetails.pricing}`);
     }
     setRefreshKey(prev => prev + 1);
 
@@ -208,6 +232,15 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
             >
               <GiftIcon className="h-5 w-5 mr-2" />
               Grant Access
+            </button>
+            <button
+              onClick={() => setIsCustomPlanModalOpen(true)}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+              disabled={user.custom_plan_type === 'custom_price'}
+              title={user.custom_plan_type === 'custom_price' ? 'User already has a custom plan' : 'Assign custom pricing plan'}
+            >
+              <CurrencyDollarIcon className="h-5 w-5 mr-2" />
+              Assign Custom Plan
             </button>
             {shouldShowExtendTrialButton && (
               <button
@@ -394,6 +427,15 @@ export default function SubscriptionTab({ user, userId }: SubscriptionTabProps) 
         userEmail={user.email}
         userId={userId}
         onSuccess={handleGrantAccessSuccess}
+      />
+
+      {/* Custom Plan Modal */}
+      <CustomPlanModal
+        isOpen={isCustomPlanModalOpen}
+        onClose={() => setIsCustomPlanModalOpen(false)}
+        userEmail={user.email}
+        userId={userId}
+        onSuccess={handleCustomPlanSuccess}
       />
     </div>
   );
