@@ -9,8 +9,10 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import Stripe from 'stripe';
-import { verifyAdminUser, createAdminServiceClient } from '@/lib/admin/auth';
+import { verifyAdminUser, createAdminServiceClient, logAdminAction } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
+import { headers } from 'next/headers';
+import { getClientIpAddress, getClientUserAgent } from '@/lib/admin/request-utils';
 
 // Validate Stripe API key is configured
 if (!process.env.STRIPE_SECRET_KEY) {
@@ -100,6 +102,11 @@ export async function GET(
     }
 
     const { userId } = await context.params;
+
+    // Get request metadata for audit logging (sanitized and validated)
+    const headersList = await headers();
+    const ipAddress = getClientIpAddress(headersList);
+    const userAgent = getClientUserAgent(headersList);
 
     // Validate UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -243,6 +250,37 @@ export async function GET(
       hasCustomer: !!response.customer,
       operation: 'getSubscriptionDetails',
     });
+
+    // Log admin action to audit trail
+    // IMPORTANT: Audit logging failures should not break the request,
+    // but must be logged for compliance monitoring
+    try {
+      await logAdminAction({
+        actionType: 'view_subscription_details',
+        targetType: 'user',
+        targetId: userId,
+        changes: {
+          has_subscription: !!response.subscription,
+          has_customer: !!response.customer,
+          subscription_status: response.subscription?.status ?? null, // Use null instead of undefined
+        },
+        ipAddress,
+        userAgent,
+      });
+    } catch (auditError) {
+      // Log the failure but don't break the request
+      // Audit log failures are serious and should trigger alerts
+      logger.error('CRITICAL: Failed to log admin action to audit trail',
+        auditError instanceof Error ? auditError : new Error(String(auditError)),
+        {
+          userId,
+          adminUserId: adminUser.id,
+          actionType: 'view_subscription_details',
+          operation: 'auditLogging',
+          complianceImpact: true, // Flag for monitoring/alerting systems
+        }
+      );
+    }
 
     return NextResponse.json(response);
   } catch (error) {

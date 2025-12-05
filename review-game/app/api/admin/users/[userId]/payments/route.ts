@@ -9,8 +9,10 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import Stripe from 'stripe';
-import { verifyAdminUser, createAdminServiceClient } from '@/lib/admin/auth';
+import { verifyAdminUser, createAdminServiceClient, logAdminAction } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
+import { headers } from 'next/headers';
+import { getClientIpAddress, getClientUserAgent } from '@/lib/admin/request-utils';
 
 // Validate Stripe API key is configured
 if (!process.env.STRIPE_SECRET_KEY) {
@@ -91,6 +93,11 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
     const startingAfter = searchParams.get('starting_after') || undefined;
+
+    // Get request metadata for audit logging (sanitized and validated)
+    const headersList = await headers();
+    const ipAddress = getClientIpAddress(headersList);
+    const userAgent = getClientUserAgent(headersList);
 
     // Validate UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -188,6 +195,36 @@ export async function GET(
         paymentCount: response.payments.length,
         operation: 'getPaymentHistory',
       });
+
+      // Log admin action to audit trail
+      // IMPORTANT: Audit logging failures should not break the request,
+      // but must be logged for compliance monitoring
+      try {
+        await logAdminAction({
+          actionType: 'view_payment_history',
+          targetType: 'user',
+          targetId: userId,
+          changes: {
+            payment_count: Math.min(response.payments.length, 1000), // Cap to prevent huge values
+            has_more: !!response.hasMore,
+          },
+          ipAddress,
+          userAgent,
+        });
+      } catch (auditError) {
+        // Log the failure but don't break the request
+        // Audit log failures are serious and should trigger alerts
+        logger.error('CRITICAL: Failed to log admin action to audit trail',
+          auditError instanceof Error ? auditError : new Error(String(auditError)),
+          {
+            userId,
+            adminUserId: adminUser.id,
+            actionType: 'view_payment_history',
+            operation: 'auditLogging',
+            complianceImpact: true, // Flag for monitoring/alerting systems
+          }
+        );
+      }
     } catch (stripeError) {
       logger.error('Failed to fetch payment history from Stripe', stripeError instanceof Error ? stripeError : new Error(String(stripeError)), {
         userId,
