@@ -10,6 +10,18 @@
  * - Cancels custom Stripe subscription
  * - Clears custom plan fields in database
  *
+ * ## Custom Plan Type Values (custom_plan_type field)
+ * - 'lifetime': Permanent Premium access (no expiration) - Database-managed
+ * - 'temporary': Time-limited access managed via database (uses custom_plan_expires_at)
+ * - 'temporary_stripe': Time-limited access managed via Stripe trial (uses trial_end_date)
+ * - 'custom_price': Custom pricing arrangement managed via Stripe subscription (THIS FEATURE)
+ *
+ * ## Code Duplication Note
+ * KNOWN TECH DEBT: sanitizeInput, fetchWithTimeout, and FORBIDDEN_PATTERNS are duplicated
+ * from grant-access/route.ts. These should be extracted to shared utilities:
+ * - lib/admin/validation.ts (for sanitizeInput, FORBIDDEN_PATTERNS)
+ * - lib/admin/stripe.ts (for fetchWithTimeout)
+ *
  * @module app/api/admin/users/[userId]/subscription/custom-plan/route
  */
 
@@ -328,53 +340,65 @@ export async function POST(
     }
 
     // 7. Create custom price in Stripe
+    let priceId: string | null = null; // Track for rollback
     try {
-      // Convert monthly price to cents
-      const priceInCents = Math.round(monthlyPrice * 100);
-
-      // Determine recurring interval and interval count
-      const recurring: { interval: 'month' | 'year'; interval_count: number } =
-        billingPeriod === 'monthly'
-          ? { interval: 'month', interval_count: 1 }
-          : { interval: 'year', interval_count: 1 };
-
-      // Calculate annual price if needed
-      const annualPriceInCents = billingPeriod === 'annual' ? Math.round(monthlyPrice * 12 * 100) : priceInCents;
-      const finalPriceInCents = billingPeriod === 'annual' ? annualPriceInCents : priceInCents;
+      // Calculate price in cents based on billing period
+      // Note: monthlyPrice represents the monthly equivalent in both cases
+      // - For monthly billing: charge monthlyPrice per month
+      // - For annual billing: charge (monthlyPrice * 12) per year
+      const monthlyPriceInCents = Math.round(monthlyPrice * 100);
+      const { interval, unitAmount } = billingPeriod === 'monthly'
+        ? { interval: 'month' as const, unitAmount: monthlyPriceInCents }
+        : { interval: 'year' as const, unitAmount: monthlyPriceInCents * 12 };
 
       logger.info('Creating custom price in Stripe', {
         userId,
         planName,
         monthlyPrice,
         billingPeriod,
-        priceInCents: finalPriceInCents,
+        unitAmount,
+        interval,
         operation: 'assignCustomPlan',
       });
 
-      const price = await fetchWithTimeout(
-        stripe.prices.create({
-          unit_amount: finalPriceInCents,
-          currency: 'usd',
-          recurring,
-          product_data: {
-            name: `Custom Plan: ${planName}`,
-            metadata: {
-              plan_type: 'custom',
-              user_id: userId,
-              admin_assigned: 'true',
-              category,
-            },
-          },
+      // Get product ID from environment, with fallback to inline product creation
+      const customPlanProductId = process.env.STRIPE_CUSTOM_PLAN_PRODUCT_ID;
+
+      const priceCreateParams: Stripe.PriceCreateParams = {
+        unit_amount: unitAmount,
+        currency: 'usd',
+        recurring: { interval, interval_count: 1 },
+        metadata: {
+          plan_name: planName,
+          user_id: userId,
+          category,
+          monthly_price: monthlyPrice.toString(),
+          billing_period: billingPeriod,
+        },
+      };
+
+      // Use existing product if configured, otherwise create inline product
+      if (customPlanProductId) {
+        priceCreateParams.product = customPlanProductId;
+        logger.info('Using existing Custom Plans product', { productId: customPlanProductId });
+      } else {
+        priceCreateParams.product_data = {
+          name: `Custom Plan: ${planName}`,
           metadata: {
-            plan_name: planName,
+            plan_type: 'custom',
             user_id: userId,
+            admin_assigned: 'true',
             category,
-            monthly_price: monthlyPrice.toString(),
-            billing_period: billingPeriod,
           },
-        }),
+        };
+        logger.warn('STRIPE_CUSTOM_PLAN_PRODUCT_ID not set, creating inline product (not recommended for production)');
+      }
+
+      const price = await fetchWithTimeout(
+        stripe.prices.create(priceCreateParams),
         VALIDATION.STRIPE_TIMEOUT_MS
       );
+      priceId = price.id; // Store for potential rollback
 
       logger.info('Custom price created successfully', {
         userId,
@@ -382,23 +406,46 @@ export async function POST(
         operation: 'assignCustomPlan',
       });
 
-      // 8. Create or update subscription
-      // Cancel existing subscription if present
+      // 8. Cancel existing subscription (if present and active)
       if (user.stripe_subscription_id) {
         try {
-          await fetchWithTimeout(
-            stripe.subscriptions.cancel(user.stripe_subscription_id),
+          // Fetch existing subscription to check status and cancellation policy
+          const existingSubscription = await fetchWithTimeout(
+            stripe.subscriptions.retrieve(user.stripe_subscription_id),
             VALIDATION.STRIPE_TIMEOUT_MS
           );
 
-          logger.info('Cancelled existing subscription before creating custom plan', {
-            userId,
-            oldSubscriptionId: user.stripe_subscription_id,
-            operation: 'assignCustomPlan',
-          });
+          // Only cancel if subscription is active or trialing
+          if (existingSubscription.status === 'active' || existingSubscription.status === 'trialing') {
+            logger.info('Cancelling existing subscription immediately before custom plan', {
+              userId,
+              oldSubscriptionId: user.stripe_subscription_id,
+              subscriptionStatus: existingSubscription.status,
+              operation: 'assignCustomPlan',
+            });
+
+            // Cancel immediately (not at period end) since we're replacing with custom plan
+            await fetchWithTimeout(
+              stripe.subscriptions.cancel(user.stripe_subscription_id),
+              VALIDATION.STRIPE_TIMEOUT_MS
+            );
+
+            logger.info('Successfully cancelled existing subscription', {
+              userId,
+              oldSubscriptionId: user.stripe_subscription_id,
+              operation: 'assignCustomPlan',
+            });
+          } else {
+            logger.info('Existing subscription already in cancelled/inactive state', {
+              userId,
+              subscriptionId: user.stripe_subscription_id,
+              status: existingSubscription.status,
+              operation: 'assignCustomPlan',
+            });
+          }
         } catch (cancelError) {
-          // Log but continue - the subscription might already be cancelled
-          logger.warn('Could not cancel existing subscription', {
+          // Log but continue - the subscription might already be cancelled or invalid
+          logger.warn('Could not cancel existing subscription, will proceed with custom plan creation', {
             userId,
             subscriptionId: user.stripe_subscription_id,
             error: cancelError instanceof Error ? cancelError.message : String(cancelError),
@@ -453,10 +500,12 @@ export async function POST(
         logger.error('Failed to update database after creating custom plan', new Error(updateError.message), {
           userId,
           subscriptionId: subscription.id,
+          priceId,
           operation: 'assignCustomPlan',
         });
 
-        // Try to cancel the subscription to prevent orphaned state
+        // Rollback: Cancel subscription and deactivate price to prevent orphaned resources
+        let rollbackSucceeded = false;
         try {
           await stripe.subscriptions.cancel(subscription.id);
           logger.info('Rolled back Stripe subscription due to database error', {
@@ -464,16 +513,35 @@ export async function POST(
             subscriptionId: subscription.id,
             operation: 'assignCustomPlan',
           });
+
+          // Also deactivate the custom price to prevent accumulation of orphaned prices
+          if (priceId) {
+            await stripe.prices.update(priceId, { active: false });
+            logger.info('Deactivated custom price during rollback', {
+              userId,
+              priceId,
+              operation: 'assignCustomPlan',
+            });
+          }
+
+          rollbackSucceeded = true;
         } catch (rollbackError) {
-          logger.error('CRITICAL: Failed to rollback Stripe subscription after database error', rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError)), {
+          logger.error('CRITICAL: Failed to rollback Stripe resources after database error - MANUAL CLEANUP REQUIRED', rollbackError instanceof Error ? rollbackError : new Error(String(rollbackError)), {
             userId,
             subscriptionId: subscription.id,
+            priceId,
             operation: 'assignCustomPlan',
+            requiresManualCleanup: true,
           });
         }
 
         return NextResponse.json(
-          { success: false, error: 'Failed to update database. Subscription has been cancelled.' },
+          {
+            success: false,
+            error: rollbackSucceeded
+              ? 'Failed to update database. Subscription and price have been rolled back.'
+              : 'Failed to update database. CRITICAL: Rollback failed - manual cleanup required. Check logs for subscription ID and price ID.'
+          },
           { status: 500 }
         );
       }
