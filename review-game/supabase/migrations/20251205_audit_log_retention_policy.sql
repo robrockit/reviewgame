@@ -31,8 +31,12 @@ DECLARE
   v_deleted_count INTEGER;
   v_retention_date TIMESTAMPTZ;
 BEGIN
-  -- CRITICAL: Verify caller is an admin (prevents unauthorized audit log deletion)
-  IF NOT public.is_admin() THEN
+  -- CRITICAL: Verify caller is authorized (prevents unauthorized audit log deletion)
+  -- Allow if either:
+  -- 1. No authenticated user (service role with service_role key - auth.uid() is NULL)
+  -- 2. Authenticated user who is an admin (auth.uid() exists AND is_admin() returns true)
+  -- Reject if authenticated user exists but is NOT an admin
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
     RAISE EXCEPTION 'Only admins can execute cleanup_old_audit_logs()';
   END IF;
 

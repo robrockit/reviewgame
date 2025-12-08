@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/cleanup-audit-logs",
+      "schedule": "0 2 * * 0"
+    }
+  ],
+  "env": {
+    "CRON_SECRET": "@cron-secret",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key"
+  }
+}
