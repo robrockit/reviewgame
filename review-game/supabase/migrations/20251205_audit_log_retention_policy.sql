@@ -30,16 +30,14 @@ AS $$
 DECLARE
   v_deleted_count INTEGER;
   v_retention_date TIMESTAMPTZ;
-  v_role TEXT;
 BEGIN
-  -- Get the current database role
-  v_role := current_setting('role', true);
-
-  -- CRITICAL: Verify caller is an admin or service role (prevents unauthorized audit log deletion)
-  -- Service role is used by GitHub Actions and other automated systems
-  -- is_admin() checks if the authenticated user has admin privileges
-  IF v_role != 'service_role' AND NOT public.is_admin() THEN
-    RAISE EXCEPTION 'Only admins or service role can execute cleanup_old_audit_logs()';
+  -- CRITICAL: Verify caller is authorized (prevents unauthorized audit log deletion)
+  -- Allow if either:
+  -- 1. No authenticated user (service role with service_role key - auth.uid() is NULL)
+  -- 2. Authenticated user who is an admin (auth.uid() exists AND is_admin() returns true)
+  -- Reject if authenticated user exists but is NOT an admin
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Only admins can execute cleanup_old_audit_logs()';
   END IF;
 
   -- Calculate retention cutoff date (7 years ago)

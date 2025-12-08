@@ -16,6 +16,12 @@
  * @module scripts/cleanup-audit-logs
  */
 
+/**
+ * Note: This script uses CommonJS (require) instead of ESM (import)
+ * to avoid build/bundling issues when run directly by GitHub Actions.
+ * This is intentional - the script needs to execute as a standalone
+ * Node.js script without TypeScript compilation.
+ */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { createClient } = require('@supabase/supabase-js');
 

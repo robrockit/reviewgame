@@ -12,6 +12,9 @@ on:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: review-game
 
     steps:
       - name: Checkout code

@@ -68,7 +68,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate Supabase credentials
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    // Support both NEXT_PUBLIC_SUPABASE_URL (Vercel) and SUPABASE_URL (GitHub Actions)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const deletedCount = data || 0;
+    const deletedCount = typeof data === 'number' ? data : 0;
 
     logger.info('Audit log cleanup completed successfully', {
       operation: 'cleanupAuditLogsCron',
