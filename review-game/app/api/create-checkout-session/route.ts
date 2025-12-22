@@ -61,8 +61,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Determine if this is a subscription or one-time payment based on priceId
-    const isSubscription = priceId.includes('premium');
+    // All BASIC and PREMIUM plans are subscriptions with 30-day trial
+    const isSubscription = priceId.includes('basic') || priceId.includes('premium');
 
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
@@ -79,10 +79,10 @@ export async function POST(req: NextRequest) {
       cancel_url: `${req.nextUrl.origin}/pricing?payment=cancelled`,
       allow_promotion_codes: true,
       billing_address_collection: 'required',
-      // Add trial period for subscription
+      // Add 30-day trial period for all subscriptions (BASIC and PREMIUM)
       ...(isSubscription && {
         subscription_data: {
-          trial_period_days: 14,
+          trial_period_days: 30,
         },
       }),
     });
