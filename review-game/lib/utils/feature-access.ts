@@ -89,6 +89,7 @@ function hasActiveSubscription(profile: Profile | null | undefined): boolean {
 
 /**
  * Checks if a user can create a new game based on their subscription tier.
+ * All users require an active subscription (TRIAL or ACTIVE status).
  *
  * @param profile - User profile from the database
  * @returns true if the user can create a game, false otherwise
@@ -105,19 +106,20 @@ export function canCreateGame(profile: Profile | null | undefined): boolean {
   if (!profile) return false;
 
   const tier = getTier(profile);
+  const gamesCreated = profile.games_created_count ?? 0;
 
-  // FREE users: Check if games_created_count < 3
+  // All users need active subscription to create games
+  if (!hasActiveSubscription(profile)) {
+    return false;
+  }
+
+  // FREE tier: limited to 3 games
   if (tier === 'FREE') {
-    const gamesCreated = profile.games_created_count ?? 0;
     return gamesCreated < 3;
   }
 
-  // TRIAL/ACTIVE users on BASIC or PREMIUM: Always true
-  if (tier === 'BASIC' || tier === 'PREMIUM') {
-    return hasActiveSubscription(profile);
-  }
-
-  return false;
+  // BASIC/PREMIUM: unlimited games
+  return true;
 }
 
 /**

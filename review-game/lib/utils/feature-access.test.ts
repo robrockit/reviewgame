@@ -87,6 +87,26 @@ describe('canCreateGame', () => {
       profile.games_created_count = null;
       expect(canCreateGame(profile)).toBe(true);
     });
+
+    it('should allow creation with TRIAL status', () => {
+      const profile = createProfile('FREE', 'TRIAL', 0);
+      expect(canCreateGame(profile)).toBe(true);
+    });
+
+    it('should deny creation when status is INACTIVE', () => {
+      const profile = createProfile('FREE', 'INACTIVE', 0);
+      expect(canCreateGame(profile)).toBe(false);
+    });
+
+    it('should deny creation when status is CANCELLED', () => {
+      const profile = createProfile('FREE', 'CANCELLED', 0);
+      expect(canCreateGame(profile)).toBe(false);
+    });
+
+    it('should deny creation when status is CANCELLED even with 0 games', () => {
+      const profile = createProfile('FREE', 'CANCELLED', 0);
+      expect(canCreateGame(profile)).toBe(false);
+    });
   });
 
   describe('BASIC tier', () => {
