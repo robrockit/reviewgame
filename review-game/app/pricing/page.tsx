@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { getFeatureList } from '@/lib/utils/feature-access';
 import type { Tables } from '@/types/database.types';
@@ -60,17 +60,40 @@ const pricingTiers: PricingTier[] = [
   },
 ];
 
+// Validate required Stripe price IDs are configured
+function validatePriceIds(): void {
+  const required = [
+    'NEXT_PUBLIC_STRIPE_BASIC_MONTHLY_PRICE_ID',
+    'NEXT_PUBLIC_STRIPE_BASIC_ANNUAL_PRICE_ID',
+    'NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY_PRICE_ID',
+    'NEXT_PUBLIC_STRIPE_PREMIUM_ANNUAL_PRICE_ID',
+  ];
+
+  const missing = required.filter((key) => !process.env[key as keyof typeof process.env]);
+  if (missing.length > 0) {
+    console.error('⚠️  Missing required Stripe environment variables:', missing);
+    console.error('⚠️  Checkout functionality will be disabled for affected tiers.');
+  }
+}
+
+// Run validation on module load (client-side only)
+if (typeof window !== 'undefined') {
+  validatePriceIds();
+}
+
 export default function PricingPage() {
   const router = useRouter();
   const [isAnnual, setIsAnnual] = useState(false);
   const [isLoading, setIsLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [userContext, setUserContext] = useState<UserContextResponse | null>(null);
+  const [isLoadingContext, setIsLoadingContext] = useState(true);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
 
   // Fetch user context on mount
   useEffect(() => {
     const fetchUserContext = async () => {
+      setIsLoadingContext(true);
       try {
         const response = await fetch('/api/user/context');
         if (response.ok) {
@@ -80,6 +103,8 @@ export default function PricingPage() {
       } catch (err) {
         // User not logged in or error fetching context - that's okay
         console.log('User context not available:', err);
+      } finally {
+        setIsLoadingContext(false);
       }
     };
 
@@ -167,6 +192,40 @@ export default function PricingPage() {
     return monthlyPrice * 12 - annualPrice;
   };
 
+  // Memoize feature lists to prevent redundant calculations
+  const featureLists = useMemo(
+    () => ({
+      FREE: getFeatureList(createMockProfile('FREE')),
+      BASIC: getFeatureList(createMockProfile('BASIC')),
+      PREMIUM: getFeatureList(createMockProfile('PREMIUM')),
+    }),
+    []
+  );
+
+  // Show loading skeleton while fetching user context
+  if (isLoadingContext) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+        <div className="container mx-auto px-4 py-16">
+          <div className="text-center mb-12">
+            <div className="h-12 bg-gray-200 rounded w-96 mx-auto mb-4 animate-pulse" />
+            <div className="h-6 bg-gray-200 rounded w-64 mx-auto mb-8 animate-pulse" />
+          </div>
+          <div className="grid md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-2xl shadow-xl p-8 animate-pulse">
+                <div className="h-8 bg-gray-200 rounded w-32 mb-4" />
+                <div className="h-4 bg-gray-200 rounded w-full mb-6" />
+                <div className="h-16 bg-gray-200 rounded mb-6" />
+                <div className="h-12 bg-gray-200 rounded w-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       {/* Success Message */}
@@ -198,9 +257,11 @@ export default function PricingPage() {
           </p>
 
           {/* Billing Toggle */}
-          <div className="inline-flex items-center bg-gray-100 rounded-lg p-1">
+          <div className="inline-flex items-center bg-gray-100 rounded-lg p-1" role="group" aria-label="Billing period selector">
             <button
               onClick={() => setIsAnnual(false)}
+              aria-pressed={!isAnnual}
+              aria-label="Select monthly billing"
               className={`px-6 py-2 rounded-md font-medium transition-all ${
                 !isAnnual
                   ? 'bg-white text-gray-900 shadow-sm'
@@ -211,6 +272,8 @@ export default function PricingPage() {
             </button>
             <button
               onClick={() => setIsAnnual(true)}
+              aria-pressed={isAnnual}
+              aria-label="Select annual billing"
               className={`px-6 py-2 rounded-md font-medium transition-all ${
                 isAnnual
                   ? 'bg-white text-gray-900 shadow-sm'
@@ -218,7 +281,7 @@ export default function PricingPage() {
               }`}
             >
               Annual
-              <span className="ml-2 text-xs text-green-600 font-semibold">Save up to $27</span>
+              <span className="ml-2 text-xs text-green-600 font-semibold" aria-label="Save up to 27 dollars per year">Save up to $27</span>
             </button>
           </div>
         </div>
@@ -226,7 +289,7 @@ export default function PricingPage() {
         {/* Pricing Cards */}
         <div className="grid md:grid-cols-3 gap-8 max-w-7xl mx-auto mb-16">
           {pricingTiers.map((tier) => {
-            const features = getFeatureList(createMockProfile(tier.tier));
+            const features = featureLists[tier.tier];
             const price = isAnnual ? tier.annualPrice : tier.monthlyPrice;
             const savings = getSavings(tier.monthlyPrice, tier.annualPrice);
             const currentPlan = isCurrentPlan(tier.tier);
@@ -373,23 +436,17 @@ export default function PricingPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {/* Get all unique features across all tiers */}
+                  {/* Get all unique features across all tiers using memoized lists */}
                   {Array.from(
                     new Set(
-                      pricingTiers.flatMap((tier) =>
-                        getFeatureList(createMockProfile(tier.tier)).map((f) => f.id)
-                      )
+                      Object.values(featureLists)
+                        .flat()
+                        .map((f) => f.id)
                     )
                   ).map((featureId) => {
-                    const freeFeature = getFeatureList(createMockProfile('FREE')).find(
-                      (f) => f.id === featureId
-                    );
-                    const basicFeature = getFeatureList(createMockProfile('BASIC')).find(
-                      (f) => f.id === featureId
-                    );
-                    const premiumFeature = getFeatureList(createMockProfile('PREMIUM')).find(
-                      (f) => f.id === featureId
-                    );
+                    const freeFeature = featureLists.FREE.find((f) => f.id === featureId);
+                    const basicFeature = featureLists.BASIC.find((f) => f.id === featureId);
+                    const premiumFeature = featureLists.PREMIUM.find((f) => f.id === featureId);
 
                     const feature = freeFeature || basicFeature || premiumFeature;
                     if (!feature) return null;

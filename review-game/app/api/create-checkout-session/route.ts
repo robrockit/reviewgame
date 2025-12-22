@@ -61,8 +61,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // All BASIC and PREMIUM plans are subscriptions with 30-day trial
-    const isSubscription = priceId.includes('basic') || priceId.includes('premium');
+    // Robust subscription detection using actual price IDs
+    const basicPriceIds = [
+      process.env.NEXT_PUBLIC_STRIPE_BASIC_MONTHLY_PRICE_ID,
+      process.env.NEXT_PUBLIC_STRIPE_BASIC_ANNUAL_PRICE_ID,
+    ].filter(Boolean);
+
+    const premiumPriceIds = [
+      process.env.NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY_PRICE_ID,
+      process.env.NEXT_PUBLIC_STRIPE_PREMIUM_ANNUAL_PRICE_ID,
+    ].filter(Boolean);
+
+    const allSubscriptionPriceIds = [...basicPriceIds, ...premiumPriceIds];
+    const isSubscription = allSubscriptionPriceIds.includes(priceId);
 
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
