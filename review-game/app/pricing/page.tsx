@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { getFeatureList } from '@/lib/utils/feature-access';
+import { createBrowserClient } from '@supabase/ssr';
 import type { Tables } from '@/types/database.types';
 import type { UserContextResponse } from '@/app/api/user/context/route';
 
@@ -89,6 +90,7 @@ export default function PricingPage() {
   const [userContext, setUserContext] = useState<UserContextResponse | null>(null);
   const [isLoadingContext, setIsLoadingContext] = useState(true);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [featureError, setFeatureError] = useState<string | null>(null);
 
   // Fetch user context on mount
   useEffect(() => {
@@ -115,6 +117,45 @@ export default function PricingPage() {
     const success = searchParams.get('payment') === 'success';
     setPaymentSuccess(success);
   }, []);
+
+  // Set up real-time subscription for profile changes
+  useEffect(() => {
+    if (!userContext?.effectiveUserId) return;
+
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    const channel = supabase
+      .channel('profile-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${userContext.effectiveUserId}`,
+        },
+        async () => {
+          // Re-fetch user context when profile changes
+          try {
+            const response = await fetch('/api/user/context');
+            if (response.ok) {
+              const data = await response.json();
+              setUserContext(data);
+            }
+          } catch (err) {
+            console.error('Error refreshing user context:', err);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [userContext?.effectiveUserId]);
 
   const handleCheckout = async (tier: PricingTier, billingPeriod: 'monthly' | 'annual') => {
     setIsLoading(tier.tier);
@@ -192,15 +233,30 @@ export default function PricingPage() {
     return monthlyPrice * 12 - annualPrice;
   };
 
+  const hasPriceIds = (tier: PricingTier): boolean => {
+    if (tier.tier === 'FREE') return true;
+    return tier.priceIds.monthly !== null && tier.priceIds.annual !== null;
+  };
+
   // Memoize feature lists to prevent redundant calculations
-  const featureLists = useMemo(
-    () => ({
-      FREE: getFeatureList(createMockProfile('FREE')),
-      BASIC: getFeatureList(createMockProfile('BASIC')),
-      PREMIUM: getFeatureList(createMockProfile('PREMIUM')),
-    }),
-    []
-  );
+  const featureLists = useMemo(() => {
+    try {
+      return {
+        FREE: getFeatureList(createMockProfile('FREE')),
+        BASIC: getFeatureList(createMockProfile('BASIC')),
+        PREMIUM: getFeatureList(createMockProfile('PREMIUM')),
+      };
+    } catch (error) {
+      console.error('Error generating feature lists:', error);
+      setFeatureError('Unable to load feature information');
+      // Return empty feature lists as fallback
+      return {
+        FREE: [],
+        BASIC: [],
+        PREMIUM: [],
+      };
+    }
+  }, []);
 
   // Show loading skeleton while fetching user context
   if (isLoadingContext) {
@@ -357,6 +413,18 @@ export default function PricingPage() {
                     >
                       Current Plan
                     </button>
+                  ) : !hasPriceIds(tier) ? (
+                    <div className="text-center">
+                      <button
+                        disabled
+                        className="w-full bg-gray-300 text-gray-600 font-bold py-3 px-6 rounded-lg cursor-not-allowed"
+                      >
+                        Unavailable
+                      </button>
+                      <p className="text-xs text-red-600 mt-2">
+                        Configuration required
+                      </p>
+                    </div>
                   ) : (
                     <button
                       onClick={() => handleCheckout(tier, isAnnual ? 'annual' : 'monthly')}
@@ -373,10 +441,10 @@ export default function PricingPage() {
                     </button>
                   )}
 
-                  {/* Trial Info */}
-                  {tier.tier !== 'FREE' && !currentPlan && (
+                  {/* Trial Info with improved clarity */}
+                  {tier.tier !== 'FREE' && !currentPlan && hasPriceIds(tier) && (
                     <p className="text-sm text-gray-500 text-center mt-3">
-                      No payment required for trial
+                      30-day free trial, then ${price}/{isAnnual ? 'year' : 'month'}
                     </p>
                   )}
 
@@ -489,8 +557,8 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* Error Message */}
-        {error && (
+        {/* Error Messages */}
+        {(error || featureError) && (
           <div className="mt-8 bg-red-50 border-l-4 border-red-400 p-4">
             <div className="flex">
               <div className="flex-shrink-0">
@@ -507,7 +575,7 @@ export default function PricingPage() {
                 </svg>
               </div>
               <div className="ml-3">
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-sm text-red-700">{error || featureError}</p>
               </div>
             </div>
           </div>
