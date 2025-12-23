@@ -94,6 +94,12 @@ function hasActiveSubscription(profile: Profile | null | undefined): boolean {
  * @param profile - User profile from the database
  * @returns true if the user can create a game, false otherwise
  *
+ * @remarks
+ * The `games_created_count` field defaults to 0 if null. This handles cases where:
+ * - New users haven't created any games yet
+ * - Database migration hasn't populated the field
+ * - The field is explicitly set to null
+ *
  * @example
  * ```typescript
  * const profile = await getProfile();
@@ -106,6 +112,7 @@ export function canCreateGame(profile: Profile | null | undefined): boolean {
   if (!profile) return false;
 
   const tier = getTier(profile);
+  // Default to 0 if games_created_count is null (new users, migrations, etc.)
   const gamesCreated = profile.games_created_count ?? 0;
 
   // All users need active subscription to create games

@@ -30,6 +30,7 @@ export interface UserContextResponse {
     subscription_tier: string | null;
     role: string | null;
     is_active: boolean | null;
+    games_created_count: number | null;
   };
 }
 
@@ -91,7 +92,7 @@ export async function GET() {
       const serviceClient = createAdminServiceClient();
       const { data: profile } = await serviceClient
         .from('profiles')
-        .select('email, subscription_status, subscription_tier, role, is_active')
+        .select('email, subscription_status, subscription_tier, role, is_active, games_created_count')
         .eq('id', context.effectiveUserId)
         .single();
 
@@ -102,13 +103,14 @@ export async function GET() {
           subscription_tier: profile.subscription_tier,
           role: profile.role,
           is_active: profile.is_active,
+          games_created_count: profile.games_created_count,
         };
       }
     } else {
       // Not impersonating - fetch current user's profile
       const { data: profile } = await supabase
         .from('profiles')
-        .select('subscription_status, subscription_tier, role, is_active')
+        .select('subscription_status, subscription_tier, role, is_active, games_created_count')
         .eq('id', user.id)
         .single();
 
@@ -118,6 +120,7 @@ export async function GET() {
           subscription_tier: profile.subscription_tier,
           role: profile.role,
           is_active: profile.is_active,
+          games_created_count: profile.games_created_count,
         };
       }
     }
