@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getFeatureList } from '@/lib/utils/feature-access';
 import { createBrowserClient } from '@supabase/ssr';
@@ -92,21 +92,31 @@ export default function PricingPage() {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [featureError, setFeatureError] = useState<string | null>(null);
 
+  // Track the latest fetch request to prevent race conditions
+  const latestFetchIdRef = useRef(0);
+
   // Fetch user context on mount
   useEffect(() => {
     const fetchUserContext = async () => {
+      const fetchId = ++latestFetchIdRef.current;
       setIsLoadingContext(true);
       try {
         const response = await fetch('/api/user/context');
         if (response.ok) {
           const data = await response.json();
-          setUserContext(data);
+          // Only update state if this is still the latest fetch
+          if (fetchId === latestFetchIdRef.current) {
+            setUserContext(data);
+          }
         }
       } catch (err) {
         // User not logged in or error fetching context - that's okay
         console.log('User context not available:', err);
       } finally {
-        setIsLoadingContext(false);
+        // Only update loading state if this is still the latest fetch
+        if (fetchId === latestFetchIdRef.current) {
+          setIsLoadingContext(false);
+        }
       }
     };
 
@@ -138,12 +148,16 @@ export default function PricingPage() {
           filter: `id=eq.${userContext.effectiveUserId}`,
         },
         async () => {
-          // Re-fetch user context when profile changes
+          // Re-fetch user context when profile changes with race condition protection
+          const fetchId = ++latestFetchIdRef.current;
           try {
             const response = await fetch('/api/user/context');
             if (response.ok) {
               const data = await response.json();
-              setUserContext(data);
+              // Only update if this is still the latest fetch
+              if (fetchId === latestFetchIdRef.current) {
+                setUserContext(data);
+              }
             }
           } catch (err) {
             console.error('Error refreshing user context:', err);
@@ -484,6 +498,25 @@ export default function PricingPage() {
         {/* Feature Comparison Table */}
         <div className="max-w-7xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-8">Feature Comparison</h2>
+
+          {/* Feature Error Warning */}
+          {featureError && (
+            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-yellow-700">
+                    {featureError} - Feature comparison may not be accurate. Please refresh the page or contact support.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">

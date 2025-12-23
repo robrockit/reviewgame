@@ -4,6 +4,26 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { createOrRetrieveCustomer } from '@/lib/supabase/server';
 
+// Validate required environment variables on module load
+const REQUIRED_ENV_VARS = [
+  'NEXT_PUBLIC_STRIPE_BASIC_MONTHLY_PRICE_ID',
+  'NEXT_PUBLIC_STRIPE_BASIC_ANNUAL_PRICE_ID',
+  'NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY_PRICE_ID',
+  'NEXT_PUBLIC_STRIPE_PREMIUM_ANNUAL_PRICE_ID',
+];
+
+const missingEnvVars = REQUIRED_ENV_VARS.filter(
+  (key) => !process.env[key as keyof typeof process.env]
+);
+
+if (missingEnvVars.length > 0) {
+  console.error(
+    '⚠️  Missing required Stripe price ID environment variables:',
+    missingEnvVars
+  );
+  console.error('⚠️  Checkout functionality will not work correctly.');
+}
+
 export async function POST(req: NextRequest) {
   try {
     // Get authenticated user
@@ -41,9 +61,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { priceId } = body;
 
-    if (!priceId) {
+    // Validate priceId against whitelist of known price IDs
+    const validPriceIds = [
+      process.env.NEXT_PUBLIC_STRIPE_BASIC_MONTHLY_PRICE_ID,
+      process.env.NEXT_PUBLIC_STRIPE_BASIC_ANNUAL_PRICE_ID,
+      process.env.NEXT_PUBLIC_STRIPE_PREMIUM_MONTHLY_PRICE_ID,
+      process.env.NEXT_PUBLIC_STRIPE_PREMIUM_ANNUAL_PRICE_ID,
+    ].filter(Boolean);
+
+    if (!priceId || !validPriceIds.includes(priceId)) {
       return NextResponse.json(
-        { error: 'Price ID is required' },
+        { error: 'Invalid price ID' },
         { status: 400 }
       );
     }
