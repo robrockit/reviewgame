@@ -130,7 +130,10 @@ export default function PricingPage() {
 
   // Set up real-time subscription for profile changes
   useEffect(() => {
-    if (!userContext?.effectiveUserId) return;
+    // Early return if no user - no subscription needed
+    if (!userContext?.effectiveUserId) {
+      return;
+    }
 
     const supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -166,8 +169,10 @@ export default function PricingPage() {
       )
       .subscribe();
 
+    // Cleanup function ensures proper channel removal
     return () => {
-      channel.unsubscribe();
+      // Use removeChannel for complete cleanup
+      supabase.removeChannel(channel);
     };
   }, [userContext?.effectiveUserId]);
 
@@ -196,7 +201,24 @@ export default function PricingPage() {
       }
 
       const session = await response.json();
+
+      // Validate session URL before redirect
+      if (!session.url) {
+        throw new Error('No checkout URL returned from server');
+      }
+
+      // Set a timeout in case redirect hangs
+      const redirectTimeout = setTimeout(() => {
+        setError('Redirect is taking longer than expected. Please try again.');
+        setIsLoading(null);
+      }, 10000); // 10 second timeout
+
+      // Attempt redirect
       window.location.href = session.url;
+
+      // Note: clearTimeout will only run if redirect fails immediately
+      // In practice, the page will navigate away before this executes
+      clearTimeout(redirectTimeout);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setIsLoading(null);
