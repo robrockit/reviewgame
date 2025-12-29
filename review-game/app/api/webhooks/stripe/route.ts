@@ -464,6 +464,10 @@ export async function POST(req: NextRequest) {
           }
 
           if (profile) {
+            // Determine if subscription was trialing before cancellation
+            const wasTrialing = profile.subscription_status === 'TRIAL' ||
+                                profile.subscription_status === 'trialing';
+
             // All subscription deletions map to CANCELLED status
             // (Whether trial expired or paid subscription ended)
             const status = 'CANCELLED';
