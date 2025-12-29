@@ -12,7 +12,8 @@ const requiredEnvVars = {
 };
 
 const missingEnvVars = Object.entries(requiredEnvVars)
-  .filter(([, value]) => !value)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- key not needed in filter
+  .filter(([_, value]) => !value)
   .map(([key]) => key);
 
 if (missingEnvVars.length > 0) {
@@ -109,6 +110,58 @@ function extractPriceId(subscription: Stripe.Subscription): string | null {
   }
 
   return priceId;
+}
+
+/**
+ * Maps Stripe subscription statuses to application subscription statuses.
+ *
+ * Application only recognizes 4 statuses (from feature-access.ts):
+ * - TRIAL: User is in trial period
+ * - ACTIVE: Paid subscription is active
+ * - INACTIVE: Subscription lapsed, payment failed, or canceled
+ * - CANCELLED: Explicitly cancelled by user
+ *
+ * Stripe has many more statuses that must be mapped to these 4.
+ *
+ * @param stripeStatus - The status from Stripe subscription object
+ * @returns One of the 4 valid application statuses
+ */
+function mapStripeStatus(stripeStatus: string): 'TRIAL' | 'ACTIVE' | 'INACTIVE' | 'CANCELLED' {
+  const status = stripeStatus.toLowerCase();
+
+  switch (status) {
+    case 'trialing':
+      return 'TRIAL';
+
+    case 'active':
+      return 'ACTIVE';
+
+    case 'past_due':
+    case 'unpaid':
+      // Payment failed but subscription still exists
+      return 'INACTIVE';
+
+    case 'canceled':
+    case 'cancelled':
+      // Explicitly cancelled
+      return 'CANCELLED';
+
+    case 'incomplete':
+    case 'incomplete_expired':
+      // Checkout never completed or expired
+      return 'INACTIVE';
+
+    case 'paused':
+      // Subscription paused (if using Stripe's pause feature)
+      return 'INACTIVE';
+
+    default:
+      logger.warn('Unknown Stripe subscription status', {
+        stripeStatus,
+        operation: 'mapStripeStatus'
+      });
+      return 'INACTIVE';
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -310,12 +363,8 @@ export async function POST(req: NextRequest) {
               });
             }
 
-            // Map Stripe's status to our status types
-            // 'trialing' -> 'TRIAL', 'active' -> 'ACTIVE', 'past_due' -> 'past_due', etc.
-            let mappedStatus = subscription.status.toUpperCase();
-            if (mappedStatus === 'TRIALING') {
-              mappedStatus = 'TRIAL';
-            }
+            // Map Stripe's status to application status (TRIAL, ACTIVE, INACTIVE, CANCELLED)
+            const mappedStatus = mapStripeStatus(subscription.status);
 
             // Detect tier changes (upgrade/downgrade)
             const oldTier = profile.subscription_tier;
@@ -415,11 +464,11 @@ export async function POST(req: NextRequest) {
           }
 
           if (profile) {
-            // Determine if this was a trial expiration or a paid subscription cancellation
-            const wasTrialing = profile.subscription_status === 'TRIAL' || profile.subscription_status === 'trialing';
-            const status = wasTrialing ? 'TRIAL_EXPIRED' : 'CANCELLED';
+            // All subscription deletions map to CANCELLED status
+            // (Whether trial expired or paid subscription ended)
+            const status = 'CANCELLED';
 
-            // Update profile in Supabase to reflect cancellation/expiration
+            // Update profile in Supabase to reflect cancellation
             const { error: updateError } = await supabase
               .from('profiles')
               .update({
@@ -453,8 +502,8 @@ export async function POST(req: NextRequest) {
               eventType: event.type,
               operation: 'cancelSubscription',
               profileId: profile.id,
-              status,
-              wasTrialing,
+              status: 'CANCELLED',
+              previousStatus: profile.subscription_status,
               // TODO(RG-84): Schedule cleanup of custom content (30 days)
               // This could be implemented as a database function or background job
               cleanupScheduled: false
@@ -598,37 +647,39 @@ export async function POST(req: NextRequest) {
           }
 
           if (profile) {
-            // Update subscription status to past_due
+            // Map past_due to INACTIVE (payment failed, subscription still exists but not active)
             const { error: updateError } = await supabase
               .from('profiles')
               .update({
-                subscription_status: 'past_due',
+                subscription_status: 'INACTIVE',
               })
               .eq('id', profile.id);
 
             if (updateError) {
-              logger.error('Failed to mark subscription as past_due', new Error(updateError.message), {
+              logger.error('Failed to mark subscription as inactive due to payment failure', new Error(updateError.message), {
                 customerId,
                 eventType: event.type,
-                operation: 'markPastDue',
+                operation: 'markPaymentFailed',
                 profileId: profile.id,
                 subscriptionId
               });
               // Return 500 to trigger Stripe retry
               return NextResponse.json(
-                { error: 'Failed to mark subscription as past_due' },
+                { error: 'Failed to update subscription status' },
                 { status: 500 }
               );
             }
 
-            logger.info('Subscription marked as past_due', {
+            logger.info('Subscription marked as INACTIVE due to payment failure', {
               customerId,
               eventType: event.type,
-              operation: 'markPastDue',
+              operation: 'markPaymentFailed',
               profileId: profile.id,
               subscriptionId,
               invoiceId: invoice.id,
               attemptCount: invoice.attempt_count,
+              status: 'INACTIVE',
+              stripeStatus: 'past_due',
               // TODO(RG-85): Trigger payment reminder email
               // This could be implemented using a service like SendGrid or Resend
               emailTriggered: false
