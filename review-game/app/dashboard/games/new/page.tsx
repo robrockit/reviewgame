@@ -3,9 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import type { Tables, TablesInsert } from '@/types/database.types';
+import type { Tables } from '@/types/database.types';
 import type { UserContextResponse } from '@/app/api/user/context/route';
 import { logger } from '@/lib/logger';
+import { canCreateGame } from '@/lib/utils/feature-access';
 
 type QuestionBank = Tables<'question_banks'>;
 type Profile = Tables<'profiles'>;
@@ -38,6 +39,9 @@ export default function NewGamePage() {
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [canCreate, setCanCreate] = useState(true);
+  const [gamesCreated, setGamesCreated] = useState(0);
+  const [gameLimit, setGameLimit] = useState<number | null>(null);
 
   // Form state
   const [selectedBankId, setSelectedBankId] = useState<string>('');
@@ -135,6 +139,20 @@ export default function NewGamePage() {
 
         setProfile(profileData as Profile);
 
+        // Check game creation limits
+        const userCanCreate = canCreateGame(profileData as Profile);
+        setCanCreate(userCanCreate);
+
+        // Set game count for FREE tier users
+        const tier = profileData?.subscription_tier?.toUpperCase() || 'FREE';
+        if (tier === 'FREE') {
+          setGamesCreated(profileData?.games_created_count ?? 0);
+          setGameLimit(3);
+        } else {
+          setGamesCreated(0);
+          setGameLimit(null); // Unlimited
+        }
+
         // Fetch question banks (public + user's custom if premium)
         const isPremiumUser = profileData?.subscription_status === 'active' || profileData?.subscription_status === 'trial';
 
@@ -182,6 +200,7 @@ export default function NewGamePage() {
     };
 
     initializePage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- user.id is stable from auth context, initialized within effect
   }, [router, supabase]);
 
   // Update team names array when number of teams changes
@@ -207,6 +226,11 @@ export default function NewGamePage() {
       return;
     }
 
+    if (!canCreate) {
+      setError('You have reached your game creation limit. Upgrade to create unlimited games.');
+      return;
+    }
+
     setIsCreating(true);
     setError(null);
 
@@ -214,46 +238,41 @@ export default function NewGamePage() {
       // Generate Daily Double positions
       const dailyDoublePositions = generateDailyDoublePositions();
 
-      // Prepare game data
-      // Use effectiveUserId so that during impersonation, games are created under the target user's account
-      const gameData: TablesInsert<'games'> = {
-        teacher_id: effectiveUserId,
-        bank_id: selectedBankId,
-        num_teams: numTeams,
-        team_names: isPremium ? teamNames : null, // Only save custom names for premium users
-        timer_enabled: timerEnabled,
-        timer_seconds: timerEnabled ? timerSeconds : null,
-        daily_double_positions: dailyDoublePositions,
-        status: 'setup', // Game starts in setup phase
-        selected_questions: [],
-      };
+      // Call API to create game (enforces limits server-side)
+      const response = await fetch('/api/games', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          bank_id: selectedBankId,
+          num_teams: numTeams,
+          team_names: isPremium ? teamNames : null,
+          timer_enabled: timerEnabled,
+          timer_seconds: timerEnabled ? timerSeconds : null,
+          daily_double_positions: dailyDoublePositions,
+          effective_user_id: effectiveUserId !== user.id ? effectiveUserId : undefined,
+        }),
+      });
 
-      // Create game in database
-      const { data: newGame, error: gameError } = await supabase
-        .from('games')
-        .insert(gameData)
-        .select()
-        .single();
+      const data = await response.json();
 
-      if (gameError) throw gameError;
-
-      // Create initial team records
-      const teamRecords = Array.from({ length: numTeams }, (_, i) => ({
-        game_id: newGame.id,
-        team_number: i + 1,
-        team_name: isPremium && teamNames[i] ? teamNames[i] : `Team ${i + 1}`,
-        score: 0,
-        connection_status: 'pending',
-      }));
-
-      const { error: teamsError } = await supabase
-        .from('teams')
-        .insert(teamRecords);
-
-      if (teamsError) throw teamsError;
+      if (!response.ok) {
+        if (response.status === 403) {
+          // Game limit reached - show upgrade message
+          setError(data.error || 'Game creation limit reached');
+          setCanCreate(false);
+          if (data.games_created !== undefined) {
+            setGamesCreated(data.games_created);
+          }
+        } else {
+          throw new Error(data.error || 'Failed to create game');
+        }
+        return;
+      }
 
       // Redirect to teacher control page
-      router.push(`/game/teacher/${newGame.id}`);
+      router.push(`/game/teacher/${data.game_id}`);
     } catch (err) {
       logger.error('Error creating game', {
         error: err instanceof Error ? err.message : String(err),
@@ -284,6 +303,57 @@ export default function NewGamePage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Game</h1>
           <p className="text-gray-600">Set up your Jeopardy-style review game</p>
         </div>
+
+        {/* Game Limit Banner for FREE tier */}
+        {gameLimit !== null && (
+          <div className={`mb-6 border-l-4 p-4 rounded-lg ${
+            canCreate
+              ? 'bg-blue-50 border-blue-400'
+              : 'bg-red-50 border-red-400'
+          }`}>
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                {canCreate ? (
+                  <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </div>
+              <div className="ml-3 flex-1">
+                <div className="flex items-center justify-between">
+                  <p className={`text-sm font-medium ${
+                    canCreate ? 'text-blue-800' : 'text-red-800'
+                  }`}>
+                    {canCreate
+                      ? `${gamesCreated} of ${gameLimit} games used`
+                      : `Game limit reached (${gamesCreated}/${gameLimit})`
+                    }
+                  </p>
+                  {!canCreate && (
+                    <a
+                      href="/pricing"
+                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      Upgrade Now
+                    </a>
+                  )}
+                </div>
+                <p className={`mt-1 text-xs ${
+                  canCreate ? 'text-blue-600' : 'text-red-600'
+                }`}>
+                  {canCreate
+                    ? 'Free tier allows 3 game creations. Upgrade for unlimited games.'
+                    : 'Upgrade to Basic or Premium for unlimited game creations and premium features.'
+                  }
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Impersonation Alert */}
         {userContext?.isImpersonating && profile && (
@@ -456,10 +526,11 @@ export default function NewGamePage() {
             </button>
             <button
               onClick={handleCreateGame}
-              disabled={!selectedBankId || isCreating}
+              disabled={!selectedBankId || isCreating || !canCreate}
               className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              title={!canCreate ? 'Game creation limit reached. Upgrade to create more games.' : ''}
             >
-              {isCreating ? 'Creating Game...' : 'Create Game'}
+              {isCreating ? 'Creating Game...' : canCreate ? 'Create Game' : 'Limit Reached - Upgrade Required'}
             </button>
           </div>
         </div>
