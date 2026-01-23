@@ -130,8 +130,19 @@ export default function DashboardPage() {
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
+            <h2 className="text-xl font-semibold mb-2">Subscription</h2>
+            <p className="text-gray-600 mb-4">Manage your subscription and billing</p>
+            <button
+              onClick={() => router.push('/dashboard/subscription')}
+              className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              Manage Subscription
+            </button>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
             <h2 className="text-xl font-semibold mb-2">Account Settings</h2>
-            <p className="text-gray-600 mb-4">Manage your subscription and settings</p>
+            <p className="text-gray-600 mb-4">Update your profile and preferences</p>
             <button
               onClick={() => router.push('/account')}
               className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
