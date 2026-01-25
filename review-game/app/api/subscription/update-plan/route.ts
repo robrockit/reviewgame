@@ -20,8 +20,9 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 // Initialize Stripe with API version pinning for stability
+// Using latest Clover version (2025-12-15) as of January 2026
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2025-09-30.clover',
+  apiVersion: '2025-12-15.clover',
   typescript: true,
 });
 
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
     if (!isValidPriceId(new_price_id)) {
       logger.warn('Invalid price ID format detected', {
         operation: 'updateSubscriptionPlan',
-        userId: user!.id,
+        userId: user.id,
         invalidPriceId: new_price_id,
       });
       return NextResponse.json(
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
     if (!validPriceIds.includes(new_price_id)) {
       logger.warn('Price ID not in whitelist', {
         operation: 'updateSubscriptionPlan',
-        userId: user!.id,
+        userId: user.id,
         rejectedPriceId: new_price_id,
       });
       return NextResponse.json(
@@ -89,15 +90,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch user's profile from database
-    const { data: profile, error: profileError } = await supabase!
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('stripe_subscription_id, stripe_customer_id, email')
-      .eq('id', user!.id)
+      .eq('id', user.id)
       .single();
 
     if (profileError || !profile) {
       logger.error('Failed to fetch profile for plan update', new Error(profileError?.message || 'Profile not found'), {
-        userId: user!.id,
+        userId: user.id,
         operation: 'updateSubscriptionPlan',
       });
       return NextResponse.json(
@@ -128,7 +129,7 @@ export async function POST(req: NextRequest) {
       verifySubscriptionOwnership(
         currentSubscription,
         profile.stripe_customer_id,
-        user!.id,
+        user.id,
         'updateSubscriptionPlan'
       );
 
@@ -170,7 +171,7 @@ export async function POST(req: NextRequest) {
       };
 
       logger.info('User updated their subscription plan', {
-        userId: user!.id,
+        userId: user.id,
         subscriptionId: profile.stripe_subscription_id,
         newPriceId: new_price_id,
         operation: 'updateSubscriptionPlan',
@@ -178,7 +179,7 @@ export async function POST(req: NextRequest) {
     } catch (stripeError) {
       const err = stripeError instanceof Error ? stripeError : new Error(String(stripeError));
       logger.error('Failed to update subscription plan in Stripe', err, {
-        userId: user!.id,
+        userId: user.id,
         subscriptionId: profile.stripe_subscription_id,
         newPriceId: new_price_id,
         operation: 'updateStripeSubscriptionPlan',

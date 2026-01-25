@@ -20,8 +20,9 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 // Initialize Stripe with API version pinning for stability
+// Using latest Clover version (2025-12-15) as of January 2026
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2025-09-30.clover',
+  apiVersion: '2025-12-15.clover',
   typescript: true,
 });
 
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
         if (pattern.test(sanitizedReason)) {
           logger.warn('Rejected reason with forbidden pattern', {
             operation: 'cancelSubscription',
-            userId: user!.id,
+            userId: user.id,
             pattern: pattern.source,
           });
 
@@ -102,15 +103,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch user's profile from database
-    const { data: profile, error: profileError } = await supabase!
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('stripe_subscription_id, stripe_customer_id, email, subscription_status')
-      .eq('id', user!.id)
+      .eq('id', user.id)
       .single();
 
     if (profileError || !profile) {
       logger.error('Failed to fetch profile for subscription cancellation', new Error(profileError?.message || 'Profile not found'), {
-        userId: user!.id,
+        userId: user.id,
         operation: 'cancelSubscription',
       });
       return NextResponse.json(
@@ -149,7 +150,7 @@ export async function POST(req: NextRequest) {
       verifySubscriptionOwnership(
         existingSubscription,
         profile.stripe_customer_id,
-        user!.id,
+        user.id,
         'cancelSubscription'
       );
 
@@ -186,14 +187,14 @@ export async function POST(req: NextRequest) {
         dbUpdate.subscription_status = subscription.status;
       }
 
-      const { error: updateError } = await supabase!
+      const { error: updateError } = await supabase
         .from('profiles')
         .update(dbUpdate)
-        .eq('id', user!.id);
+        .eq('id', user.id);
 
       if (updateError) {
         logger.error('Failed to update database after subscription cancellation', new Error(updateError.message), {
-          userId: user!.id,
+          userId: user.id,
           subscriptionId: profile.stripe_subscription_id,
           immediate,
           operation: 'updateDatabaseAfterCancel',
@@ -211,7 +212,7 @@ export async function POST(req: NextRequest) {
       };
 
       logger.info('User canceled their subscription', {
-        userId: user!.id,
+        userId: user.id,
         subscriptionId: profile.stripe_subscription_id,
         immediate,
         reason: sanitizedReason || undefined,
@@ -220,7 +221,7 @@ export async function POST(req: NextRequest) {
     } catch (stripeError) {
       const err = stripeError instanceof Error ? stripeError : new Error(String(stripeError));
       logger.error('Failed to cancel subscription in Stripe', err, {
-        userId: user!.id,
+        userId: user.id,
         subscriptionId: profile.stripe_subscription_id,
         immediate,
         operation: 'cancelStripeSubscription',

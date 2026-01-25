@@ -18,7 +18,7 @@
     "next": "15.5.7",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "stripe": "^19.1.0",
+    "stripe": "^20.2.0",
     "use-sound": "^5.0.0"
   },
   "devDependencies": {

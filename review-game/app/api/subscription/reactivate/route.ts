@@ -20,8 +20,9 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 // Initialize Stripe with API version pinning for stability
+// Using latest Clover version (2025-12-15) as of January 2026
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2025-09-30.clover',
+  apiVersion: '2025-12-15.clover',
   typescript: true,
 });
 
@@ -45,15 +46,15 @@ export async function POST(_req: NextRequest) {
     if (error) return error;
 
     // Fetch user's profile from database
-    const { data: profile, error: profileError } = await supabase!
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('stripe_subscription_id, stripe_customer_id, email, subscription_status')
-      .eq('id', user!.id)
+      .eq('id', user.id)
       .single();
 
     if (profileError || !profile) {
       logger.error('Failed to fetch profile for subscription reactivation', new Error(profileError?.message || 'Profile not found'), {
-        userId: user!.id,
+        userId: user.id,
         operation: 'reactivateSubscription',
       });
       return NextResponse.json(
@@ -84,7 +85,7 @@ export async function POST(_req: NextRequest) {
       verifySubscriptionOwnership(
         existingSubscription,
         profile.stripe_customer_id,
-        user!.id,
+        user.id,
         'reactivateSubscription'
       );
 
@@ -97,16 +98,16 @@ export async function POST(_req: NextRequest) {
       ) as unknown as StripeSubscriptionWithFields;
 
       // Update database to reflect reactivation
-      const { error: updateError } = await supabase!
+      const { error: updateError } = await supabase
         .from('profiles')
         .update({
           subscription_status: subscription.status,
         })
-        .eq('id', user!.id);
+        .eq('id', user.id);
 
       if (updateError) {
         logger.error('Failed to update database after subscription reactivation', new Error(updateError.message), {
-          userId: user!.id,
+          userId: user.id,
           subscriptionId: profile.stripe_subscription_id,
           operation: 'updateDatabaseAfterReactivate',
         });
@@ -122,14 +123,14 @@ export async function POST(_req: NextRequest) {
       };
 
       logger.info('User reactivated their subscription', {
-        userId: user!.id,
+        userId: user.id,
         subscriptionId: profile.stripe_subscription_id,
         operation: 'reactivateSubscription',
       });
     } catch (stripeError) {
       const err = stripeError instanceof Error ? stripeError : new Error(String(stripeError));
       logger.error('Failed to reactivate subscription in Stripe', err, {
-        userId: user!.id,
+        userId: user.id,
         subscriptionId: profile.stripe_subscription_id,
         operation: 'reactivateStripeSubscription',
       });

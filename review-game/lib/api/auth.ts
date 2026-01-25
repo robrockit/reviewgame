@@ -14,13 +14,19 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { User } from '@supabase/supabase-js';
 
 /**
- * Result type for authentication
+ * Result type for authentication - uses discriminated union for type safety
  */
-export interface AuthResult {
-  user: User | null;
-  supabase: SupabaseClient | null;
-  error: NextResponse | null;
-}
+export type AuthResult =
+  | {
+      user: User;
+      supabase: SupabaseClient;
+      error: null;
+    }
+  | {
+      user: null;
+      supabase: null;
+      error: NextResponse;
+    };
 
 /**
  * Get authenticated user and Supabase client for API routes
@@ -36,7 +42,8 @@ export interface AuthResult {
  *   const { user, supabase, error } = await getAuthenticatedUser();
  *   if (error) return error;
  *
- *   // Continue with authenticated logic
+ *   // TypeScript knows user and supabase are non-null here
+ *   // No need for non-null assertions (user!, supabase!)
  *   const { data } = await supabase.from('profiles').select('*').eq('id', user.id);
  * }
  * ```
