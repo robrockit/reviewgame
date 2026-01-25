@@ -122,10 +122,10 @@ export default function DashboardPage() {
             <h2 className="text-xl font-semibold mb-2">My Games</h2>
             <p className="text-gray-600 mb-4">View and manage your saved games</p>
             <button
-              className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              disabled
+              onClick={() => router.push('/dashboard/games')}
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
-              Coming Soon
+              View Games
             </button>
           </div>
 
