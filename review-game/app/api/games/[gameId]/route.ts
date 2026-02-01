@@ -354,33 +354,11 @@ export async function PATCH(
         );
       }
 
-      // Determine which bank to validate against
-      const effectiveBankId = bank_id || game.bank_id;
-
-      // Fetch question count from the bank
-      const { count: questionCount, error: countError } = await supabase
-        .from('questions')
-        .select('*', { count: 'exact', head: true })
-        .eq('bank_id', effectiveBankId);
-
-      if (countError) {
-        logger.error('Failed to count questions in bank', countError, {
-          operation: 'updateGame',
-          gameId,
-          bankId: effectiveBankId,
-        });
-        return NextResponse.json(
-          { error: 'Failed to validate daily double positions' },
-          { status: 500 }
-        );
-      }
-
-      // Validate positions against actual question count
-      const maxPosition = (questionCount || GAME_BOARD.TOTAL_QUESTIONS) - 1;
+      // Basic validation: type and uniqueness
       for (const pos of daily_double_positions) {
-        if (typeof pos !== 'number' || pos < 0 || pos > maxPosition) {
+        if (typeof pos !== 'number' || pos < 0) {
           return NextResponse.json(
-            { error: `daily_double_positions must contain numbers between 0 and ${maxPosition} (bank has ${questionCount || GAME_BOARD.TOTAL_QUESTIONS} questions)` },
+            { error: 'daily_double_positions must contain non-negative numbers' },
             { status: 400 }
           );
         }
@@ -392,6 +370,9 @@ export async function PATCH(
           { status: 400 }
         );
       }
+
+      // Full validation against question count happens later, after bank_id is finalized
+      // This prevents race condition where we validate against a bank that might not get set
     }
 
     // Validate final_jeopardy_question if provided
@@ -736,6 +717,70 @@ export async function PATCH(
         { error: 'Failed to update game' },
         { status: 500 }
       );
+    }
+
+    // Validate daily double positions against final bank_id (post-update validation)
+    // This prevents race condition where bank_id changes but daily doubles validated against wrong bank
+    if (daily_double_positions !== undefined) {
+      const finalBankId = updatedGame.bank_id;
+
+      // Fetch question count from the final bank
+      const { count: questionCount, error: countError } = await supabase
+        .from('questions')
+        .select('*', { count: 'exact', head: true })
+        .eq('bank_id', finalBankId);
+
+      if (countError) {
+        logger.error('Failed to validate daily doubles against final bank', countError, {
+          operation: 'updateGame',
+          gameId,
+          bankId: finalBankId,
+        });
+        // Rollback: Remove daily doubles since they're invalid
+        await supabase
+          .from('games')
+          .update({ daily_double_positions: null })
+          .eq('id', gameId);
+
+        return NextResponse.json(
+          { error: 'Failed to validate daily double positions. Please regenerate them for this question bank.' },
+          { status: 400 }
+        );
+      }
+
+      // Validate positions against actual question count
+      const maxPosition = (questionCount || GAME_BOARD.TOTAL_QUESTIONS) - 1;
+      let invalidPositions = false;
+
+      for (const pos of daily_double_positions) {
+        if (pos > maxPosition) {
+          invalidPositions = true;
+          break;
+        }
+      }
+
+      if (invalidPositions) {
+        logger.error('Daily double positions exceed question bank size', new Error('Invalid positions'), {
+          operation: 'updateGame',
+          gameId,
+          bankId: finalBankId,
+          maxPosition,
+          positions: daily_double_positions,
+        });
+
+        // Rollback: Remove invalid daily doubles
+        await supabase
+          .from('games')
+          .update({ daily_double_positions: null })
+          .eq('id', gameId);
+
+        return NextResponse.json(
+          {
+            error: `Daily double positions must be between 0 and ${maxPosition} (bank has ${questionCount || GAME_BOARD.TOTAL_QUESTIONS} questions). Positions have been cleared - please regenerate them.`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     logger.info('Game updated successfully', {
