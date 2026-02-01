@@ -623,6 +623,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      decrement_game_count: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
+      increment_game_count_if_allowed: {
+        Args: { p_user_id: string }
+        Returns: boolean
+      }
       is_admin: { Args: never; Returns: boolean }
       log_admin_action: {
         Args: {
