@@ -403,21 +403,50 @@ export async function PATCH(
         );
       }
       const { category, question, answer } = final_jeopardy_question;
+
+      // Validate category
       if (typeof category !== 'string' || category.length === 0 || category.length > 100) {
         return NextResponse.json(
           { error: 'final_jeopardy_question.category must be a string (1-100 chars)' },
           { status: 400 }
         );
       }
+      // XSS prevention for category
+      const allowedCharsPattern = /^[\w\s\-'.,!?@()\[\]]+$/;
+      if (!allowedCharsPattern.test(category)) {
+        return NextResponse.json(
+          { error: 'final_jeopardy_question.category contains invalid characters' },
+          { status: 400 }
+        );
+      }
+
+      // Validate question
       if (typeof question !== 'string' || question.length === 0 || question.length > 500) {
         return NextResponse.json(
           { error: 'final_jeopardy_question.question must be a string (1-500 chars)' },
           { status: 400 }
         );
       }
+      // XSS prevention for question - allow broader set for question text
+      const questionAllowedChars = /^[\w\s\-'.,!?@()\[\]:;"\/]+$/;
+      if (!questionAllowedChars.test(question)) {
+        return NextResponse.json(
+          { error: 'final_jeopardy_question.question contains invalid characters' },
+          { status: 400 }
+        );
+      }
+
+      // Validate answer
       if (typeof answer !== 'string' || answer.length === 0 || answer.length > 200) {
         return NextResponse.json(
           { error: 'final_jeopardy_question.answer must be a string (1-200 chars)' },
+          { status: 400 }
+        );
+      }
+      // XSS prevention for answer
+      if (!allowedCharsPattern.test(answer)) {
+        return NextResponse.json(
+          { error: 'final_jeopardy_question.answer contains invalid characters' },
           { status: 400 }
         );
       }
@@ -454,19 +483,11 @@ export async function PATCH(
         // XSS prevention using character whitelist
         // Allow: letters, numbers, spaces, and safe punctuation only
         // Whitelist approach is more secure than blacklist
-        // Using \w (alphanumeric + underscore) and explicit punctuation
-        const allowedCharsPattern = /^[\w\s\-'.,!?&#@()\[\]]+$/;
+        // Excludes & and # to prevent HTML entity encoding attacks (&lt;, &#60;, etc.)
+        const allowedCharsPattern = /^[\w\s\-'.,!?@()\[\]]+$/;
         if (!allowedCharsPattern.test(name)) {
           return NextResponse.json(
-            { error: 'Team names can only contain letters, numbers, spaces, and common punctuation (- _ \' . , ! ? & # @ ( ) [ ])' },
-            { status: 400 }
-          );
-        }
-
-        // Additional check: prevent HTML-like patterns even with allowed chars
-        if (/<|>|javascript:|on\w+=/i.test(name)) {
-          return NextResponse.json(
-            { error: 'Team names contain invalid patterns' },
+            { error: 'Team names can only contain letters, numbers, spaces, and common punctuation (- _ \' . , ! ? @ ( ) [ ])' },
             { status: 400 }
           );
         }
@@ -490,71 +511,8 @@ export async function PATCH(
       }
     }
 
-    // Build update object with only allowed fields
-    const updates: TablesUpdate<'games'> = {};
-
-    if (team_names !== undefined) {
-      updates.team_names = team_names;
-    }
-
-    if (timer_enabled !== undefined) {
-      updates.timer_enabled = timer_enabled;
-      // If timer is disabled, set timer_seconds to null
-      if (!timer_enabled) {
-        updates.timer_seconds = null;
-      }
-    }
-
-    if (timer_seconds !== undefined && timer_enabled !== false) {
-      updates.timer_seconds = timer_seconds;
-    }
-
-    // Only allow bank_id update if game hasn't started
-    if (bank_id && !game.started_at) {
-      updates.bank_id = bank_id;
-    }
-
-    if (daily_double_positions !== undefined) {
-      updates.daily_double_positions = daily_double_positions;
-    }
-
-    if (final_jeopardy_question !== undefined) {
-      updates.final_jeopardy_question = final_jeopardy_question;
-    }
-
-    if (num_teams !== undefined) {
-      updates.num_teams = num_teams;
-    }
-
-    // Check if there are any updates to apply
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json(
-        { error: 'No valid fields to update' },
-        { status: 400 }
-      );
-    }
-
-    // Update the game
-    const { data: updatedGame, error: updateError } = await supabase
-      .from('games')
-      .update(updates)
-      .eq('id', gameId)
-      .select()
-      .single();
-
-    if (updateError) {
-      logger.error('Failed to update game', updateError, {
-        operation: 'updateGame',
-        gameId,
-        userId: user.id,
-      });
-      return NextResponse.json(
-        { error: 'Failed to update game' },
-        { status: 500 }
-      );
-    }
-
-    // Handle team synchronization (add/remove/update teams atomically)
+    // Handle team synchronization BEFORE updating game to prevent race conditions
+    // If team sync fails, game record remains unchanged (atomic operation)
     if (num_teams !== undefined && num_teams !== game.num_teams) {
       const oldNumTeams = game.num_teams || 0;
 
@@ -583,10 +541,7 @@ export async function PATCH(
             newTeamsCount: newTeamRecords.length,
           });
           return NextResponse.json(
-            {
-              error: 'Game updated but team creation failed. Please refresh the page and verify team count.',
-              partialSuccess: true,
-            },
+            { error: 'Failed to create new teams. Please try again.' },
             { status: 500 }
           );
         }
@@ -621,11 +576,8 @@ export async function PATCH(
                 totalUpdates: updatePromises.length,
               });
               return NextResponse.json(
-                {
-                  ...updatedGame,
-                  warning: 'Game updated but some team names failed to update. Please refresh and try again.'
-                },
-                { status: 200 }
+                { error: 'Failed to update team names. Please try again.' },
+                { status: 500 }
               );
             }
           }
@@ -646,10 +598,7 @@ export async function PATCH(
             teamsToRemove: oldNumTeams - num_teams,
           });
           return NextResponse.json(
-            {
-              error: 'Game updated but team deletion failed. Please refresh the page and verify team count.',
-              partialSuccess: true,
-            },
+            { error: 'Failed to remove teams. Please try again.' },
             { status: 500 }
           );
         }
@@ -683,18 +632,15 @@ export async function PATCH(
                 totalUpdates: updatePromises.length,
               });
               return NextResponse.json(
-                {
-                  ...updatedGame,
-                  warning: 'Game updated but some team names failed to update. Please refresh and try again.'
-                },
-                { status: 200 }
+                { error: 'Failed to update team names. Please try again.' },
+                { status: 500 }
               );
             }
           }
         }
       }
     } else if (team_names && Array.isArray(team_names)) {
-      // num_teams didn't change, but team_names provided - just update names
+      // num_teams didn't change, but team_names provided - update names only
       const effectiveNumTeams = num_teams !== undefined ? num_teams : game.num_teams || 0;
       const updatePromises = [];
 
@@ -723,14 +669,73 @@ export async function PATCH(
             totalUpdates: updatePromises.length,
           });
           return NextResponse.json(
-            {
-              ...updatedGame,
-              warning: 'Game updated but some team names failed to update. Please refresh and try again.'
-            },
-            { status: 200 }
+            { error: 'Failed to update team names. Please try again.' },
+            { status: 500 }
           );
         }
       }
+    }
+
+    // Build updates object for game record
+    const updates: TablesUpdate<'games'> = {};
+
+    if (team_names !== undefined) {
+      updates.team_names = team_names;
+    }
+
+    if (timer_enabled !== undefined) {
+      updates.timer_enabled = timer_enabled;
+      if (!timer_enabled) {
+        updates.timer_seconds = null;
+      }
+    }
+
+    if (timer_seconds !== undefined && timer_enabled !== false) {
+      updates.timer_seconds = timer_seconds;
+    }
+
+    if (bank_id && !game.started_at) {
+      updates.bank_id = bank_id;
+    }
+
+    if (daily_double_positions !== undefined) {
+      updates.daily_double_positions = daily_double_positions;
+    }
+
+    if (final_jeopardy_question !== undefined) {
+      updates.final_jeopardy_question = final_jeopardy_question;
+    }
+
+    if (num_teams !== undefined) {
+      updates.num_teams = num_teams;
+    }
+
+    // Check if there are any updates to apply
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json(
+        { error: 'No valid fields to update' },
+        { status: 400 }
+      );
+    }
+
+    // Update game record AFTER team sync succeeds
+    const { data: updatedGame, error: updateError } = await supabase
+      .from('games')
+      .update(updates)
+      .eq('id', gameId)
+      .select()
+      .single();
+
+    if (updateError) {
+      logger.error('Failed to update game', updateError, {
+        operation: 'updateGame',
+        gameId,
+        userId: user.id,
+      });
+      return NextResponse.json(
+        { error: 'Failed to update game' },
+        { status: 500 }
+      );
     }
 
     logger.info('Game updated successfully', {
