@@ -354,11 +354,33 @@ export async function PATCH(
         );
       }
 
-      const maxPosition = GAME_BOARD.TOTAL_QUESTIONS - 1;
+      // Determine which bank to validate against
+      const effectiveBankId = bank_id || game.bank_id;
+
+      // Fetch question count from the bank
+      const { count: questionCount, error: countError } = await supabase
+        .from('questions')
+        .select('*', { count: 'exact', head: true })
+        .eq('bank_id', effectiveBankId);
+
+      if (countError) {
+        logger.error('Failed to count questions in bank', countError, {
+          operation: 'updateGame',
+          gameId,
+          bankId: effectiveBankId,
+        });
+        return NextResponse.json(
+          { error: 'Failed to validate daily double positions' },
+          { status: 500 }
+        );
+      }
+
+      // Validate positions against actual question count
+      const maxPosition = (questionCount || GAME_BOARD.TOTAL_QUESTIONS) - 1;
       for (const pos of daily_double_positions) {
         if (typeof pos !== 'number' || pos < 0 || pos > maxPosition) {
           return NextResponse.json(
-            { error: `daily_double_positions must contain numbers between 0 and ${maxPosition}` },
+            { error: `daily_double_positions must contain numbers between 0 and ${maxPosition} (bank has ${questionCount || GAME_BOARD.TOTAL_QUESTIONS} questions)` },
             { status: 400 }
           );
         }
@@ -370,10 +392,6 @@ export async function PATCH(
           { status: 400 }
         );
       }
-
-      // TODO: Validate positions against actual question bank size
-      // Currently validates against standard board size (25 questions)
-      // Future enhancement: fetch bank and validate against actual question count
     }
 
     // Validate final_jeopardy_question if provided
@@ -433,12 +451,22 @@ export async function PATCH(
           );
         }
 
-        // Check for malicious content (XSS prevention)
-        // Block HTML tags and suspicious patterns while allowing legitimate team names
-        // React's automatic escaping provides additional XSS protection
-        if (/<|>/.test(name)) {
+        // XSS prevention using character whitelist
+        // Allow: letters, numbers, spaces, and safe punctuation only
+        // Whitelist approach is more secure than blacklist
+        // Using \w (alphanumeric + underscore) and explicit punctuation
+        const allowedCharsPattern = /^[\w\s\-'.,!?&#@()\[\]]+$/;
+        if (!allowedCharsPattern.test(name)) {
           return NextResponse.json(
-            { error: 'Team names cannot contain < or > characters' },
+            { error: 'Team names can only contain letters, numbers, spaces, and common punctuation (- _ \' . , ! ? & # @ ( ) [ ])' },
+            { status: 400 }
+          );
+        }
+
+        // Additional check: prevent HTML-like patterns even with allowed chars
+        if (/<|>|javascript:|on\w+=/i.test(name)) {
+          return NextResponse.json(
+            { error: 'Team names contain invalid patterns' },
             { status: 400 }
           );
         }
@@ -526,12 +554,12 @@ export async function PATCH(
       );
     }
 
-    // Handle team record changes if num_teams changed
+    // Handle team synchronization (add/remove/update teams atomically)
     if (num_teams !== undefined && num_teams !== game.num_teams) {
       const oldNumTeams = game.num_teams || 0;
 
       if (num_teams > oldNumTeams) {
-        // Add new team records
+        // Add new team records with correct names from team_names array
         const newTeamRecords = Array.from(
           { length: num_teams - oldNumTeams },
           (_, i) => ({
@@ -554,7 +582,6 @@ export async function PATCH(
             userId: user.id,
             newTeamsCount: newTeamRecords.length,
           });
-          // Critical: Team sync failed after game update
           return NextResponse.json(
             {
               error: 'Game updated but team creation failed. Please refresh the page and verify team count.',
@@ -563,8 +590,48 @@ export async function PATCH(
             { status: 500 }
           );
         }
+
+        // Update existing team names if team_names provided
+        // (new teams already have correct names from insertion above)
+        if (team_names && Array.isArray(team_names) && oldNumTeams > 0) {
+          const updatePromises = [];
+
+          for (let i = 0; i < oldNumTeams; i++) {
+            if (team_names[i]) {
+              updatePromises.push(
+                supabase
+                  .from('teams')
+                  .update({ team_name: team_names[i] })
+                  .eq('game_id', gameId)
+                  .eq('team_number', i + 1)
+              );
+            }
+          }
+
+          if (updatePromises.length > 0) {
+            const results = await Promise.allSettled(updatePromises);
+            const failures = results.filter(r => r.status === 'rejected');
+
+            if (failures.length > 0) {
+              logger.error('Failed to update existing team names', new Error('Batch update failed'), {
+                operation: 'updateGame',
+                gameId,
+                userId: user.id,
+                failureCount: failures.length,
+                totalUpdates: updatePromises.length,
+              });
+              return NextResponse.json(
+                {
+                  ...updatedGame,
+                  warning: 'Game updated but some team names failed to update. Please refresh and try again.'
+                },
+                { status: 200 }
+              );
+            }
+          }
+        }
       } else if (num_teams < oldNumTeams) {
-        // Remove team records with team_number > num_teams
+        // Remove excess team records
         const { error: teamsError } = await supabase
           .from('teams')
           .delete()
@@ -578,7 +645,6 @@ export async function PATCH(
             userId: user.id,
             teamsToRemove: oldNumTeams - num_teams,
           });
-          // Critical: Team sync failed after game update
           return NextResponse.json(
             {
               error: 'Game updated but team deletion failed. Please refresh the page and verify team count.',
@@ -587,37 +653,75 @@ export async function PATCH(
             { status: 500 }
           );
         }
-      }
 
-      // Update team names if provided
-      if (team_names && Array.isArray(team_names)) {
-        const updatePromises = [];
+        // Update remaining team names if team_names provided
+        if (team_names && Array.isArray(team_names)) {
+          const updatePromises = [];
 
-        for (let i = 0; i < Math.min(num_teams, team_names.length); i++) {
-          if (team_names[i]) {
-            updatePromises.push(
-              supabase
-                .from('teams')
-                .update({ team_name: team_names[i] })
-                .eq('game_id', gameId)
-                .eq('team_number', i + 1)
-            );
+          for (let i = 0; i < Math.min(num_teams, team_names.length); i++) {
+            if (team_names[i]) {
+              updatePromises.push(
+                supabase
+                  .from('teams')
+                  .update({ team_name: team_names[i] })
+                  .eq('game_id', gameId)
+                  .eq('team_number', i + 1)
+              );
+            }
+          }
+
+          if (updatePromises.length > 0) {
+            const results = await Promise.allSettled(updatePromises);
+            const failures = results.filter(r => r.status === 'rejected');
+
+            if (failures.length > 0) {
+              logger.error('Failed to update team names after deletion', new Error('Batch update failed'), {
+                operation: 'updateGame',
+                gameId,
+                userId: user.id,
+                failureCount: failures.length,
+                totalUpdates: updatePromises.length,
+              });
+              return NextResponse.json(
+                {
+                  ...updatedGame,
+                  warning: 'Game updated but some team names failed to update. Please refresh and try again.'
+                },
+                { status: 200 }
+              );
+            }
           }
         }
+      }
+    } else if (team_names && Array.isArray(team_names)) {
+      // num_teams didn't change, but team_names provided - just update names
+      const effectiveNumTeams = num_teams !== undefined ? num_teams : game.num_teams || 0;
+      const updatePromises = [];
 
-        // Wait for all updates and check for errors
+      for (let i = 0; i < Math.min(effectiveNumTeams, team_names.length); i++) {
+        if (team_names[i]) {
+          updatePromises.push(
+            supabase
+              .from('teams')
+              .update({ team_name: team_names[i] })
+              .eq('game_id', gameId)
+              .eq('team_number', i + 1)
+          );
+        }
+      }
+
+      if (updatePromises.length > 0) {
         const results = await Promise.allSettled(updatePromises);
         const failures = results.filter(r => r.status === 'rejected');
 
         if (failures.length > 0) {
-          logger.error('Failed to update some team names', new Error('Batch update failed'), {
+          logger.error('Failed to update team names', new Error('Batch update failed'), {
             operation: 'updateGame',
             gameId,
             userId: user.id,
             failureCount: failures.length,
             totalUpdates: updatePromises.length,
           });
-          // Team sync partially failed - return warning
           return NextResponse.json(
             {
               ...updatedGame,

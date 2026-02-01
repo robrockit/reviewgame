@@ -381,7 +381,7 @@ export default function EditGamePage() {
                     ))}
                   </select>
                   <p className="mt-1 text-xs text-gray-500">
-                    {maxAllowedTeams === 15 ? 'Premium: Up to 15 teams' : maxAllowedTeams === 12 ? 'Basic: Up to 12 teams' : 'Free tier: Up to 10 teams'}
+                    {maxAllowedTeams === 15 ? 'Premium: Up to 15 teams' : maxAllowedTeams === 10 ? 'Basic: Up to 10 teams' : 'Free tier: Up to 5 teams'}
                   </p>
                 </div>
 
