@@ -3,6 +3,7 @@ import { createAdminServerClient } from '@/lib/admin/auth';
 import type { TablesUpdate } from '@/types/database.types';
 import { logger } from '@/lib/logger';
 import { getMaxTeams, canAccessCustomTeamNames } from '@/lib/utils/feature-access';
+import { GAME_BOARD } from '@/lib/constants/game';
 
 /**
  * GET /api/games/[gameId]
@@ -265,11 +266,23 @@ export async function PATCH(
     }
 
     // Fetch user profile for subscription-based validation
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single();
+
+    if (profileError || !profile) {
+      logger.error('User profile not found', profileError, {
+        operation: 'updateGame',
+        userId: user.id,
+        gameId,
+      });
+      return NextResponse.json(
+        { error: 'User profile not found' },
+        { status: 500 }
+      );
+    }
 
     // Prevent editing bank_id if game has started
     if (bank_id && game.started_at) {
@@ -334,26 +347,33 @@ export async function PATCH(
 
     // Validate daily_double_positions if provided
     if (daily_double_positions !== undefined) {
-      if (!Array.isArray(daily_double_positions) || daily_double_positions.length !== 2) {
+      if (!Array.isArray(daily_double_positions) || daily_double_positions.length !== GAME_BOARD.DAILY_DOUBLE_COUNT) {
         return NextResponse.json(
-          { error: 'daily_double_positions must be an array of 2 numbers' },
+          { error: `daily_double_positions must be an array of ${GAME_BOARD.DAILY_DOUBLE_COUNT} numbers` },
           { status: 400 }
         );
       }
+
+      const maxPosition = GAME_BOARD.TOTAL_QUESTIONS - 1;
       for (const pos of daily_double_positions) {
-        if (typeof pos !== 'number' || pos < 0 || pos > 24) {
+        if (typeof pos !== 'number' || pos < 0 || pos > maxPosition) {
           return NextResponse.json(
-            { error: 'daily_double_positions must contain numbers between 0 and 24' },
+            { error: `daily_double_positions must contain numbers between 0 and ${maxPosition}` },
             { status: 400 }
           );
         }
       }
+
       if (daily_double_positions[0] === daily_double_positions[1]) {
         return NextResponse.json(
           { error: 'daily_double_positions must be unique' },
           { status: 400 }
         );
       }
+
+      // TODO: Validate positions against actual question bank size
+      // Currently validates against standard board size (25 questions)
+      // Future enhancement: fetch bank and validate against actual question count
     }
 
     // Validate final_jeopardy_question if provided
@@ -414,9 +434,11 @@ export async function PATCH(
         }
 
         // Check for malicious content (XSS prevention)
-        if (/<script|javascript:|on\w+\s*=/i.test(name)) {
+        // Block HTML tags and suspicious patterns while allowing legitimate team names
+        // React's automatic escaping provides additional XSS protection
+        if (/<|>/.test(name)) {
           return NextResponse.json(
-            { error: 'Team names contain invalid characters' },
+            { error: 'Team names cannot contain < or > characters' },
             { status: 400 }
           );
         }

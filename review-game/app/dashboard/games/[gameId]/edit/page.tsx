@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeftIcon, ArrowPathIcon, EyeIcon } from '@heroicons/react/24/outline';
 import { logger } from '@/lib/logger';
 import { canAccessCustomTeamNames, getMaxTeams } from '@/lib/utils/feature-access';
+import { GAME_BOARD } from '@/lib/constants/game';
 import type { Tables } from '@/types/database.types';
 
 type Profile = Tables<'profiles'>;
@@ -135,12 +136,11 @@ export default function EditGamePage() {
   };
 
   const handleRegenerateDailyDoubles = () => {
-    // Generate 2 random positions (0-24 for 5x5 board)
-    const totalQuestions = 25;
+    // Generate 2 random positions for daily doubles
     const newPositions: number[] = [];
 
-    while (newPositions.length < 2) {
-      const randomPos = Math.floor(Math.random() * totalQuestions);
+    while (newPositions.length < GAME_BOARD.DAILY_DOUBLE_COUNT) {
+      const randomPos = Math.floor(Math.random() * GAME_BOARD.TOTAL_QUESTIONS);
       if (!newPositions.includes(randomPos)) {
         newPositions.push(randomPos);
       }
