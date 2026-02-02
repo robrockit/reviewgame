@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { GameBoard } from '@/components/game/GameBoard';
@@ -8,6 +8,7 @@ import { TeamScoreboard } from '@/components/game/TeamScoreboard';
 import { QuestionModal } from '@/components/game/QuestionModal';
 import { DailyDoubleModal } from '@/components/game/DailyDoubleModal';
 import { BackButton } from '@/components/navigation/BackButton';
+import GameCompleteModal from '@/components/teacher/GameCompleteModal';
 import { useGameStore } from '@/lib/stores/gameStore';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import type { Tables } from '@/types/database.types';
@@ -40,8 +41,9 @@ export default function GameBoardPage() {
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('connecting');
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showGameCompleteModal, setShowGameCompleteModal] = useState(false);
 
-  const { setGame: setStoreGame, setTeams } = useGameStore();
+  const { setGame: setStoreGame, setTeams, currentGameData, allTeams, selectedQuestions, reset: resetGameStore } = useGameStore();
 
   // Subscribe to buzz events from students
   // This hook automatically adds buzzes to the game store's buzz queue
@@ -518,6 +520,30 @@ export default function GameBoardPage() {
     };
   }, [loading, error]);
 
+  // Detect when all questions are answered and auto-open celebration modal
+  useEffect(() => {
+    if (!currentGameData) return;
+
+    // Calculate total questions from all categories
+    const totalQuestions = currentGameData.categories.reduce(
+      (sum, category) => sum + category.questions.length,
+      0
+    );
+
+    // Check if all questions have been answered
+    const allQuestionsAnswered = totalQuestions > 0 && selectedQuestions.length === totalQuestions;
+
+    if (allQuestionsAnswered && !showGameCompleteModal) {
+      logger.info('All questions answered, opening game complete modal', {
+        operation: 'auto_open_game_complete_modal',
+        gameId,
+        totalQuestions,
+        answeredQuestions: selectedQuestions.length,
+      });
+      setShowGameCompleteModal(true);
+    }
+  }, [selectedQuestions, currentGameData, gameId, showGameCompleteModal]);
+
   // Function to handle navigation with fullscreen exit
   const handleNavigateToControlPanel = async () => {
     try {
@@ -549,6 +575,128 @@ export default function GameBoardPage() {
       });
     }
   };
+
+  // Handle return to dashboard from game complete modal
+  const handleReturnToDashboard = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      logger.warn('Failed to exit fullscreen before dashboard navigation', {
+        error: err instanceof Error ? err.message : String(err),
+        operation: 'handleReturnToDashboard',
+        page: 'GameBoardPage',
+      });
+    } finally {
+      logger.info('Returning to dashboard from game complete modal', {
+        operation: 'return_to_dashboard',
+        gameId,
+      });
+      router.push('/dashboard');
+    }
+  };
+
+  // Handle play again - resets game but keeps teams
+  const handlePlayAgain = async () => {
+    try {
+      if (!game || !currentGameData) {
+        logger.error('Cannot play again: game or game data not found', new Error('Game not found'), {
+          operation: 'play_again',
+          gameId,
+        });
+        return;
+      }
+
+      logger.info('Starting play again', {
+        operation: 'play_again',
+        gameId,
+      });
+
+      // Reset game state in database
+      const { error: updateError } = await supabase
+        .from('games')
+        .update({
+          selected_questions: [], // Clear selected questions
+          status: 'active', // Keep status as active
+        })
+        .eq('id', gameId);
+
+      if (updateError) throw updateError;
+
+      // Reset all team scores to 0
+      const { error: resetScoresError } = await supabase
+        .from('teams')
+        .update({ score: 0 })
+        .eq('game_id', gameId);
+
+      if (resetScoresError) throw resetScoresError;
+
+      // Reset teams in store (this will update UI immediately)
+      setTeams((prevTeams: Team[]) =>
+        prevTeams.map(team => ({ ...team, score: 0 }))
+      );
+
+      // Reset categories with all questions marked as unused
+      const resetCategories = currentGameData.categories.map((category) => ({
+        ...category,
+        questions: category.questions.map((question) => ({
+          ...question,
+          isUsed: false, // Reset all questions to unused
+        })),
+      }));
+
+      // Update game store with reset state
+      setStoreGame({
+        ...currentGameData,
+        categories: resetCategories,
+      });
+
+      // Reset local game store (clears selectedQuestions and other state)
+      resetGameStore();
+
+      // Close the modal
+      setShowGameCompleteModal(false);
+
+      logger.info('Play again completed successfully', {
+        operation: 'play_again_complete',
+        gameId,
+      });
+    } catch (err) {
+      logger.error('Failed to reset game for play again', err, {
+        operation: 'play_again',
+        gameId,
+      });
+      // Show error to user (could add toast notification here)
+      alert('Failed to reset game. Please try again.');
+    }
+  };
+
+  // Prepare final scores for the game complete modal
+  // Memoized to prevent unnecessary recalculations
+  // Must be before early returns to comply with Rules of Hooks
+  const finalScores = useMemo(() => {
+    if (!allTeams || allTeams.length === 0) {
+      logger.warn('No teams available for final scores', {
+        operation: 'calculate_final_scores',
+        gameId,
+      });
+      return [];
+    }
+
+    return allTeams
+      .map(team => ({
+        teamId: team.id,
+        teamName: team.name,
+        score: team.score,
+        rank: 0, // Will be set after sorting
+      }))
+      .sort((a, b) => b.score - a.score) // Sort by score descending
+      .map((team, index) => ({
+        ...team,
+        rank: index + 1, // Assign rank based on position (1st place = rank 1)
+      }));
+  }, [allTeams, gameId]);
 
   if (loading) {
     return (
@@ -645,6 +793,14 @@ export default function GameBoardPage() {
 
       {/* Daily Double Modal */}
       <DailyDoubleModal gameId={gameId} onQuestionClose={broadcastQuestionClosed} />
+
+      {/* Game Complete Celebration Modal */}
+      <GameCompleteModal
+        isOpen={showGameCompleteModal}
+        finalScores={finalScores}
+        onReturnToDashboard={handleReturnToDashboard}
+        onPlayAgain={handlePlayAgain}
+      />
     </div>
   );
 }
