@@ -74,10 +74,7 @@ END;
 $$;
 
 -- Add comment describing the function
-COMMENT ON FUNCTION end_game(uuid) IS
-  'Atomically ends a game by marking it as completed and disconnecting all teams. ' ||
-  'Ensures data integrity by performing both operations in a single transaction. ' ||
-  'Verifies the requesting user owns the game before allowing the operation.';
+COMMENT ON FUNCTION end_game(uuid) IS 'Atomically ends a game by marking it as completed and disconnecting all teams. Ensures data integrity by performing both operations in a single transaction. Verifies the requesting user owns the game before allowing the operation.';
 
 -- Grant execute permission to authenticated users
 -- RLS will handle authorization check inside the function

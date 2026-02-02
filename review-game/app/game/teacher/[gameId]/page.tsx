@@ -10,6 +10,7 @@ import GameHeader from '@/components/teacher/GameHeader';
 import EndGameModal from '@/components/teacher/EndGameModal';
 import GameBreadcrumb from '@/components/teacher/GameBreadcrumb';
 import Toast from '@/app/admin/users/[userId]/components/Toast';
+import { logger } from '@/lib/logger';
 
 type Game = Tables<'games'>;
 type Team = Tables<'teams'>;
@@ -56,6 +57,9 @@ export default function TeacherControlPage() {
   useEffect(() => {
     hasConnectedTeamsRef.current = hasConnectedTeams;
   }, [hasConnectedTeams]);
+
+  // Ref to prevent duplicate end game calls (race condition protection)
+  const isEndingGameRef = useRef(false);
 
   // Helper functions for consistent toast notifications
   const showError = (message: string) => {
@@ -115,7 +119,10 @@ export default function TeacherControlPage() {
         setTeams(teamsData || []);
         setLoading(false);
       } catch (err) {
-        console.error('Error fetching game data:', err);
+        logger.error('Error fetching game data', err, {
+          operation: 'fetch_game_data',
+          gameId,
+        });
         const message = err instanceof Error ? err.message : 'Failed to load game data';
         setError(message);
         setLoading(false);
@@ -131,7 +138,10 @@ export default function TeacherControlPage() {
   useEffect(() => {
     if (!gameId) return;
 
-    console.log('Setting up real-time subscription for game:', gameId);
+    logger.info('Setting up real-time subscription', {
+      operation: 'setup_realtime_subscription',
+      gameId,
+    });
 
     // Subscribe to team changes
     const teamsChannel = supabase
@@ -145,7 +155,11 @@ export default function TeacherControlPage() {
           filter: `game_id=eq.${gameId}`,
         },
         async (payload) => {
-          console.log('Team change detected:', payload);
+          logger.info('Team change detected', {
+            operation: 'realtime_team_change',
+            event: payload.eventType,
+            gameId,
+          });
 
           // Refetch teams to get updated data
           const { data: teamsData } = await supabase
@@ -155,18 +169,29 @@ export default function TeacherControlPage() {
             .order('team_number', { ascending: true });
 
           if (teamsData) {
-            console.log('Updated teams:', teamsData);
+            logger.info('Updated teams from subscription', {
+              operation: 'realtime_teams_updated',
+              teamCount: teamsData.length,
+              gameId,
+            });
             setTeams(teamsData);
           }
         }
       )
       .subscribe((status) => {
-        console.log('Subscription status:', status);
+        logger.info('Subscription status changed', {
+          operation: 'realtime_subscription_status',
+          status,
+          gameId,
+        });
       });
 
     // Cleanup subscription on unmount
     return () => {
-      console.log('Cleaning up subscription');
+      logger.info('Cleaning up subscription', {
+        operation: 'cleanup_realtime_subscription',
+        gameId,
+      });
       supabase.removeChannel(teamsChannel);
     };
   }, [gameId, supabase]);
@@ -196,7 +221,11 @@ export default function TeacherControlPage() {
     // Validate team belongs to this game
     const team = teams.find(t => t.id === teamId);
     if (!team) {
-      console.error('Invalid team ID');
+      logger.error('Invalid team ID for approval', new Error('Team not found'), {
+        operation: 'approve_team',
+        teamId,
+        gameId,
+      });
       showError('Team not found in this game');
       return;
     }
@@ -224,7 +253,11 @@ export default function TeacherControlPage() {
 
       showSuccess(`${team.team_name || `Team ${team.team_number}`} approved`);
     } catch (err) {
-      console.error('Error approving team:', err);
+      logger.error('Error approving team', err, {
+        operation: 'approve_team',
+        teamId,
+        gameId,
+      });
       showError('Failed to approve team. Please try again.');
     }
   };
@@ -234,7 +267,11 @@ export default function TeacherControlPage() {
     // Validate team belongs to this game
     const team = teams.find(t => t.id === teamId);
     if (!team) {
-      console.error('Invalid team ID');
+      logger.error('Invalid team ID for rejection', new Error('Team not found'), {
+        operation: 'reject_team',
+        teamId,
+        gameId,
+      });
       showError('Team not found in this game');
       return;
     }
@@ -253,7 +290,11 @@ export default function TeacherControlPage() {
 
       showSuccess(`${team.team_name || `Team ${team.team_number}`} removed`);
     } catch (err) {
-      console.error('Error rejecting team:', err);
+      logger.error('Error rejecting team', err, {
+        operation: 'reject_team',
+        teamId,
+        gameId,
+      });
       showError('Failed to reject team. Please try again.');
     }
   };
@@ -303,13 +344,27 @@ export default function TeacherControlPage() {
         router.push(`/game/board/${gameId}`);
       }, 500);
     } catch (err) {
-      console.error('Error starting game:', err);
+      logger.error('Error starting game', err, {
+        operation: 'start_game',
+        gameId,
+      });
       showError('Failed to start game. Please try again.');
     }
   };
 
   // Handle ending the game
   const handleEndGame = async () => {
+    // Prevent duplicate calls (race condition protection)
+    if (isEndingGameRef.current) {
+      logger.warn('End game already in progress, preventing duplicate call', {
+        operation: 'end_game_duplicate_prevented',
+        gameId,
+      });
+      return;
+    }
+
+    isEndingGameRef.current = true;
+
     try {
       // Call atomic database function to end game and disconnect teams
       // This ensures both operations succeed or fail together (data integrity)
@@ -332,7 +387,12 @@ export default function TeacherControlPage() {
       }, 1000);
 
     } catch (err) {
-      console.error('Failed to end game:', err);
+      logger.error('Failed to end game', err, {
+        operation: 'end_game',
+        gameId,
+      });
+      // Reset ref to allow retry after error
+      isEndingGameRef.current = false;
       // Re-throw to let modal display error and keep modal open for retry
       // Modal's error display is more contextual than toast for this use case
       throw err;

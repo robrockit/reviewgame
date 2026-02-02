@@ -19,6 +19,7 @@ import { Cog6ToothIcon, CreditCardIcon, ArrowRightOnRectangleIcon } from '@heroi
 import { createClient } from '@/lib/supabase/client';
 import { Fragment } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 
 /**
  * User profile dropdown menu component.
@@ -45,7 +46,10 @@ export default function UserProfileMenu() {
         setUser(user);
         setError(null);
       } catch (err) {
-        console.error('Error fetching user:', err);
+        logger.error('Failed to fetch user in profile menu', err, {
+          operation: 'fetch_user_profile_menu',
+          component: 'UserProfileMenu',
+        });
         setError('Failed to load user');
       } finally {
         setLoading(false);
@@ -65,7 +69,10 @@ export default function UserProfileMenu() {
       await supabase.auth.signOut();
       router.push('/login');
     } catch (error) {
-      console.error('Error signing out:', error);
+      logger.error('Failed to sign out user', error, {
+        operation: 'user_logout',
+        component: 'UserProfileMenu',
+      });
     }
   };
 
