@@ -9,7 +9,8 @@ import type { Tables } from '@/types/database.types';
 import GameHeader from '@/components/teacher/GameHeader';
 import EndGameModal from '@/components/teacher/EndGameModal';
 import GameBreadcrumb from '@/components/teacher/GameBreadcrumb';
-import Toast from '@/app/admin/users/[userId]/components/Toast';
+import TeamCountMismatchModal from '@/components/teacher/TeamCountMismatchModal';
+import Toast from '@/components/ui/Toast';
 import { logger } from '@/lib/logger';
 
 type Game = Tables<'games'>;
@@ -34,6 +35,7 @@ export default function TeacherControlPage() {
 
   // Modal and toast state
   const [showEndGameModal, setShowEndGameModal] = useState(false);
+  const [showTeamCountModal, setShowTeamCountModal] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
@@ -312,11 +314,18 @@ export default function TeacherControlPage() {
 
     // Verify we have the expected number of teams
     if (teams.length !== game.num_teams) {
-      const confirm = window.confirm(
-        `You have ${teams.length} teams but expected ${game.num_teams}. Do you want to continue anyway?`
-      );
-      if (!confirm) return;
+      // Show modal instead of browser confirm
+      setShowTeamCountModal(true);
+      return;
     }
+
+    // Proceed with starting the game
+    await startGameProcess();
+  };
+
+  // Separate function to handle the actual game start process
+  const startGameProcess = async () => {
+    if (!game) return;
 
     try {
       // Update game status to 'active' and set started_at timestamp
@@ -493,9 +502,17 @@ export default function TeacherControlPage() {
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm"
                     />
                     <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(joinUrl);
-                        alert('Join URL copied to clipboard!');
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(joinUrl);
+                          showSuccess('Join URL copied to clipboard!');
+                        } catch (err) {
+                          logger.error('Failed to copy URL to clipboard', err, {
+                            operation: 'copy_join_url',
+                            gameId,
+                          });
+                          showError('Failed to copy URL. Please copy manually.');
+                        }
                       }}
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
                     >
@@ -653,6 +670,15 @@ export default function TeacherControlPage() {
         gameTitle={gameTitle}
         teamCount={teams.length}
         hasConnectedTeams={hasConnectedTeams}
+      />
+
+      {/* Team Count Mismatch Modal */}
+      <TeamCountMismatchModal
+        isOpen={showTeamCountModal}
+        onClose={() => setShowTeamCountModal(false)}
+        onConfirm={startGameProcess}
+        expectedTeams={game?.num_teams || 0}
+        actualTeams={teams.length}
       />
 
       {/* Toast Notification */}

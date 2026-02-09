@@ -14,7 +14,7 @@ import { format } from 'date-fns';
 import type { AdminUserDetail } from '@/app/api/admin/users/[userId]/route';
 import ImpersonateModal from './ImpersonateModal';
 import VerifyEmailButton from './VerifyEmailButton';
-import Toast from './Toast';
+import Toast from '@/components/ui/Toast';
 
 interface ProfileTabProps {
   user: AdminUserDetail;
