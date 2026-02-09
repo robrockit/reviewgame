@@ -40,7 +40,8 @@ export default function Toast({
 
       return () => clearTimeout(timer);
     }
-  }, [duration, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duration]); // onClose is stable in practice and including it would reset the timer unnecessarily
 
   const isSuccess = type === 'success';
 
