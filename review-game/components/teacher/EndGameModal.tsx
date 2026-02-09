@@ -9,7 +9,7 @@
 
 'use client';
 
-import { Fragment, useState } from 'react';
+import { Fragment, useState, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
@@ -38,6 +38,7 @@ export default function EndGameModal({
 }: EndGameModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
   /**
    * Handles confirmation action.
@@ -69,7 +70,7 @@ export default function EndGameModal({
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={handleClose}>
+      <Dialog as="div" className="relative z-50" onClose={handleClose} initialFocus={cancelButtonRef}>
         {/* Backdrop */}
         <Transition.Child
           as={Fragment}
@@ -184,6 +185,7 @@ export default function EndGameModal({
                   {/* Action Buttons */}
                   <div className="flex justify-end space-x-3 pt-4">
                     <button
+                      ref={cancelButtonRef}
                       type="button"
                       onClick={handleClose}
                       disabled={isSubmitting}
