@@ -25,7 +25,12 @@ export function useQuestionBanks() {
       const response = await fetch('/api/question-banks');
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         throw new Error(errorData.error || 'Failed to fetch question banks');
       }
 
@@ -64,7 +69,12 @@ export function useQuestionBanks() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         throw new Error(errorData.error || 'Failed to create question bank');
       }
 
@@ -110,7 +120,12 @@ export function useQuestionBanks() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         throw new Error(errorData.error || 'Failed to update question bank');
       }
 
@@ -145,7 +160,12 @@ export function useQuestionBanks() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         throw new Error(errorData.error || 'Failed to delete question bank');
       }
 
@@ -175,7 +195,12 @@ export function useQuestionBanks() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         throw new Error(errorData.error || 'Failed to duplicate question bank');
       }
 

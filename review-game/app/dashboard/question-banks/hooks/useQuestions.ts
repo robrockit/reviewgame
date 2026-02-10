@@ -42,7 +42,12 @@ export function useQuestions({ bankId }: { bankId: string }) {
       const response = await fetch(`/api/question-banks/${bankId}/questions`);
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         throw new Error(errorData.error || 'Failed to fetch questions');
       }
 
@@ -85,7 +90,12 @@ export function useQuestions({ bankId }: { bankId: string }) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         throw new Error(errorData.error || 'Failed to create question');
       }
 
@@ -141,7 +151,12 @@ export function useQuestions({ bankId }: { bankId: string }) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         throw new Error(errorData.error || 'Failed to update question');
       }
 
@@ -205,7 +220,12 @@ export function useQuestions({ bankId }: { bankId: string }) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         throw new Error(errorData.error || 'Failed to delete question');
       }
 

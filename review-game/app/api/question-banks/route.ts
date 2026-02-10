@@ -30,7 +30,7 @@ export async function GET() {
     const { data: banks, error: fetchError } = await supabase
       .from('question_banks')
       .select('id, title, subject, is_custom, is_public, owner_id')
-      .or(`is_public.eq.true,owner_id.eq.${user.id}`)
+      .or('is_public.eq.true,owner_id.eq.' + user.id)
       .order('title', { ascending: true });
 
     if (fetchError) {
