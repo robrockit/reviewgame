@@ -3,6 +3,23 @@ import type { Question, QuestionGridData } from '@/types/question-bank.types';
 import { logger } from '@/lib/logger';
 
 /**
+ * Transforms a flat array of questions into a nested grid structure
+ * organized by category and point value.
+ */
+function transformToGrid(questionsArray: Question[]): QuestionGridData {
+  const grid: QuestionGridData = {};
+
+  questionsArray.forEach((question) => {
+    if (!grid[question.category]) {
+      grid[question.category] = {};
+    }
+    grid[question.category][question.point_value] = question;
+  });
+
+  return grid;
+}
+
+/**
  * Custom hook for managing questions within a question bank.
  *
  * Provides CRUD operations for questions and transforms them into a grid structure
@@ -13,23 +30,6 @@ export function useQuestions({ bankId }: { bankId: string }) {
   const [gridData, setGridData] = useState<QuestionGridData>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  /**
-   * Transforms a flat array of questions into a nested grid structure
-   * organized by category and point value.
-   */
-  const transformToGrid = useCallback((questionsArray: Question[]): QuestionGridData => {
-    const grid: QuestionGridData = {};
-
-    questionsArray.forEach((question) => {
-      if (!grid[question.category]) {
-        grid[question.category] = {};
-      }
-      grid[question.category][question.point_value] = question;
-    });
-
-    return grid;
-  }, []);
 
   /**
    * Fetches all questions for the current bank.
@@ -59,7 +59,7 @@ export function useQuestions({ bankId }: { bankId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [bankId, transformToGrid]);
+  }, [bankId]);
 
   /**
    * Creates a new question in the bank.
@@ -108,7 +108,7 @@ export function useQuestions({ bankId }: { bankId: string }) {
       });
       throw err;
     }
-  }, [bankId, transformToGrid]);
+  }, [bankId]);
 
   /**
    * Updates an existing question.
@@ -164,7 +164,7 @@ export function useQuestions({ bankId }: { bankId: string }) {
       });
       throw err;
     }
-  }, [transformToGrid]);
+  }, []);
 
   /**
    * Deletes a question.
@@ -198,7 +198,7 @@ export function useQuestions({ bankId }: { bankId: string }) {
       });
       throw err;
     }
-  }, [transformToGrid]);
+  }, []);
 
   /**
    * Gets all categories currently in the grid.

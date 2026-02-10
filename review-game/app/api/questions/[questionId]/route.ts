@@ -239,47 +239,10 @@ export async function PATCH(
       );
     }
 
-    // 6. If category or point_value changed, check unique constraint
-    if (updateData.category !== undefined || updateData.point_value !== undefined) {
-      const newCategory = updateData.category ?? existingQuestion.category;
-      const newPointValue = updateData.point_value ?? existingQuestion.point_value;
-
-      // Only check if the combination actually changed
-      if (newCategory !== existingQuestion.category || newPointValue !== existingQuestion.point_value) {
-        const { data: duplicate, error: duplicateCheckError } = await supabase
-          .from('questions')
-          .select('id')
-          .eq('bank_id', existingQuestion.bank_id)
-          .eq('category', newCategory)
-          .eq('point_value', newPointValue)
-          .neq('id', questionId)
-          .maybeSingle();
-
-        if (duplicateCheckError) {
-          logger.error('Failed to check for duplicate question', duplicateCheckError, {
-            operation: 'updateQuestion',
-            userId: user.id,
-            questionId,
-          });
-          return NextResponse.json(
-            { error: 'Failed to verify question uniqueness' },
-            { status: 500 }
-          );
-        }
-
-        if (duplicate) {
-          return NextResponse.json(
-            { error: `A question already exists for category "${newCategory}" with ${newPointValue} points` },
-            { status: 409 }
-          );
-        }
-      }
-    }
-
-    // Add updated_at timestamp
+    // 6. Add updated_at timestamp (database unique constraint will enforce uniqueness)
     updateData.updated_at = new Date().toISOString();
 
-    // 7. Update the question
+    // 7. Update the question (database constraint will catch duplicates)
     const { data: updatedQuestion, error: updateError } = await supabase
       .from('questions')
       .update(updateData)
