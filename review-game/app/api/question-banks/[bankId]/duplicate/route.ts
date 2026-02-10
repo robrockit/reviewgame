@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
-import type { TablesInsert } from '@/types/database.types';
 import { canAccessCustomQuestionBanks } from '@/lib/utils/feature-access';
 
 /**
@@ -99,119 +98,55 @@ export async function POST(
       );
     }
 
-    // 6. Fetch all questions from the original bank
-    const { data: originalQuestions, error: questionsError } = await supabase
-      .from('questions')
-      .select('*')
-      .eq('bank_id', bankId)
-      .order('category', { ascending: true })
-      .order('point_value', { ascending: true });
+    // 6. Call atomic database function to duplicate bank + questions
+    // This ensures no orphaned banks are created if question insertion fails
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
+    const { data: result, error: rpcError } = await (supabase as any)
+      .rpc('duplicate_question_bank', {
+        source_bank_id: bankId,
+        new_owner_id: user.id,
+      });
 
-    if (questionsError) {
-      logger.error('Failed to fetch questions for duplication', questionsError, {
+    if (rpcError || !result) {
+      logger.error('Failed to duplicate question bank', rpcError, {
         operation: 'duplicateQuestionBank',
         userId: user.id,
         bankId,
+        errorCode: rpcError?.code,
+        errorMessage: rpcError?.message,
       });
-      return NextResponse.json(
-        { error: 'Failed to fetch questions' },
-        { status: 500 }
-      );
-    }
 
-    // 7. Create the new bank with "Copy of" prefix
-    const newBankData: TablesInsert<'question_banks'> = {
-      title: `Copy of ${originalBank.title}`,
-      subject: originalBank.subject,
-      description: originalBank.description,
-      difficulty: originalBank.difficulty,
-      owner_id: user.id,
-      is_custom: true,
-      is_public: false, // Duplicated banks are always private
-    };
-
-    const { data: newBank, error: createBankError } = await supabase
-      .from('question_banks')
-      .insert(newBankData)
-      .select()
-      .single();
-
-    if (createBankError) {
-      logger.error('Failed to create duplicate question bank', createBankError, {
-        operation: 'duplicateQuestionBank',
-        userId: user.id,
-        originalBankId: bankId,
-      });
-      return NextResponse.json(
-        { error: 'Failed to create duplicate question bank' },
-        { status: 500 }
-      );
-    }
-
-    // 8. Bulk insert all questions with new bank_id
-    if (originalQuestions && originalQuestions.length > 0) {
-      const newQuestions: TablesInsert<'questions'>[] = originalQuestions.map(q => ({
-        bank_id: newBank.id,
-        category: q.category,
-        point_value: q.point_value,
-        position: q.position,
-        question_text: q.question_text,
-        answer_text: q.answer_text,
-        teacher_notes: q.teacher_notes,
-        image_url: q.image_url,
-      }));
-
-      const { error: insertQuestionsError } = await supabase
-        .from('questions')
-        .insert(newQuestions);
-
-      if (insertQuestionsError) {
-        logger.error('Failed to duplicate questions', insertQuestionsError, {
-          operation: 'duplicateQuestionBank',
-          userId: user.id,
-          newBankId: newBank.id,
-          questionCount: newQuestions.length,
-        });
-
-        // Rollback: Delete the newly created bank
-        const { error: rollbackError } = await supabase
-          .from('question_banks')
-          .delete()
-          .eq('id', newBank.id);
-
-        if (rollbackError) {
-          logger.error('CRITICAL: Rollback failed - orphaned bank created', rollbackError, {
-            operation: 'duplicateQuestionBank',
-            userId: user.id,
-            orphanedBankId: newBank.id,
-            originalBankId: bankId,
-          });
-          return NextResponse.json(
-            { error: 'Failed to duplicate questions and rollback failed. Please contact support.' },
-            { status: 500 }
-          );
-        }
-
+      // Check for specific error types
+      if (rpcError?.message?.includes('Access denied')) {
         return NextResponse.json(
-          { error: 'Failed to duplicate questions' },
-          { status: 500 }
+          { error: 'You do not have access to this question bank' },
+          { status: 403 }
         );
       }
+
+      if (rpcError?.message?.includes('not found')) {
+        return NextResponse.json(
+          { error: 'Question bank not found' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: 'Failed to duplicate question bank' },
+        { status: 500 }
+      );
     }
 
     logger.info('Question bank duplicated successfully', {
       operation: 'duplicateQuestionBank',
       userId: user.id,
       originalBankId: bankId,
-      newBankId: newBank.id,
-      questionCount: originalQuestions?.length || 0,
+      newBankId: result.id,
+      questionCount: result.questions_count,
     });
 
-    // 9. Return the new bank
-    return NextResponse.json({
-      ...newBank,
-      question_count: originalQuestions?.length || 0,
-    }, { status: 201 });
+    // 7. Return the new bank
+    return NextResponse.json(result, { status: 201 });
 
   } catch (error) {
     logger.error('Question bank duplication failed', error, {
