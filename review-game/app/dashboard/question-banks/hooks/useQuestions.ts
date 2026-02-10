@@ -93,10 +93,13 @@ export function useQuestions({ bankId }: { bankId: string }) {
 
       // Add to local state using functional updates to avoid stale closures
       setQuestions(prev => [...prev, newQuestion]);
-      setGridData(prev => {
-        const allQuestions = [...Object.values(prev).flatMap(cat => Object.values(cat)), newQuestion];
-        return transformToGrid(allQuestions);
-      });
+      setGridData(prev => ({
+        ...prev,
+        [newQuestion.category]: {
+          ...prev[newQuestion.category],
+          [newQuestion.point_value]: newQuestion,
+        },
+      }));
 
       return newQuestion;
     } catch (err) {
@@ -149,9 +152,33 @@ export function useQuestions({ bankId }: { bankId: string }) {
         q.id === questionId ? updatedQuestion : q
       ));
       setGridData(prev => {
-        const allQuestions = Object.values(prev).flatMap(cat => Object.values(cat))
-          .map(q => q.id === questionId ? updatedQuestion : q);
-        return transformToGrid(allQuestions);
+        // Find and remove old position (handles category/point_value changes)
+        const newGrid = { ...prev };
+
+        for (const category in newGrid) {
+          for (const pointValue in newGrid[category]) {
+            if (newGrid[category][Number(pointValue)].id === questionId) {
+              const categoryData = { ...newGrid[category] };
+              delete categoryData[Number(pointValue)];
+
+              if (Object.keys(categoryData).length === 0) {
+                delete newGrid[category];
+              } else {
+                newGrid[category] = categoryData;
+              }
+              break;
+            }
+          }
+        }
+
+        // Add updated question to new position
+        return {
+          ...newGrid,
+          [updatedQuestion.category]: {
+            ...newGrid[updatedQuestion.category],
+            [updatedQuestion.point_value]: updatedQuestion,
+          },
+        };
       });
 
       return updatedQuestion;
@@ -185,9 +212,26 @@ export function useQuestions({ bankId }: { bankId: string }) {
       // Remove from local state using functional updates to avoid stale closures
       setQuestions(prev => prev.filter((q) => q.id !== questionId));
       setGridData(prev => {
-        const allQuestions = Object.values(prev).flatMap(cat => Object.values(cat))
-          .filter(q => q.id !== questionId);
-        return transformToGrid(allQuestions);
+        // Find and remove question from grid
+        const newGrid = { ...prev };
+
+        for (const category in newGrid) {
+          for (const pointValue in newGrid[category]) {
+            if (newGrid[category][Number(pointValue)].id === questionId) {
+              const categoryData = { ...newGrid[category] };
+              delete categoryData[Number(pointValue)];
+
+              if (Object.keys(categoryData).length === 0) {
+                delete newGrid[category];
+              } else {
+                newGrid[category] = categoryData;
+              }
+              return newGrid;
+            }
+          }
+        }
+
+        return prev; // Question not found (shouldn't happen)
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete question';

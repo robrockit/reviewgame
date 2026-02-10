@@ -174,7 +174,23 @@ export async function POST(
         });
 
         // Rollback: Delete the newly created bank
-        await supabase.from('question_banks').delete().eq('id', newBank.id);
+        const { error: rollbackError } = await supabase
+          .from('question_banks')
+          .delete()
+          .eq('id', newBank.id);
+
+        if (rollbackError) {
+          logger.error('CRITICAL: Rollback failed - orphaned bank created', rollbackError, {
+            operation: 'duplicateQuestionBank',
+            userId: user.id,
+            orphanedBankId: newBank.id,
+            originalBankId: bankId,
+          });
+          return NextResponse.json(
+            { error: 'Failed to duplicate questions and rollback failed. Please contact support.' },
+            { status: 500 }
+          );
+        }
 
         return NextResponse.json(
           { error: 'Failed to duplicate questions' },
