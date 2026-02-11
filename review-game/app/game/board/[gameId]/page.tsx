@@ -161,6 +161,7 @@ export default function GameBoardPage() {
         const teamsForStore: Team[] = (teamsResult.data || []).map((t: DatabaseTeam) => ({
           id: t.id,
           name: t.team_name || `Team ${t.team_number}`,
+          team_name: t.team_name || `Team ${t.team_number}`,
           score: t.score || 0,
         }));
 
@@ -372,6 +373,7 @@ export default function GameBoardPage() {
             const teamForStore: Team = {
               id: updatedTeam.id,
               name: updatedTeam.team_name || `Team ${updatedTeam.team_number}`,
+              team_name: updatedTeam.team_name || `Team ${updatedTeam.team_number}`,
               score: updatedTeam.score || 0,
             };
 
