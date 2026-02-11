@@ -117,35 +117,7 @@ export async function POST(
       );
     }
 
-    // Create wager record for audit trail
-    const { data: game } = await supabase
-      .from('games')
-      .select('final_jeopardy_question')
-      .eq('id', gameId)
-      .single();
-
-    const fjQuestion = game?.final_jeopardy_question as { category?: string } | null;
-    const { error: wagerError } = await supabase
-      .from('wagers')
-      .insert({
-        game_id: gameId,
-        team_id: teamId,
-        question_id: null, // Final Jeopardy has no specific question_id
-        wager_amount: wager,
-        wager_type: 'final_jeopardy',
-        question_category: fjQuestion?.category || 'Final Jeopardy',
-        question_value: 0, // Final Jeopardy has no point value
-      });
-
-    if (wagerError) {
-      logger.error('Failed to create wager record', wagerError, {
-        operation: 'submitFinalJeopardyWager',
-        gameId,
-        teamId,
-        wager,
-      });
-      // Non-critical - wager was submitted successfully, continue
-    }
+    // Note: Wager audit record is created atomically within the database function
 
     logger.info('Final Jeopardy wager submitted successfully', {
       operation: 'submitFinalJeopardyWager',

@@ -42,6 +42,7 @@ DECLARE
   v_max_wager INTEGER;
   v_game_phase TEXT;
   v_submitted_at TIMESTAMP;
+  v_fj_question JSONB;
 BEGIN
   -- Lock the team row for update to prevent concurrent modifications
   SELECT score INTO v_current_score
@@ -55,8 +56,8 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Check game phase
-  SELECT current_phase INTO v_game_phase
+  -- Check game phase and get Final Jeopardy question
+  SELECT current_phase, final_jeopardy_question INTO v_game_phase, v_fj_question
   FROM games
   WHERE id = p_game_id;
 
@@ -87,6 +88,25 @@ BEGIN
     final_jeopardy_wager = p_wager,
     final_jeopardy_submitted_at = v_submitted_at
   WHERE id = p_team_id;
+
+  -- Create wager audit record (in same transaction)
+  INSERT INTO wagers (
+    game_id,
+    team_id,
+    question_id,
+    wager_amount,
+    wager_type,
+    question_category,
+    question_value
+  ) VALUES (
+    p_game_id,
+    p_team_id,
+    NULL, -- Final Jeopardy has no specific question_id
+    p_wager,
+    'final_jeopardy',
+    COALESCE(v_fj_question->>'category', 'Final Jeopardy'),
+    0 -- Final Jeopardy has no point value
+  );
 
   -- Return success
   RETURN QUERY SELECT true, NULL::TEXT, v_submitted_at;

@@ -25,7 +25,8 @@ export interface GameData {
 
 export interface Team {
   id: string;
-  team_name: string;
+  name: string; // Alias for backward compatibility
+  team_name: string; // Database column name (same value as name)
   score: number;
   final_jeopardy_wager?: number | null;
   final_jeopardy_answer?: string | null;
