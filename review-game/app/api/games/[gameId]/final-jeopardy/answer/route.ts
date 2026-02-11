@@ -72,70 +72,16 @@ export async function POST(
       );
     }
 
-    // Verify team belongs to game and has submitted wager
-    const { data: team, error: teamError } = await supabase
-      .from('teams')
-      .select('id, game_id, final_jeopardy_wager, team_name')
-      .eq('id', teamId)
-      .eq('game_id', gameId)
-      .single();
-
-    if (teamError || !team) {
-      logger.error('Team not found or does not belong to game', teamError, {
-        operation: 'submitFinalJeopardyAnswer',
-        gameId,
-        teamId,
+    // Use atomic database function to submit answer (consistent timestamps)
+    const { data: result, error: submitError } = await supabase
+      .rpc('submit_final_jeopardy_answer', {
+        p_game_id: gameId,
+        p_team_id: teamId,
+        p_answer: answer,
       });
-      return NextResponse.json(
-        { error: 'Team not found' },
-        { status: 404 }
-      );
-    }
 
-    // Verify game phase
-    const { data: game, error: gameError } = await supabase
-      .from('games')
-      .select('current_phase')
-      .eq('id', gameId)
-      .single();
-
-    if (gameError || !game) {
-      logger.error('Game not found', gameError, {
-        operation: 'submitFinalJeopardyAnswer',
-        gameId,
-      });
-      return NextResponse.json(
-        { error: 'Game not found' },
-        { status: 404 }
-      );
-    }
-
-    if (game.current_phase !== 'final_jeopardy_answer') {
-      return NextResponse.json(
-        { error: 'Not in answering phase' },
-        { status: 400 }
-      );
-    }
-
-    // Verify team has submitted wager
-    if (team.final_jeopardy_wager === null) {
-      return NextResponse.json(
-        { error: 'Must submit wager before answering' },
-        { status: 400 }
-      );
-    }
-
-    // Update team with answer
-    const { error: updateError } = await supabase
-      .from('teams')
-      .update({
-        final_jeopardy_answer: answer,
-        final_jeopardy_submitted_at: new Date().toISOString(),
-      })
-      .eq('id', teamId);
-
-    if (updateError) {
-      logger.error('Failed to update team answer', updateError, {
+    if (submitError) {
+      logger.error('Database error during answer submission', submitError, {
         operation: 'submitFinalJeopardyAnswer',
         gameId,
         teamId,
@@ -146,23 +92,28 @@ export async function POST(
       );
     }
 
-    // Update wager record with answer text
-    const { error: wagerUpdateError } = await supabase
-      .from('wagers')
-      .update({
-        answer_text: answer,
-      })
-      .eq('game_id', gameId)
-      .eq('team_id', teamId)
-      .eq('wager_type', 'final_jeopardy');
-
-    if (wagerUpdateError) {
-      logger.error('Failed to update wager record with answer', wagerUpdateError, {
+    // Validate result
+    if (!Array.isArray(result) || result.length === 0) {
+      logger.error('Invalid result from submit_final_jeopardy_answer', new Error('Empty result'), {
         operation: 'submitFinalJeopardyAnswer',
         gameId,
         teamId,
+        result,
       });
-      // Non-critical - answer was submitted successfully, continue
+      return NextResponse.json(
+        { error: 'Failed to submit answer' },
+        { status: 500 }
+      );
+    }
+
+    const answerResult = result[0];
+
+    // Check if submission was successful
+    if (!answerResult.success) {
+      return NextResponse.json(
+        { error: answerResult.error_message || 'Failed to submit answer' },
+        { status: 400 }
+      );
     }
 
     logger.info('Final Jeopardy answer submitted successfully', {
@@ -175,7 +126,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       teamId,
-      submittedAt: new Date().toISOString(),
+      submittedAt: answerResult.submitted_at,
     });
   } catch (error) {
     logger.error('Submit Final Jeopardy answer failed', error, {

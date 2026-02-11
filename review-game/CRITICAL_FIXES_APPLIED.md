@@ -26,7 +26,21 @@
 - Removed client-side validation (moved to DB)
 - Improved error handling with detailed response validation
 
-#### **Fix 1b: Atomic Final Jeopardy Start**
+#### **Fix 1b: Atomic Answer Submission** ✅ NEW
+- **Problem:** Server timestamp inconsistency using `new Date().toISOString()`
+- **Solution:** Created `submit_final_jeopardy_answer()` database function
+- **Features:**
+  - Uses database `now()` for consistent timestamps
+  - Validates phase and wager submission atomically
+  - Updates both teams and wagers tables in single transaction
+  - Prevents clock skew issues in distributed systems
+
+**Updated File:** `app/api/games/[gameId]/final-jeopardy/answer/route.ts`
+- Now calls `submit_final_jeopardy_answer` RPC function
+- Consistent timestamp handling with wager submission
+- Atomic validation and updates
+
+#### **Fix 1c: Atomic Final Jeopardy Start**
 - **Problem:** Two separate operations (update game phase + reset teams) could leave inconsistent state
 - **Solution:** Created `start_final_jeopardy()` database function
 - **Features:**
@@ -40,7 +54,22 @@
 - Single atomic operation replaces two separate queries
 - Better error handling with status code mapping
 
-#### **Fix 1c: Atomic Skip with Cleanup**
+#### **Fix 1d: Atomic Reveal with Audit Trail** ✅ NEW
+- **Problem:** Score update and wager audit update were separate operations
+- **Solution:** Created `reveal_final_jeopardy_answer()` database function
+- **Features:**
+  - Locks team row with `FOR UPDATE`
+  - Updates score and wager record in single transaction
+  - Verifies ownership and phase atomically
+  - Returns new score and score change
+  - Ensures audit trail consistency with score updates
+
+**Updated File:** `app/api/games/[gameId]/final-jeopardy/reveal/route.ts`
+- Now calls `reveal_final_jeopardy_answer` RPC function
+- Single atomic operation for score + audit
+- Simplified validation (moved to DB function)
+
+#### **Fix 1e: Atomic Skip with Cleanup**
 - **Problem:** Orphaned wager records left in database when skipping
 - **Solution:** Created `skip_final_jeopardy()` database function
 - **Features:**
