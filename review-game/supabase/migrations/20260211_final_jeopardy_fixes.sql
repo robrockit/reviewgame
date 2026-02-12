@@ -426,12 +426,28 @@ $$;
 COMMENT ON FUNCTION skip_final_jeopardy IS 'Skips Final Jeopardy and cleans up orphaned wager records';
 
 -- =====================================================
--- 7. Grant necessary permissions
+-- 7. Security: Function Permissions
 -- =====================================================
 
--- Grant execute permissions to authenticated users
-GRANT EXECUTE ON FUNCTION submit_final_jeopardy_wager TO authenticated;
-GRANT EXECUTE ON FUNCTION submit_final_jeopardy_answer TO authenticated;
-GRANT EXECUTE ON FUNCTION start_final_jeopardy TO authenticated;
-GRANT EXECUTE ON FUNCTION reveal_final_jeopardy_answer TO authenticated;
-GRANT EXECUTE ON FUNCTION skip_final_jeopardy TO authenticated;
+-- IMPORTANT: These functions are NOT granted to 'authenticated' role for security.
+--
+-- Reasoning:
+-- - All API routes use service role (createAdminServerClient)
+-- - Service role bypasses RLS and can execute all functions
+-- - Student functions (wager/answer) have NO authorization checks internally
+-- - Teacher functions (start/reveal/skip) verify teacher_id, but defense-in-depth says
+--   we should enforce authorization at API layer, not expose functions to client
+--
+-- Attack Vector if granted to 'authenticated':
+-- - Malicious student could call submit_final_jeopardy_wager RPC directly from browser
+-- - They could submit wagers for OTHER teams by passing different team_id
+-- - Same vulnerability for answer submission, and even teacher operations
+--
+-- Security Boundary:
+-- - API routes are the ONLY entry point (enforce authorization)
+-- - Database functions execute with service role privileges only
+-- - Client-side calls to these functions are blocked (no GRANT to authenticated)
+--
+-- If you need to grant access for testing, use:
+-- GRANT EXECUTE ON FUNCTION function_name TO authenticated;
+-- But remember to revoke before production deployment.
