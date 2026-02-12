@@ -15,7 +15,7 @@
  */
 
 import { create } from 'zustand';
-import { GameData, Team, Question, BuzzEntry } from '../../types/game';
+import { GameData, Team, Question, BuzzEntry, GamePhase, FinalJeopardyQuestion, FinalJeopardyTeamStatus } from '../../types/game';
 
 /**
  * Represents the state portion of the game store.
@@ -30,6 +30,9 @@ import { GameData, Team, Question, BuzzEntry } from '../../types/game';
  * @property {number | null} currentWager - The wager amount for Daily Double questions
  * @property {boolean} isWagerSubmitted - Whether the wager has been submitted
  * @property {string | null} controllingTeamId - The team that controls the Daily Double
+ * @property {GamePhase} currentPhase - The current phase of the game
+ * @property {FinalJeopardyQuestion | null} finalJeopardyQuestion - The Final Jeopardy question data
+ * @property {Record<string, FinalJeopardyTeamStatus>} finalJeopardyTeamStatuses - Team statuses for Final Jeopardy
  */
 interface GameState {
   currentGameData: GameData | null;
@@ -41,6 +44,9 @@ interface GameState {
   currentWager: number | null;
   isWagerSubmitted: boolean;
   controllingTeamId: string | null;
+  currentPhase: GamePhase;
+  finalJeopardyQuestion: FinalJeopardyQuestion | null;
+  finalJeopardyTeamStatuses: Record<string, FinalJeopardyTeamStatus>;
 }
 
 /**
@@ -122,6 +128,30 @@ interface GameActions {
   clearWager: () => void;
 
   /**
+   * Sets the current game phase.
+   * @param {GamePhase} phase - The phase to set
+   */
+  setCurrentPhase: (phase: GamePhase) => void;
+
+  /**
+   * Sets the Final Jeopardy question.
+   * @param {FinalJeopardyQuestion | null} question - The Final Jeopardy question, or null to clear
+   */
+  setFinalJeopardyQuestion: (question: FinalJeopardyQuestion | null) => void;
+
+  /**
+   * Updates a team's Final Jeopardy status.
+   * @param {string} teamId - The team ID to update
+   * @param {Partial<FinalJeopardyTeamStatus>} status - Partial status to merge
+   */
+  updateFinalJeopardyTeamStatus: (teamId: string, status: Partial<FinalJeopardyTeamStatus>) => void;
+
+  /**
+   * Resets all Final Jeopardy state.
+   */
+  resetFinalJeopardy: () => void;
+
+  /**
    * Resets the entire store to initial state.
    */
   reset: () => void;
@@ -148,6 +178,9 @@ const initialState: GameState = {
   currentWager: null,
   isWagerSubmitted: false,
   controllingTeamId: null,
+  currentPhase: 'regular',
+  finalJeopardyQuestion: null,
+  finalJeopardyTeamStatuses: {},
 };
 
 /**
@@ -233,5 +266,26 @@ export const useGameStore = create<GameStore>((set) => ({
   setWagerSubmitted: (submitted) => set({ isWagerSubmitted: submitted }),
   setControllingTeam: (teamId) => set({ controllingTeamId: teamId }),
   clearWager: () => set({ currentWager: null, isWagerSubmitted: false, controllingTeamId: null }),
+
+  // Final Jeopardy actions
+  setCurrentPhase: (phase) => set({ currentPhase: phase }),
+  setFinalJeopardyQuestion: (question) => set({ finalJeopardyQuestion: question }),
+  updateFinalJeopardyTeamStatus: (teamId, status) =>
+    set((state) => ({
+      finalJeopardyTeamStatuses: {
+        ...state.finalJeopardyTeamStatuses,
+        [teamId]: {
+          ...state.finalJeopardyTeamStatuses[teamId],
+          ...status,
+        },
+      },
+    })),
+  resetFinalJeopardy: () =>
+    set({
+      currentPhase: 'regular',
+      finalJeopardyQuestion: null,
+      finalJeopardyTeamStatuses: {},
+    }),
+
   reset: () => set(initialState),
 }));

@@ -13,7 +13,7 @@ import { useGameStore } from '../lib/stores/gameStore';
 import { createClient } from '../lib/supabase/client';
 import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import { logger } from '../lib/logger';
-import type { Question } from '../types/game';
+import type { Question, FinalJeopardyQuestion, GamePhase } from '../types/game';
 
 /**
  * Represents a buzz event sent by a team.
@@ -38,6 +38,52 @@ interface QuestionSelectedPayload {
 }
 
 /**
+ * Payload structure for Final Jeopardy start events.
+ *
+ * @interface FinalJeopardyStartedPayload
+ * @property {GamePhase} phase - The current phase (should be 'final_jeopardy_wager')
+ * @property {FinalJeopardyQuestion} question - The Final Jeopardy question data
+ */
+interface FinalJeopardyStartedPayload {
+  phase: GamePhase;
+  question: FinalJeopardyQuestion;
+}
+
+/**
+ * Payload structure for Final Jeopardy phase change events.
+ *
+ * @interface FinalJeopardyPhaseChangedPayload
+ * @property {GamePhase} phase - The new phase
+ */
+interface FinalJeopardyPhaseChangedPayload {
+  phase: GamePhase;
+}
+
+/**
+ * Payload structure for Final Jeopardy submission events.
+ *
+ * @interface FinalJeopardySubmissionPayload
+ * @property {string} teamId - The team that submitted
+ */
+interface FinalJeopardySubmissionPayload {
+  teamId: string;
+}
+
+/**
+ * Payload structure for Final Jeopardy reveal events.
+ *
+ * @interface FinalJeopardyTeamRevealedPayload
+ * @property {string} teamId - The team being revealed
+ * @property {boolean} isCorrect - Whether the answer was correct
+ * @property {number} newScore - The team's new score after reveal
+ */
+interface FinalJeopardyTeamRevealedPayload {
+  teamId: string;
+  isCorrect: boolean;
+  newScore: number;
+}
+
+/**
  * Return type of the useBuzzer hook.
  *
  * @interface BuzzerHook
@@ -45,12 +91,22 @@ interface QuestionSelectedPayload {
  * @property {function} clearBuzzes - Function to clear all buzzes in the queue
  * @property {function} broadcastQuestionSelected - Function to broadcast a selected question to all clients
  * @property {function} broadcastQuestionClosed - Function to broadcast that the current question has been closed
+ * @property {function} broadcastFinalJeopardyStarted - Function to broadcast Final Jeopardy start
+ * @property {function} broadcastFinalJeopardyPhaseChanged - Function to broadcast Final Jeopardy phase change
+ * @property {function} broadcastFinalJeopardyWagerSubmitted - Function to broadcast wager submission
+ * @property {function} broadcastFinalJeopardyAnswerSubmitted - Function to broadcast answer submission
+ * @property {function} broadcastFinalJeopardyTeamRevealed - Function to broadcast team reveal
  */
 interface BuzzerHook {
   sendBuzz: (teamId: string) => void;
   clearBuzzes: () => void;
   broadcastQuestionSelected: (question: Question) => void;
   broadcastQuestionClosed: () => void;
+  broadcastFinalJeopardyStarted: (phase: GamePhase, question: FinalJeopardyQuestion) => void;
+  broadcastFinalJeopardyPhaseChanged: (phase: GamePhase) => void;
+  broadcastFinalJeopardyWagerSubmitted: (teamId: string) => void;
+  broadcastFinalJeopardyAnswerSubmitted: (teamId: string) => void;
+  broadcastFinalJeopardyTeamRevealed: (teamId: string, isCorrect: boolean, newScore: number) => void;
 }
 
 /**
@@ -173,6 +229,122 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
       if (!isMountedRef.current) return;
 
       useGameStore.getState().setCurrentQuestion(null);
+    });
+
+    // Subscribe to Final Jeopardy events
+    channel.on('broadcast', { event: 'final-jeopardy-started' }, ({ payload }: { payload: FinalJeopardyStartedPayload }) => {
+      if (!isMountedRef.current) return;
+
+      if (!payload || !payload.phase || !payload.question) {
+        logger.warn('Received invalid final-jeopardy-started payload', {
+          gameId,
+          payload,
+          operation: 'finalJeopardyStartedHandler',
+        });
+        return;
+      }
+
+      const store = useGameStore.getState();
+      store.setCurrentPhase(payload.phase);
+      store.setFinalJeopardyQuestion(payload.question);
+    });
+
+    channel.on('broadcast', { event: 'final-jeopardy-phase-changed' }, ({ payload }: { payload: FinalJeopardyPhaseChangedPayload }) => {
+      if (!isMountedRef.current) return;
+
+      if (!payload || !payload.phase) {
+        logger.warn('Received invalid final-jeopardy-phase-changed payload', {
+          gameId,
+          payload,
+          operation: 'finalJeopardyPhaseChangedHandler',
+        });
+        return;
+      }
+
+      useGameStore.getState().setCurrentPhase(payload.phase);
+    });
+
+    channel.on('broadcast', { event: 'final-jeopardy-wager-submitted' }, ({ payload }: { payload: FinalJeopardySubmissionPayload }) => {
+      if (!isMountedRef.current) return;
+
+      if (!payload || !payload.teamId) {
+        logger.warn('Received invalid final-jeopardy-wager-submitted payload', {
+          gameId,
+          payload,
+          operation: 'finalJeopardyWagerSubmittedHandler',
+        });
+        return;
+      }
+
+      // Note: Actual team data will be fetched by components from database
+      // This event just triggers UI refresh to show submission indicator
+      logger.info('Received wager submission broadcast', {
+        gameId,
+        teamId: payload.teamId,
+        operation: 'finalJeopardyWagerSubmittedHandler',
+      });
+    });
+
+    channel.on('broadcast', { event: 'final-jeopardy-answer-submitted' }, ({ payload }: { payload: FinalJeopardySubmissionPayload }) => {
+      if (!isMountedRef.current) return;
+
+      if (!payload || !payload.teamId) {
+        logger.warn('Received invalid final-jeopardy-answer-submitted payload', {
+          gameId,
+          payload,
+          operation: 'finalJeopardyAnswerSubmittedHandler',
+        });
+        return;
+      }
+
+      // Note: Actual team data will be fetched by components from database
+      // This event just triggers UI refresh to show submission indicator
+      logger.info('Received answer submission broadcast', {
+        gameId,
+        teamId: payload.teamId,
+        operation: 'finalJeopardyAnswerSubmittedHandler',
+      });
+    });
+
+    channel.on('broadcast', { event: 'final-jeopardy-team-revealed' }, ({ payload }: { payload: FinalJeopardyTeamRevealedPayload }) => {
+      if (!isMountedRef.current) return;
+
+      if (!payload || !payload.teamId || typeof payload.isCorrect !== 'boolean' || typeof payload.newScore !== 'number') {
+        logger.warn('Received invalid final-jeopardy-team-revealed payload', {
+          gameId,
+          payload,
+          operation: 'finalJeopardyTeamRevealedHandler',
+        });
+        return;
+      }
+
+      const store = useGameStore.getState();
+
+      // Update team score in the main teams list
+      store.setTeams((prevTeams) =>
+        prevTeams.map((team) =>
+          team.id === payload.teamId ? { ...team, score: payload.newScore } : team
+        )
+      );
+
+      // Update Final Jeopardy team status with reveal information
+      const existingStatus = store.finalJeopardyTeamStatuses[payload.teamId];
+      if (existingStatus) {
+        store.updateFinalJeopardyTeamStatus(payload.teamId, {
+          ...existingStatus,
+          currentScore: payload.newScore,
+          isCorrect: payload.isCorrect,
+          revealed: true,
+        });
+      }
+
+      logger.info('Updated team after Final Jeopardy reveal', {
+        gameId,
+        teamId: payload.teamId,
+        newScore: payload.newScore,
+        isCorrect: payload.isCorrect,
+        operation: 'finalJeopardyTeamRevealedHandler',
+      });
     });
 
     channel.subscribe((status: string) => {
@@ -389,10 +561,195 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     }
   };
 
+  /**
+   * Broadcasts Final Jeopardy started event to all clients.
+   *
+   * @param {GamePhase} phase - The current phase (should be 'final_jeopardy_wager')
+   * @param {FinalJeopardyQuestion} question - The Final Jeopardy question data
+   */
+  const broadcastFinalJeopardyStarted = (phase: GamePhase, question: FinalJeopardyQuestion) => {
+    if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {
+      logger.warn('Cannot broadcast Final Jeopardy started: invalid gameId or channel not initialized', {
+        gameId,
+        channelInitialized: !!channelRef.current,
+        operation: 'broadcastFinalJeopardyStarted',
+      });
+      return;
+    }
+
+    try {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'final-jeopardy-started',
+        payload: { phase, question },
+      });
+
+      logger.info('Broadcasted Final Jeopardy started', {
+        gameId,
+        phase,
+        operation: 'broadcastFinalJeopardyStarted',
+      });
+    } catch (error) {
+      logger.error('Exception while broadcasting Final Jeopardy started', error, {
+        gameId,
+        operation: 'broadcastFinalJeopardyStarted',
+      });
+    }
+  };
+
+  /**
+   * Broadcasts Final Jeopardy phase change event to all clients.
+   *
+   * @param {GamePhase} phase - The new phase
+   */
+  const broadcastFinalJeopardyPhaseChanged = (phase: GamePhase) => {
+    if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {
+      logger.warn('Cannot broadcast Final Jeopardy phase change: invalid gameId or channel not initialized', {
+        gameId,
+        channelInitialized: !!channelRef.current,
+        operation: 'broadcastFinalJeopardyPhaseChanged',
+      });
+      return;
+    }
+
+    try {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'final-jeopardy-phase-changed',
+        payload: { phase },
+      });
+
+      logger.info('Broadcasted Final Jeopardy phase change', {
+        gameId,
+        phase,
+        operation: 'broadcastFinalJeopardyPhaseChanged',
+      });
+    } catch (error) {
+      logger.error('Exception while broadcasting Final Jeopardy phase change', error, {
+        gameId,
+        operation: 'broadcastFinalJeopardyPhaseChanged',
+      });
+    }
+  };
+
+  /**
+   * Broadcasts that a team submitted their Final Jeopardy wager.
+   *
+   * @param {string} teamId - The team that submitted
+   */
+  const broadcastFinalJeopardyWagerSubmitted = (teamId: string) => {
+    if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {
+      logger.warn('Cannot broadcast Final Jeopardy wager submission: invalid gameId or channel not initialized', {
+        gameId,
+        channelInitialized: !!channelRef.current,
+        operation: 'broadcastFinalJeopardyWagerSubmitted',
+      });
+      return;
+    }
+
+    try {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'final-jeopardy-wager-submitted',
+        payload: { teamId },
+      });
+
+      logger.info('Broadcasted Final Jeopardy wager submission', {
+        gameId,
+        teamId,
+        operation: 'broadcastFinalJeopardyWagerSubmitted',
+      });
+    } catch (error) {
+      logger.error('Exception while broadcasting Final Jeopardy wager submission', error, {
+        gameId,
+        operation: 'broadcastFinalJeopardyWagerSubmitted',
+      });
+    }
+  };
+
+  /**
+   * Broadcasts that a team submitted their Final Jeopardy answer.
+   *
+   * @param {string} teamId - The team that submitted
+   */
+  const broadcastFinalJeopardyAnswerSubmitted = (teamId: string) => {
+    if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {
+      logger.warn('Cannot broadcast Final Jeopardy answer submission: invalid gameId or channel not initialized', {
+        gameId,
+        channelInitialized: !!channelRef.current,
+        operation: 'broadcastFinalJeopardyAnswerSubmitted',
+      });
+      return;
+    }
+
+    try {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'final-jeopardy-answer-submitted',
+        payload: { teamId },
+      });
+
+      logger.info('Broadcasted Final Jeopardy answer submission', {
+        gameId,
+        teamId,
+        operation: 'broadcastFinalJeopardyAnswerSubmitted',
+      });
+    } catch (error) {
+      logger.error('Exception while broadcasting Final Jeopardy answer submission', error, {
+        gameId,
+        operation: 'broadcastFinalJeopardyAnswerSubmitted',
+      });
+    }
+  };
+
+  /**
+   * Broadcasts that a team's Final Jeopardy answer has been revealed.
+   *
+   * @param {string} teamId - The team being revealed
+   * @param {boolean} isCorrect - Whether the answer was correct
+   * @param {number} newScore - The team's new score
+   */
+  const broadcastFinalJeopardyTeamRevealed = (teamId: string, isCorrect: boolean, newScore: number) => {
+    if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {
+      logger.warn('Cannot broadcast Final Jeopardy team reveal: invalid gameId or channel not initialized', {
+        gameId,
+        channelInitialized: !!channelRef.current,
+        operation: 'broadcastFinalJeopardyTeamRevealed',
+      });
+      return;
+    }
+
+    try {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'final-jeopardy-team-revealed',
+        payload: { teamId, isCorrect, newScore },
+      });
+
+      logger.info('Broadcasted Final Jeopardy team reveal', {
+        gameId,
+        teamId,
+        isCorrect,
+        newScore,
+        operation: 'broadcastFinalJeopardyTeamRevealed',
+      });
+    } catch (error) {
+      logger.error('Exception while broadcasting Final Jeopardy team reveal', error, {
+        gameId,
+        operation: 'broadcastFinalJeopardyTeamRevealed',
+      });
+    }
+  };
+
   return {
     sendBuzz,
     clearBuzzes,
     broadcastQuestionSelected,
     broadcastQuestionClosed,
+    broadcastFinalJeopardyStarted,
+    broadcastFinalJeopardyPhaseChanged,
+    broadcastFinalJeopardyWagerSubmitted,
+    broadcastFinalJeopardyAnswerSubmitted,
+    broadcastFinalJeopardyTeamRevealed,
   };
 };

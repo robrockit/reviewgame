@@ -10,14 +10,14 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.1"
   }
   public: {
     Tables: {
       admin_audit_log: {
         Row: {
           action_type: string
-          admin_user_id: string
+          admin_user_id: string | null
           changes: Json | null
           created_at: string | null
           id: string
@@ -30,7 +30,7 @@ export type Database = {
         }
         Insert: {
           action_type: string
-          admin_user_id: string
+          admin_user_id?: string | null
           changes?: Json | null
           created_at?: string | null
           id?: string
@@ -43,7 +43,7 @@ export type Database = {
         }
         Update: {
           action_type?: string
-          admin_user_id?: string
+          admin_user_id?: string | null
           changes?: Json | null
           created_at?: string | null
           id?: string
@@ -64,69 +64,12 @@ export type Database = {
           },
         ]
       }
-      buzz_events: {
-        Row: {
-          answered: boolean | null
-          buzz_timestamp: string | null
-          correct: boolean | null
-          created_at: string | null
-          game_id: string
-          id: string
-          position: number | null
-          question_id: string | null
-          team_id: string
-        }
-        Insert: {
-          answered?: boolean | null
-          buzz_timestamp?: string | null
-          correct?: boolean | null
-          created_at?: string | null
-          game_id: string
-          id?: string
-          position?: number | null
-          question_id?: string | null
-          team_id: string
-        }
-        Update: {
-          answered?: boolean | null
-          buzz_timestamp?: string | null
-          correct?: boolean | null
-          created_at?: string | null
-          game_id?: string
-          id?: string
-          position?: number | null
-          question_id?: string | null
-          team_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "buzz_events_game_id_fkey"
-            columns: ["game_id"]
-            isOneToOne: false
-            referencedRelation: "games"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "buzz_events_question_id_fkey"
-            columns: ["question_id"]
-            isOneToOne: false
-            referencedRelation: "questions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "buzz_events_team_id_fkey"
-            columns: ["team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       games: {
         Row: {
           bank_id: string
           completed_at: string | null
           created_at: string | null
+          current_phase: string | null
           daily_double_positions: Json | null
           final_jeopardy_question: Json | null
           id: string
@@ -135,14 +78,16 @@ export type Database = {
           started_at: string | null
           status: string | null
           teacher_id: string
-          team_names: string[] | null
+          team_names: Json | null
           timer_enabled: boolean | null
           timer_seconds: number | null
+          updated_at: string | null
         }
         Insert: {
           bank_id: string
           completed_at?: string | null
           created_at?: string | null
+          current_phase?: string | null
           daily_double_positions?: Json | null
           final_jeopardy_question?: Json | null
           id?: string
@@ -151,14 +96,16 @@ export type Database = {
           started_at?: string | null
           status?: string | null
           teacher_id: string
-          team_names?: string[] | null
+          team_names?: Json | null
           timer_enabled?: boolean | null
           timer_seconds?: number | null
+          updated_at?: string | null
         }
         Update: {
           bank_id?: string
           completed_at?: string | null
           created_at?: string | null
+          current_phase?: string | null
           daily_double_positions?: Json | null
           final_jeopardy_question?: Json | null
           id?: string
@@ -167,9 +114,10 @@ export type Database = {
           started_at?: string | null
           status?: string | null
           teacher_id?: string
-          team_names?: string[] | null
+          team_names?: Json | null
           timer_enabled?: boolean | null
           timer_seconds?: number | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -281,6 +229,30 @@ export type Database = {
           },
         ]
       }
+      processed_stripe_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          processed_at: string
+          stripe_event_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          processed_at?: string
+          stripe_event_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          processed_at?: string
+          stripe_event_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           admin_notes: string | null
@@ -294,7 +266,7 @@ export type Database = {
           email: string
           email_verified_manually: boolean | null
           full_name: string | null
-          games_created_count: number | null
+          games_created_count: number
           id: string
           is_active: boolean | null
           last_login_at: string | null
@@ -304,6 +276,7 @@ export type Database = {
           stripe_subscription_id: string | null
           subscription_status: string | null
           subscription_tier: string | null
+          suspended_at: string | null
           suspension_reason: string | null
           trial_end_date: string | null
           updated_at: string | null
@@ -320,7 +293,7 @@ export type Database = {
           email: string
           email_verified_manually?: boolean | null
           full_name?: string | null
-          games_created_count?: number | null
+          games_created_count?: number
           id: string
           is_active?: boolean | null
           last_login_at?: string | null
@@ -330,6 +303,7 @@ export type Database = {
           stripe_subscription_id?: string | null
           subscription_status?: string | null
           subscription_tier?: string | null
+          suspended_at?: string | null
           suspension_reason?: string | null
           trial_end_date?: string | null
           updated_at?: string | null
@@ -346,7 +320,7 @@ export type Database = {
           email?: string
           email_verified_manually?: boolean | null
           full_name?: string | null
-          games_created_count?: number | null
+          games_created_count?: number
           id?: string
           is_active?: boolean | null
           last_login_at?: string | null
@@ -356,6 +330,7 @@ export type Database = {
           stripe_subscription_id?: string | null
           subscription_status?: string | null
           subscription_tier?: string | null
+          suspended_at?: string | null
           suspension_reason?: string | null
           trial_end_date?: string | null
           updated_at?: string | null
@@ -371,7 +346,7 @@ export type Database = {
           is_custom: boolean | null
           is_public: boolean | null
           owner_id: string | null
-          subject: string
+          subject: string | null
           title: string
           updated_at: string | null
         }
@@ -383,7 +358,7 @@ export type Database = {
           is_custom?: boolean | null
           is_public?: boolean | null
           owner_id?: string | null
-          subject: string
+          subject?: string | null
           title: string
           updated_at?: string | null
         }
@@ -395,7 +370,7 @@ export type Database = {
           is_custom?: boolean | null
           is_public?: boolean | null
           owner_id?: string | null
-          subject?: string
+          subject?: string | null
           title?: string
           updated_at?: string | null
         }
@@ -412,7 +387,7 @@ export type Database = {
       questions: {
         Row: {
           answer_text: string
-          bank_id: string
+          bank_id: string | null
           category: string
           created_at: string | null
           id: string
@@ -425,7 +400,7 @@ export type Database = {
         }
         Insert: {
           answer_text: string
-          bank_id: string
+          bank_id?: string | null
           category: string
           created_at?: string | null
           id?: string
@@ -438,7 +413,7 @@ export type Database = {
         }
         Update: {
           answer_text?: string
-          bank_id?: string
+          bank_id?: string | null
           category?: string
           created_at?: string | null
           id?: string
@@ -467,7 +442,7 @@ export type Database = {
           id: string
           notes: string | null
           reason_category: string
-          refunded_by: string
+          refunded_by: string | null
           stripe_charge_id: string
           stripe_refund_id: string
           user_id: string
@@ -479,7 +454,7 @@ export type Database = {
           id?: string
           notes?: string | null
           reason_category: string
-          refunded_by: string
+          refunded_by?: string | null
           stripe_charge_id: string
           stripe_refund_id: string
           user_id: string
@@ -491,7 +466,7 @@ export type Database = {
           id?: string
           notes?: string | null
           reason_category?: string
-          refunded_by?: string
+          refunded_by?: string | null
           stripe_charge_id?: string
           stripe_refund_id?: string
           user_id?: string
@@ -518,34 +493,46 @@ export type Database = {
           connection_status: string | null
           created_at: string | null
           device_id: string | null
-          game_id: string
+          final_jeopardy_answer: string | null
+          final_jeopardy_submitted_at: string | null
+          final_jeopardy_wager: number | null
+          game_id: string | null
           id: string
           last_seen: string | null
           score: number | null
           team_name: string | null
           team_number: number
+          updated_at: string | null
         }
         Insert: {
           connection_status?: string | null
           created_at?: string | null
           device_id?: string | null
-          game_id: string
+          final_jeopardy_answer?: string | null
+          final_jeopardy_submitted_at?: string | null
+          final_jeopardy_wager?: number | null
+          game_id?: string | null
           id?: string
           last_seen?: string | null
           score?: number | null
           team_name?: string | null
           team_number: number
+          updated_at?: string | null
         }
         Update: {
           connection_status?: string | null
           created_at?: string | null
           device_id?: string | null
-          game_id?: string
+          final_jeopardy_answer?: string | null
+          final_jeopardy_submitted_at?: string | null
+          final_jeopardy_wager?: number | null
+          game_id?: string | null
           id?: string
           last_seen?: string | null
           score?: number | null
           team_name?: string | null
           team_number?: number
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -557,76 +544,32 @@ export type Database = {
           },
         ]
       }
-      wagers: {
-        Row: {
-          answer_text: string | null
-          created_at: string | null
-          game_id: string
-          id: string
-          is_correct: boolean | null
-          question_id: string | null
-          revealed: boolean | null
-          team_id: string
-          wager_amount: number
-          wager_type: string
-        }
-        Insert: {
-          answer_text?: string | null
-          created_at?: string | null
-          game_id: string
-          id?: string
-          is_correct?: boolean | null
-          question_id?: string | null
-          revealed?: boolean | null
-          team_id: string
-          wager_amount: number
-          wager_type: string
-        }
-        Update: {
-          answer_text?: string | null
-          created_at?: string | null
-          game_id?: string
-          id?: string
-          is_correct?: boolean | null
-          question_id?: string | null
-          revealed?: boolean | null
-          team_id?: string
-          wager_amount?: number
-          wager_type?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "wagers_game_id_fkey"
-            columns: ["game_id"]
-            isOneToOne: false
-            referencedRelation: "games"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "wagers_question_id_fkey"
-            columns: ["question_id"]
-            isOneToOne: false
-            referencedRelation: "questions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "wagers_team_id_fkey"
-            columns: ["team_id"]
-            isOneToOne: false
-            referencedRelation: "teams"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      decrement_game_count: {
-        Args: { p_user_id: string }
-        Returns: undefined
+      activate_user_with_audit: {
+        Args: {
+          p_admin_id: string
+          p_changes?: Json
+          p_ip_address?: string
+          p_notes?: string
+          p_user_agent?: string
+          p_user_id: string
+        }
+        Returns: Json
       }
+      cleanup_old_audit_logs: { Args: never; Returns: number }
+      cleanup_old_stripe_events: { Args: never; Returns: undefined }
+      decrement_game_count: { Args: { p_user_id: string }; Returns: boolean }
+      end_game: { Args: { p_game_id: string }; Returns: Json }
+      end_impersonation_session: {
+        Args: { p_session_id: string }
+        Returns: Json
+      }
+      expire_old_impersonation_sessions: { Args: never; Returns: number }
+      get_active_impersonation: { Args: never; Returns: Json }
       increment_game_count_if_allowed: {
         Args: { p_user_id: string }
         Returns: boolean
@@ -644,6 +587,74 @@ export type Database = {
           p_user_agent?: string
         }
         Returns: string
+      }
+      reveal_final_jeopardy_answer: {
+        Args: {
+          p_game_id: string
+          p_is_correct: boolean
+          p_teacher_id: string
+          p_team_id: string
+        }
+        Returns: {
+          error_message: string
+          new_score: number
+          score_change: number
+          success: boolean
+        }[]
+      }
+      skip_final_jeopardy: {
+        Args: { p_game_id: string; p_teacher_id: string }
+        Returns: {
+          error_message: string
+          success: boolean
+        }[]
+      }
+      start_final_jeopardy: {
+        Args: { p_game_id: string; p_teacher_id: string }
+        Returns: {
+          error_message: string
+          question: Json
+          success: boolean
+        }[]
+      }
+      start_impersonation_session: {
+        Args: {
+          p_ip_address?: string
+          p_reason: string
+          p_target_user_id: string
+          p_user_agent?: string
+        }
+        Returns: Json
+      }
+      submit_final_jeopardy_answer: {
+        Args: { p_answer: string; p_game_id: string; p_team_id: string }
+        Returns: {
+          error_message: string
+          submitted_at: string
+          success: boolean
+        }[]
+      }
+      submit_final_jeopardy_wager: {
+        Args: { p_game_id: string; p_team_id: string; p_wager: number }
+        Returns: {
+          error_message: string
+          submitted_at: string
+          success: boolean
+        }[]
+      }
+      suspend_user_with_audit: {
+        Args: {
+          p_action_type: string
+          p_admin_id: string
+          p_changes?: Json
+          p_formatted_reason: string
+          p_ip_address?: string
+          p_notes?: string
+          p_reason: string
+          p_user_agent?: string
+          p_user_id: string
+        }
+        Returns: Json
       }
       update_team_score: {
         Args: { p_game_id: string; p_score_change: number; p_team_id: string }
