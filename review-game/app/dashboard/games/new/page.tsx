@@ -156,31 +156,32 @@ export default function NewGamePage() {
         // Fetch question banks (public + user's custom if premium)
         const isPremiumUser = profileData?.subscription_status === 'active' || profileData?.subscription_status === 'trial';
 
-        const query = supabase
-          .from('question_banks')
-          .select('*')
-          .eq('is_public', true);
-
-        // If premium, also include user's custom banks (using effective user ID for impersonation)
+        // If premium, fetch both public banks and user's own banks
         if (isPremiumUser) {
-          const { data: customBanks, error: customError } = await supabase
+          // Use OR filter to get public banks OR banks owned by user
+          // This leverages RLS policy: "is_public = true OR owner_id = auth.uid()"
+          const { data: banks, error: banksError } = await supabase
             .from('question_banks')
             .select('*')
-            .eq('owner_id', targetUserId)
-            .eq('is_custom', true);
+            .or(`is_public.eq.true,owner_id.eq.${targetUserId}`)
+            .order('title', { ascending: true });
 
-          const { data: publicBanks, error: publicError } = await supabase
-            .from('question_banks')
-            .select('*')
-            .eq('is_public', true);
+          if (banksError) {
+            logger.error('Failed to fetch question banks', banksError, {
+              operation: 'fetchQuestionBanks',
+              userId: targetUserId,
+            });
+            throw banksError;
+          }
 
-          if (publicError) throw publicError;
-          if (customError) throw customError;
-
-          const allBanks = [...(publicBanks || []), ...(customBanks || [])];
-          setQuestionBanks(allBanks);
+          setQuestionBanks(banks || []);
         } else {
-          const { data: banks, error: banksError } = await query;
+          // Non-premium users only see public banks
+          const { data: banks, error: banksError } = await supabase
+            .from('question_banks')
+            .select('*')
+            .eq('is_public', true)
+            .order('title', { ascending: true });
 
           if (banksError) throw banksError;
           setQuestionBanks(banks || []);
@@ -401,7 +402,7 @@ export default function NewGamePage() {
               {questionBanks.map((bank) => (
                 <option key={bank.id} value={bank.id}>
                   {bank.title} - {bank.subject}
-                  {bank.is_custom && ' (Custom)'}
+                  {!bank.is_public && bank.owner_id === effectiveUserId && ' (Custom)'}
                 </option>
               ))}
             </select>
