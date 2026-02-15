@@ -55,99 +55,79 @@ export async function POST(
       );
     }
 
-    // Fetch team
-    const { data: team, error: fetchError } = await supabase
-      .from('teams')
-      .select('id, game_id, device_id, team_name')
-      .eq('id', teamId)
-      .eq('game_id', gameId)
-      .single();
+    // Use atomic database function with row-level locking to prevent race conditions
+    const { data: result, error: claimError } = await supabase.rpc('claim_team', {
+      p_team_id: teamId,
+      p_game_id: gameId,
+      p_device_id: deviceId,
+    });
 
-    if (fetchError || !team) {
-      logger.error('Team not found', fetchError, {
+    if (claimError) {
+      logger.error('Database error during team claim', claimError, {
         operation: 'claimTeam',
         gameId,
         teamId,
       });
-      return NextResponse.json(
-        { error: 'Team not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if team is already claimed
-    if (team.device_id) {
-      // Team is claimed - check if it's by this device
-      if (team.device_id === deviceId) {
-        // Already claimed by this device - success
-        return NextResponse.json({
-          success: true,
-          message: 'Team already claimed by this device',
-          teamName: team.team_name,
-        });
-      } else {
-        // Claimed by a different device - reject
-        return NextResponse.json(
-          {
-            error: 'Team is already claimed by another device',
-            code: 'TEAM_ALREADY_CLAIMED',
-          },
-          { status: 409 }
-        );
-      }
-    }
-
-    // Team is unclaimed - claim it for this device
-    const { error: updateError } = await supabase
-      .from('teams')
-      .update({ device_id: deviceId })
-      .eq('id', teamId)
-      .eq('game_id', gameId)
-      // Double-check device_id is still null (prevent race condition)
-      .is('device_id', null);
-
-    if (updateError) {
-      logger.error('Failed to claim team', updateError, {
-        operation: 'claimTeam',
-        gameId,
-        teamId,
-        deviceId,
-      });
-
-      // Check if it failed because another device claimed it
-      const { data: recheckTeam } = await supabase
-        .from('teams')
-        .select('device_id')
-        .eq('id', teamId)
-        .single();
-
-      if (recheckTeam?.device_id && recheckTeam.device_id !== deviceId) {
-        return NextResponse.json(
-          {
-            error: 'Team was claimed by another device during request',
-            code: 'RACE_CONDITION',
-          },
-          { status: 409 }
-        );
-      }
-
       return NextResponse.json(
         { error: 'Failed to claim team' },
         { status: 500 }
       );
     }
 
+    // Parse result from database function
+    if (!result || typeof result !== 'object') {
+      logger.error('Invalid result from claim_team function', new Error('Invalid result'), {
+        operation: 'claimTeam',
+        gameId,
+        teamId,
+        result,
+      });
+      return NextResponse.json(
+        { error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+
+    // Check if claim was successful
+    if (!result.success) {
+      const errorCode = result.error || 'UNKNOWN_ERROR';
+      const errorMessage = result.message || 'Failed to claim team';
+
+      logger.warn('Team claim rejected', {
+        operation: 'claimTeam',
+        gameId,
+        teamId,
+        deviceId,
+        errorCode,
+      });
+
+      const statusCode = errorCode === 'TEAM_NOT_FOUND' ? 404 : 409;
+
+      return NextResponse.json(
+        {
+          error: errorMessage,
+          code: errorCode,
+        },
+        { status: statusCode }
+      );
+    }
+
+    // Success
     logger.info('Team claimed successfully', {
       operation: 'claimTeam',
       gameId,
       teamId,
       deviceId,
+      alreadyClaimed: result.already_claimed || false,
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Team claimed successfully',
-      teamName: team.team_name,
+      message: result.already_claimed
+        ? 'Team already claimed by this device'
+        : 'Team claimed successfully',
+      teamName: result.team_name,
+      teamNumber: result.team_number,
     });
   } catch (error) {
     logger.error('Team claim failed', error, {
