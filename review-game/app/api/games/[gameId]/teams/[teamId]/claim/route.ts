@@ -66,11 +66,15 @@ export async function POST(
     }
 
     // Use atomic database function with row-level locking to prevent race conditions
-    const { data: rawResult, error: claimError } = await supabase.rpc('claim_team', {
-      p_team_id: teamId,
-      p_game_id: gameId,
-      p_device_id: deviceId,
-    });
+    // Note: claim_team is defined in migration but not yet in generated types
+    const { data: rawResult, error: claimError } = await supabase.rpc(
+      'claim_team' as any,
+      {
+        p_team_id: teamId,
+        p_game_id: gameId,
+        p_device_id: deviceId,
+      }
+    );
 
     if (claimError) {
       logger.error('Database error during team claim', claimError, {
@@ -98,8 +102,8 @@ export async function POST(
       );
     }
 
-    // Type assertion for database function result
-    const result = rawResult as ClaimTeamResult;
+    // Type assertion for database function result (safe after validation above)
+    const result = rawResult as unknown as ClaimTeamResult;
 
     // Check if claim was successful
     if (!result.success) {
