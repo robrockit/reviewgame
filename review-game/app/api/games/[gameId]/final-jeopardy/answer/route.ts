@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
+import { verifyDeviceOwnsTeam, getDeviceIdFromRequest } from '@/lib/auth/device';
 
 /**
  * POST /api/games/[gameId]/final-jeopardy/answer
@@ -53,6 +54,23 @@ export async function POST(
       return NextResponse.json(
         { error: 'Invalid team ID format' },
         { status: 400 }
+      );
+    }
+
+    // SECURITY: Verify device owns this team
+    const deviceId = getDeviceIdFromRequest(req);
+    const isAuthorized = await verifyDeviceOwnsTeam(supabase, teamId, deviceId, gameId);
+
+    if (!isAuthorized) {
+      logger.warn('Unauthorized answer submission attempt', {
+        operation: 'submitFinalJeopardyAnswer',
+        gameId,
+        teamId,
+        deviceId,
+      });
+      return NextResponse.json(
+        { error: 'Unauthorized: This device does not control this team' },
+        { status: 403 }
       );
     }
 
