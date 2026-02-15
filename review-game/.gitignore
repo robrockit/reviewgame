@@ -47,3 +47,16 @@ stripe-cli.zip
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Sensitive deployment files (contain API keys and secrets)
+VERCEL_ENV_VARS.txt
+VERCEL_STAGING_SETUP.md
+
+# Supabase temp files
+supabase/.temp/
+
+# Temporary scripts and SQL exports
+scripts/
+check_banks.sql
+question_data_export.sql
+questions
