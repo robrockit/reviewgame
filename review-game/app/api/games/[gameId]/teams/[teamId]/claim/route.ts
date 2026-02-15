@@ -55,8 +55,18 @@ export async function POST(
       );
     }
 
+    // Type for claim_team function result
+    interface ClaimTeamResult {
+      success: boolean;
+      error?: string;
+      message?: string;
+      already_claimed?: boolean;
+      team_name?: string;
+      team_number?: number;
+    }
+
     // Use atomic database function with row-level locking to prevent race conditions
-    const { data: result, error: claimError } = await supabase.rpc('claim_team', {
+    const { data: rawResult, error: claimError } = await supabase.rpc('claim_team', {
       p_team_id: teamId,
       p_game_id: gameId,
       p_device_id: deviceId,
@@ -75,18 +85,21 @@ export async function POST(
     }
 
     // Parse result from database function
-    if (!result || typeof result !== 'object') {
+    if (!rawResult || typeof rawResult !== 'object') {
       logger.error('Invalid result from claim_team function', new Error('Invalid result'), {
         operation: 'claimTeam',
         gameId,
         teamId,
-        result,
+        result: rawResult,
       });
       return NextResponse.json(
         { error: 'Internal server error' },
         { status: 500 }
       );
     }
+
+    // Type assertion for database function result
+    const result = rawResult as ClaimTeamResult;
 
     // Check if claim was successful
     if (!result.success) {
