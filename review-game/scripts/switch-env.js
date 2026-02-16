@@ -11,8 +11,10 @@
  *   npm run env:status   - Check current environment
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports -- Node.js script using CommonJS */
 const fs = require('fs');
 const path = require('path');
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 const ENV_FILES = {
   dev: '.env.local.backup',
@@ -22,7 +24,8 @@ const ENV_FILES = {
 const ACTIVE_ENV_FILE = '.env.local';
 
 function getCurrentEnv() {
-  const envLocalPath = path.join(process.cwd(), ACTIVE_ENV_FILE);
+  const rootDir = path.resolve(__dirname, '..');
+  const envLocalPath = path.join(rootDir, ACTIVE_ENV_FILE);
 
   if (!fs.existsSync(envLocalPath)) {
     return 'none';
@@ -32,9 +35,16 @@ function getCurrentEnv() {
   const content = fs.readFileSync(envLocalPath, 'utf8');
   const lines = content.split('\n').slice(0, 10);
 
-  // Check for Supabase URL to determine environment
-  const supabaseUrl = lines.find(line => line.startsWith('NEXT_PUBLIC_SUPABASE_URL='));
+  // Check for explicit environment marker (more reliable than URL inspection)
+  const envMarker = lines.find(line => line.startsWith('# ENVIRONMENT='));
+  if (envMarker) {
+    const env = envMarker.split('=')[1]?.trim();
+    if (env === 'development' || env === 'dev') return 'dev';
+    if (env === 'staging') return 'staging';
+  }
 
+  // Fallback: Check for Supabase URL to determine environment
+  const supabaseUrl = lines.find(line => line.startsWith('NEXT_PUBLIC_SUPABASE_URL='));
   if (supabaseUrl) {
     if (supabaseUrl.includes('staging')) {
       return 'staging';
@@ -67,8 +77,10 @@ function switchEnvironment(env) {
     process.exit(1);
   }
 
-  const sourcePath = path.join(process.cwd(), sourceFile);
-  const targetPath = path.join(process.cwd(), ACTIVE_ENV_FILE);
+  // Use __dirname for robust path resolution regardless of where script is run from
+  const rootDir = path.resolve(__dirname, '..');
+  const sourcePath = path.join(rootDir, sourceFile);
+  const targetPath = path.join(rootDir, ACTIVE_ENV_FILE);
 
   if (!fs.existsSync(sourcePath)) {
     console.error(`\n❌ Source file not found: ${sourceFile}`);
@@ -77,12 +89,15 @@ function switchEnvironment(env) {
   }
 
   try {
-    // Backup current .env.local if it exists and isn't already a backup
-    if (fs.existsSync(targetPath) && env !== 'dev') {
-      const backupPath = path.join(process.cwd(), '.env.local.backup');
+    // Backup current .env.local if it exists (always backup to prevent data loss)
+    if (fs.existsSync(targetPath)) {
+      const currentEnv = getCurrentEnv();
+      const backupPath = path.join(rootDir, `.env.local.${currentEnv}.backup`);
+
+      // Only create backup if one doesn't already exist for this environment
       if (!fs.existsSync(backupPath)) {
         fs.copyFileSync(targetPath, backupPath);
-        console.log(`✅ Backed up current environment to .env.local.backup`);
+        console.log(`✅ Backed up current ${currentEnv} environment to .env.local.${currentEnv}.backup`);
       }
     }
 
