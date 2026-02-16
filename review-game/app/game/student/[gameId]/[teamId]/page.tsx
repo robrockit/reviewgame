@@ -28,6 +28,7 @@ export default function StudentGamePage() {
   const [buzzButtonState, setBuzzButtonState] = useState<BuzzButtonState>('waiting');
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [teamClaimed, setTeamClaimed] = useState(false);
+  const [claimAttempted, setClaimAttempted] = useState(false);
 
   // Get device ID for authentication
   const deviceId = useDeviceId();
@@ -38,10 +39,24 @@ export default function StudentGamePage() {
   // Get buzz queue and current question from game store
   const { buzzQueue, currentQuestion } = useGameStore();
 
+  // Reset claim attempted flag when deviceId changes (e.g., localStorage cleared)
+  useEffect(() => {
+    if (deviceId) {
+      setClaimAttempted(false);
+    }
+  }, [deviceId]);
+
   // Claim team when device ID is available
+  // Retry logic: only attempt once per deviceId value to prevent infinite loops
   useEffect(() => {
     const claimTeam = async () => {
-      if (!deviceId || !gameId || !teamId) return;
+      // Guard: Don't attempt if already attempted with this deviceId
+      if (claimAttempted || !deviceId || !gameId || !teamId) {
+        return;
+      }
+
+      // Mark as attempted to prevent retry loops
+      setClaimAttempted(true);
 
       try {
         const response = await fetch(`/api/games/${gameId}/teams/${teamId}/claim`, {
@@ -85,7 +100,7 @@ export default function StudentGamePage() {
     };
 
     claimTeam();
-  }, [deviceId, gameId, teamId]);
+  }, [deviceId, gameId, teamId, claimAttempted]);
 
   // Fetch game and team data
   useEffect(() => {
