@@ -15,14 +15,13 @@ import React, { useState, useEffect } from 'react';
 import { useGameStore } from '@/lib/stores/gameStore';
 import { logger } from '@/lib/logger';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
+import { getDeviceId } from '@/hooks/useDeviceId';
 
 interface FinalJeopardyPanelProps {
   gameId: string;
   teamId: string;
   teamName: string;
   currentScore: number;
-  onSubmitWager: (wager: number) => Promise<void>;
-  onSubmitAnswer: (answer: string) => Promise<void>;
 }
 
 export default function FinalJeopardyPanel({
@@ -30,8 +29,6 @@ export default function FinalJeopardyPanel({
   teamId,
   teamName,
   currentScore,
-  onSubmitWager,
-  onSubmitAnswer,
 }: FinalJeopardyPanelProps) {
   const { currentPhase, finalJeopardyQuestion, finalJeopardyTeamStatuses } = useGameStore();
 
@@ -83,8 +80,38 @@ export default function FinalJeopardyPanel({
 
     setIsSubmitting(true);
     try {
-      await onSubmitWager(wager);
+      // Get device ID for authentication
+      const deviceId = getDeviceId();
+      if (!deviceId) {
+        throw new Error('Device ID not available');
+      }
+
+      // Submit wager with device_id header
+      const response = await fetch(`/api/games/${gameId}/final-jeopardy/wager`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Device-ID': deviceId,
+        },
+        body: JSON.stringify({
+          teamId,
+          wager,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to submit wager');
+      }
+
       setHasSubmittedWager(true);
+      logger.info('Wager submitted successfully', {
+        operation: 'handleWagerSubmit',
+        gameId,
+        teamId,
+        wager,
+      });
     } catch (error) {
       logger.error('Failed to submit wager', error, {
         operation: 'handleWagerSubmit',
@@ -92,7 +119,9 @@ export default function FinalJeopardyPanel({
         teamId,
         wager,
       });
-      setWagerError('Failed to submit wager. Please try again.');
+      setWagerError(
+        error instanceof Error ? error.message : 'Failed to submit wager. Please try again.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -107,8 +136,37 @@ export default function FinalJeopardyPanel({
 
     setIsSubmitting(true);
     try {
-      await onSubmitAnswer(answerInput.trim());
+      // Get device ID for authentication
+      const deviceId = getDeviceId();
+      if (!deviceId) {
+        throw new Error('Device ID not available');
+      }
+
+      // Submit answer with device_id header
+      const response = await fetch(`/api/games/${gameId}/final-jeopardy/answer`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Device-ID': deviceId,
+        },
+        body: JSON.stringify({
+          teamId,
+          answer: answerInput.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to submit answer');
+      }
+
       setHasSubmittedAnswer(true);
+      logger.info('Answer submitted successfully', {
+        operation: 'handleAnswerSubmit',
+        gameId,
+        teamId,
+      });
     } catch (error) {
       logger.error('Failed to submit answer', error, {
         operation: 'handleAnswerSubmit',
