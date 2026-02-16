@@ -8,6 +8,7 @@ import { useBuzzer } from '@/hooks/useBuzzer';
 import { useGameStore } from '@/lib/stores/gameStore';
 import type { Tables } from '@/types/database.types';
 import { logger } from '@/lib/logger';
+import { useDeviceId } from '@/hooks/useDeviceId';
 
 type Game = Tables<'games'>;
 type Team = Tables<'teams'>;
@@ -26,6 +27,11 @@ export default function StudentGamePage() {
   const [team, setTeam] = useState<Team | null>(null);
   const [buzzButtonState, setBuzzButtonState] = useState<BuzzButtonState>('waiting');
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
+  const [teamClaimed, setTeamClaimed] = useState(false);
+  const [claimAttempted, setClaimAttempted] = useState(false);
+
+  // Get device ID for authentication
+  const deviceId = useDeviceId();
 
   // Use buzzer hook for real-time buzz events
   const { sendBuzz } = useBuzzer(gameId);
@@ -33,8 +39,72 @@ export default function StudentGamePage() {
   // Get buzz queue and current question from game store
   const { buzzQueue, currentQuestion } = useGameStore();
 
+  // Reset claim attempted flag when deviceId changes (e.g., localStorage cleared)
+  useEffect(() => {
+    if (deviceId) {
+      setClaimAttempted(false);
+    }
+  }, [deviceId]);
+
+  // Claim team when device ID is available
+  // Retry logic: only attempt once per deviceId value to prevent infinite loops
+  useEffect(() => {
+    const claimTeam = async () => {
+      // Guard: Don't attempt if already attempted with this deviceId
+      if (claimAttempted || !deviceId || !gameId || !teamId) {
+        return;
+      }
+
+      // Mark as attempted to prevent retry loops
+      setClaimAttempted(true);
+
+      try {
+        const response = await fetch(`/api/games/${gameId}/teams/${teamId}/claim`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ deviceId }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          if (data.code === 'TEAM_ALREADY_CLAIMED') {
+            setError(
+              'This team is already being controlled by another device. Please close the other session or contact your teacher.'
+            );
+          } else {
+            setError(data.error || 'Failed to connect to team');
+          }
+          setLoading(false);
+          return;
+        }
+
+        setTeamClaimed(true);
+        logger.info('Team claimed successfully', {
+          operation: 'claimTeam',
+          gameId,
+          teamId,
+          deviceId,
+        });
+      } catch (err) {
+        logger.error('Failed to claim team', err, {
+          operation: 'claimTeam',
+          gameId,
+          teamId,
+        });
+        setError('Failed to connect to team. Please try again.');
+        setLoading(false);
+      }
+    };
+
+    claimTeam();
+  }, [deviceId, gameId, teamId, claimAttempted]);
+
   // Fetch game and team data
   useEffect(() => {
+    if (!teamClaimed) return; // Wait for team to be claimed first
     const fetchData = async () => {
       try {
         // Fetch game
@@ -91,10 +161,10 @@ export default function StudentGamePage() {
       }
     };
 
-    if (gameId && teamId) {
+    if (gameId && teamId && teamClaimed) {
       fetchData();
     }
-  }, [gameId, teamId, supabase]);
+  }, [gameId, teamId, supabase, teamClaimed]);
 
   // Set up real-time subscriptions
   useEffect(() => {
