@@ -72,6 +72,17 @@ export default function GameBoardPage() {
           return;
         }
 
+        // Reset game store to prevent stale data from previous games
+        // This fixes the bug where selectedQuestions from a previous period
+        // would cause the game complete modal to appear prematurely
+        resetGameStore();
+
+        logger.info('Game store reset for new game', {
+          gameId,
+          operation: 'resetGameStore',
+          page: 'GameBoardPage',
+        });
+
         // Fetch game with question bank
         const { data: gameData, error: gameError } = await supabase
           .from('games')
@@ -203,7 +214,8 @@ export default function GameBoardPage() {
     if (gameId) {
       fetchGameData();
     }
-  }, [gameId, router, supabase, setStoreGame, setTeams]);
+    // resetGameStore is stable (Zustand action) but included for explicit dependency tracking
+  }, [gameId, router, supabase, setStoreGame, setTeams, resetGameStore]);
 
   // Transform database questions into Category[] format
   const transformQuestionsToCategories = (
@@ -648,14 +660,15 @@ export default function GameBoardPage() {
         })),
       }));
 
-      // Update game store with reset state
+      // Reset local game store first (clears selectedQuestions and other state)
+      // This follows the same pattern as initial game load for consistency
+      resetGameStore();
+
+      // Then update game store with reset board state
       setStoreGame({
         ...currentGameData,
         categories: resetCategories,
       });
-
-      // Reset local game store (clears selectedQuestions and other state)
-      resetGameStore();
 
       // Close the modal
       setShowGameCompleteModal(false);
