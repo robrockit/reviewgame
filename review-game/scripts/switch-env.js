@@ -44,7 +44,7 @@ function getCurrentEnv() {
   // Check for explicit environment marker (preferred — add as first line of each env file)
   const envMarker = lines.find(line => line.startsWith('# ENVIRONMENT='));
   if (envMarker) {
-    const env = envMarker.split('=')[1]?.trim();
+    const env = envMarker.split('=').slice(1).join('=').trim();
     if (env === 'development' || env === 'dev') return 'dev';
     if (env === 'staging') return 'staging';
   }
@@ -117,6 +117,8 @@ function switchEnvironment(env) {
         if (!fs.existsSync(backupPath)) {
           fs.copyFileSync(targetPath, backupPath);
           console.log(`✅ Backed up current ${currentEnv} environment to .env.local.${currentEnv}.backup`);
+        } else {
+          console.log(`ℹ️  Backup .env.local.${currentEnv}.backup already exists — skipping (delete it to refresh the snapshot)`);
         }
       } else {
         console.log(`⚠️  Current environment is '${currentEnv}' — skipping backup (add # ENVIRONMENT= marker to enable)`);
@@ -151,9 +153,19 @@ function restoreEnvironment() {
   }
 
   if (available.length === 1) {
-    // Only one backup — restore it automatically
-    const { env } = available[0];
-    switchEnvironment(env);
+    // Only one backup — restore the snapshot directly.
+    // Note: we copy from backupPath, not ENV_FILES[env], because the backup is
+    // the snapshot taken at switch-time, which may differ from the source template.
+    const { env, backupPath } = available[0];
+    const targetPath = path.join(rootDir, ACTIVE_ENV_FILE);
+    try {
+      fs.copyFileSync(backupPath, targetPath);
+      console.log(`✅ Restored ${env} environment from .env.local.${env}.backup`);
+      console.log('\n⚠️  Restart your dev server for changes to take effect.\n');
+    } catch (error) {
+      console.error(`\n❌ Error restoring environment: ${error?.message || String(error)}\n`);
+      process.exit(1);
+    }
     return;
   }
 
