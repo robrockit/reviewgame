@@ -17,6 +17,9 @@ npm run env:dev
 
 # Switch to staging
 npm run env:staging
+
+# Restore a backed-up environment
+npm run env:restore
 ```
 
 ### How It Works
@@ -29,7 +32,7 @@ The script copies the appropriate environment file to `.env.local`, which Next.j
 - `.env.local` → **Active environment** (generated, not committed to git)
 
 **Environment Markers:**
-For reliable environment detection, add this comment as the **first line** of each env file:
+For reliable environment detection, add this marker anywhere in each env file (the script scans the full file):
 
 ```bash
 # ENVIRONMENT=development
@@ -37,7 +40,7 @@ For reliable environment detection, add this comment as the **first line** of ea
 # ENVIRONMENT=staging
 ```
 
-If no marker is found, the script falls back to inspecting the Supabase URL.
+If no marker is found, the script falls back to inspecting the Supabase URL. Backups are only created when the current environment can be positively identified (dev or staging); switching from an unknown environment will warn you and skip the backup.
 
 ### Workflow Example
 
@@ -93,6 +96,10 @@ Ensure these patterns are in your `.gitignore`:
 - Check `npm run env:status` to verify current environment
 
 **Lost my environment configuration**
-- Dev environment backed up in `.env.local.dev.backup`
-- Staging environment backed up in `.env.local.staging.backup`
-- Restore by copying the backup file back to `.env.local` or switching environments
+- Run `npm run env:restore` — the script will auto-detect available backups and restore, or tell you which command to run if multiple backups exist
+- Backups are stored as `.env.local.dev.backup` and `.env.local.staging.backup`
+
+**Environment showing as Unknown**
+- Add `# ENVIRONMENT=development` or `# ENVIRONMENT=staging` anywhere in `.env.local`
+- Without this marker, the script falls back to URL inspection, which may not identify the environment
+- Without a known environment, no backup will be created on the next switch

@@ -9,7 +9,8 @@
     "lint": "eslint",
     "env:dev": "node scripts/switch-env.js dev",
     "env:staging": "node scripts/switch-env.js staging",
-    "env:status": "node scripts/switch-env.js status"
+    "env:status": "node scripts/switch-env.js status",
+    "env:restore": "node scripts/switch-env.js restore"
   },
   "dependencies": {
     "@headlessui/react": "^2.2.9",
