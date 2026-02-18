@@ -55,8 +55,11 @@ VERCEL_STAGING_SETUP.md
 # Supabase temp files
 supabase/.temp/
 
-# Temporary scripts and SQL exports
-scripts/
+# Temporary SQL exports (scripts/ utilities are tracked, SQL files are not)
+scripts/*.sql
 check_banks.sql
 question_data_export.sql
+
+# Environment backup files created by environment switcher
+.env.local.*.backup
 questions

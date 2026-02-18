@@ -44,13 +44,16 @@ function getCurrentEnv() {
   }
 
   // Fallback: Check for Supabase URL to determine environment
-  const supabaseUrl = lines.find(line => line.startsWith('NEXT_PUBLIC_SUPABASE_URL='));
-  if (supabaseUrl) {
-    if (supabaseUrl.includes('staging')) {
+  const supabaseUrlLine = lines.find(line => line.startsWith('NEXT_PUBLIC_SUPABASE_URL='));
+  if (supabaseUrlLine) {
+    const url = supabaseUrlLine.split('=').slice(1).join('=').trim();
+    if (url.includes('staging')) {
       return 'staging';
-    } else {
+    } else if (url.includes('localhost') || url.includes('127.0.0.1') || url.startsWith('http://')) {
       return 'dev';
     }
+    // URL is present but doesn't match known patterns — don't assume dev
+    return 'unknown';
   }
 
   return 'unknown';
@@ -109,7 +112,7 @@ function switchEnvironment(env) {
     console.log(`Source: ${sourceFile}\n`);
     console.log('⚠️  Restart your dev server for changes to take effect.\n');
   } catch (error) {
-    console.error(`\n❌ Error switching environment: ${error.message}\n`);
+    console.error(`\n❌ Error switching environment: ${error?.message || String(error)}\n`);
     process.exit(1);
   }
 }

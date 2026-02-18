@@ -69,6 +69,19 @@ npm run dev
 
 🔒 **Security** - Never commit `.env.local`, `.env.staging`, `.env.local.*.backup`, or any environment files to git
 
+### Git Ignore Recommendations
+
+Ensure these patterns are in your `.gitignore`:
+
+```gitignore
+# Environment files
+.env*
+!.env*.example
+
+# Environment backup files created by environment switcher
+.env.local.*.backup
+```
+
 ### Troubleshooting
 
 **"Source file not found"**
