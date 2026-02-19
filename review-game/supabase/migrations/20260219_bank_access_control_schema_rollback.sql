@@ -7,11 +7,14 @@
 -- This will remove the bank access control columns and trigger from the database.
 
 -- ==============================================================================
--- DROP TRIGGER AND FUNCTION
+-- DROP TRIGGER AND FUNCTIONS
 -- ==============================================================================
 
 -- Drop the trigger first (must be done before dropping the function)
 DROP TRIGGER IF EXISTS trigger_update_custom_bank_count ON question_banks;
+
+-- Drop the atomic limit enforcement function
+DROP FUNCTION IF EXISTS create_custom_bank_with_limit_check(UUID, TEXT, TEXT, TEXT, TEXT);
 
 -- Drop the trigger function
 DROP FUNCTION IF EXISTS update_custom_bank_count();

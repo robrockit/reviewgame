@@ -48,13 +48,23 @@ ON profiles(custom_bank_count);
 -- Function to update the custom_bank_count when custom banks are created/deleted/modified
 -- Uses SECURITY DEFINER to ensure count updates work regardless of RLS policies
 -- SET search_path prevents schema injection attacks
+-- Row-level locking prevents race conditions under concurrent inserts
 CREATE OR REPLACE FUNCTION update_custom_bank_count()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_profile_id UUID;
 BEGIN
   -- Handle INSERT operations
   IF (TG_OP = 'INSERT') THEN
     -- Only update if the new bank is marked as custom
     IF NEW.is_custom = true THEN
+      -- Lock the profile row to prevent race conditions
+      -- FOR UPDATE ensures only one concurrent transaction can update the count at a time
+      SELECT id INTO v_profile_id
+      FROM profiles
+      WHERE id = NEW.owner_id
+      FOR UPDATE;
+
       UPDATE profiles
       SET custom_bank_count = (
         SELECT COUNT(*)
@@ -74,6 +84,12 @@ BEGIN
 
     -- Update old owner's count if this was a custom bank or became non-custom
     IF OLD.is_custom = true THEN
+      -- Lock the old owner's profile row
+      SELECT id INTO v_profile_id
+      FROM profiles
+      WHERE id = OLD.owner_id
+      FOR UPDATE;
+
       UPDATE profiles
       SET custom_bank_count = (
         SELECT COUNT(*)
@@ -86,6 +102,12 @@ BEGIN
     -- Update new owner's count if this is now a custom bank
     -- AND (owner changed OR is_custom changed to true)
     IF NEW.is_custom = true AND (NEW.owner_id != OLD.owner_id OR OLD.is_custom = false) THEN
+      -- Lock the new owner's profile row
+      SELECT id INTO v_profile_id
+      FROM profiles
+      WHERE id = NEW.owner_id
+      FOR UPDATE;
+
       UPDATE profiles
       SET custom_bank_count = (
         SELECT COUNT(*)
@@ -100,6 +122,12 @@ BEGIN
   ELSIF (TG_OP = 'DELETE') THEN
     -- Only update if the deleted bank was custom
     IF OLD.is_custom = true THEN
+      -- Lock the profile row
+      SELECT id INTO v_profile_id
+      FROM profiles
+      WHERE id = OLD.owner_id
+      FOR UPDATE;
+
       UPDATE profiles
       SET custom_bank_count = (
         SELECT COUNT(*)
@@ -122,6 +150,98 @@ CREATE TRIGGER trigger_update_custom_bank_count
 AFTER INSERT OR DELETE OR UPDATE OF is_custom, owner_id ON question_banks
 FOR EACH ROW
 EXECUTE FUNCTION update_custom_bank_count();
+
+-- ==============================================================================
+-- ATOMIC LIMIT ENFORCEMENT FUNCTION
+-- ==============================================================================
+
+-- Function to atomically check limit and create custom bank
+-- This prevents race conditions where concurrent requests could exceed the limit
+-- Returns the created bank ID on success, or raises an exception if limit exceeded
+--
+-- IMPORTANT: Applications should use this function instead of direct INSERT + count check
+-- to ensure limits are enforced correctly under concurrent load.
+CREATE OR REPLACE FUNCTION create_custom_bank_with_limit_check(
+  p_owner_id UUID,
+  p_title TEXT,
+  p_subject TEXT DEFAULT NULL,
+  p_description TEXT DEFAULT NULL,
+  p_difficulty TEXT DEFAULT NULL
+)
+RETURNS UUID AS $$
+DECLARE
+  v_current_count INTEGER;
+  v_limit INTEGER;
+  v_tier TEXT;
+  v_bank_id UUID;
+BEGIN
+  -- Lock the profile row to prevent race conditions
+  -- This ensures only one concurrent transaction can check/update limits at a time
+  SELECT
+    custom_bank_count,
+    custom_bank_limit,
+    subscription_tier
+  INTO
+    v_current_count,
+    v_limit,
+    v_tier
+  FROM profiles
+  WHERE id = p_owner_id
+  FOR UPDATE;
+
+  -- Check if profile exists
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Profile not found for user %', p_owner_id;
+  END IF;
+
+  -- Check limit (NULL means unlimited for PREMIUM tier)
+  IF v_limit IS NOT NULL AND v_current_count >= v_limit THEN
+    RAISE EXCEPTION 'Custom bank limit exceeded. Tier: %, Limit: %, Current: %',
+      v_tier, v_limit, v_current_count;
+  END IF;
+
+  -- Create the custom bank
+  INSERT INTO question_banks (owner_id, title, subject, description, difficulty, is_custom, is_public)
+  VALUES (p_owner_id, p_title, p_subject, p_description, p_difficulty, true, false)
+  RETURNING id INTO v_bank_id;
+
+  -- Trigger will automatically update custom_bank_count
+
+  RETURN v_bank_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+COMMENT ON FUNCTION create_custom_bank_with_limit_check IS
+  'Atomically checks custom bank limit and creates a new bank. Prevents race conditions under concurrent load. Applications should use this instead of checking custom_bank_count then INSERT to ensure limits are enforced correctly.';
+
+-- ==============================================================================
+-- RACE CONDITION MITIGATION
+-- ==============================================================================
+--
+-- The custom_bank_count trigger uses row-level locking (FOR UPDATE) to prevent
+-- race conditions under concurrent inserts. Without locking, the following could occur:
+--
+-- Example race condition (without FOR UPDATE):
+--   Transaction A: INSERT custom bank → trigger reads COUNT = 5 → writes 6
+--   Transaction B: INSERT custom bank → trigger reads COUNT = 5 → writes 6
+--   Result: Actual count = 7, stored count = 6 (off by 1)
+--
+-- With FOR UPDATE locking:
+--   Transaction A: INSERT → trigger locks profile → reads COUNT = 5 → writes 6
+--   Transaction B: INSERT → trigger waits for lock → reads COUNT = 6 → writes 7
+--   Result: Actual count = 7, stored count = 7 (correct)
+--
+-- For limit enforcement, applications SHOULD use create_custom_bank_with_limit_check()
+-- which atomically checks the limit and creates the bank in a single transaction.
+-- This prevents TOCTOU (Time-Of-Check-Time-Of-Use) vulnerabilities where a user
+-- could exceed their limit by submitting concurrent requests.
+--
+-- Alternative mitigation strategies:
+-- 1. Row-level locking (implemented) - Prevents count drift, minimal contention
+-- 2. Periodic reconciliation - Accept eventual consistency, fix periodically
+-- 3. Application-level serialization - More complex, not database-enforced
+--
+-- Chosen approach: Row-level locking + atomic enforcement function
 
 -- ==============================================================================
 -- COMMENTS - Document the New Columns
@@ -237,4 +357,17 @@ LEFT JOIN question_banks qb ON qb.owner_id = p.id AND qb.is_custom = true
 GROUP BY p.id, p.subscription_tier, p.custom_bank_count
 HAVING p.custom_bank_count != COUNT(qb.id);
 -- Should return 0 rows if all counts are accurate
+
+-- Test atomic limit enforcement function
+-- (Replace 'user-uuid-here' with an actual FREE tier user ID)
+/*
+SELECT create_custom_bank_with_limit_check(
+  'user-uuid-here'::uuid,
+  'Test Bank',
+  'Test Subject',
+  'Test Description',
+  'Easy'
+);
+-- Should raise exception: "Custom bank limit exceeded" for FREE users
+*/
 */
