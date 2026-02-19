@@ -255,10 +255,13 @@ export type Database = {
       }
       profiles: {
         Row: {
+          accessible_prebuilt_bank_ids: Json | null
           admin_notes: string | null
           billing_cycle: string | null
           created_at: string | null
           current_period_end: string | null
+          custom_bank_count: number
+          custom_bank_limit: number | null
           custom_plan_expires_at: string | null
           custom_plan_name: string | null
           custom_plan_notes: string | null
@@ -282,10 +285,13 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          accessible_prebuilt_bank_ids?: Json | null
           admin_notes?: string | null
           billing_cycle?: string | null
           created_at?: string | null
           current_period_end?: string | null
+          custom_bank_count?: number
+          custom_bank_limit?: number | null
           custom_plan_expires_at?: string | null
           custom_plan_name?: string | null
           custom_plan_notes?: string | null
@@ -309,10 +315,13 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          accessible_prebuilt_bank_ids?: Json | null
           admin_notes?: string | null
           billing_cycle?: string | null
           created_at?: string | null
           current_period_end?: string | null
+          custom_bank_count?: number
+          custom_bank_limit?: number | null
           custom_plan_expires_at?: string | null
           custom_plan_name?: string | null
           custom_plan_notes?: string | null
