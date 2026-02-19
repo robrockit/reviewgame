@@ -23,8 +23,10 @@ ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS custom_bank_limit INTEGER DEFAULT 0;
 
 -- Add custom_bank_count to track how many custom banks a user has created
+-- NOT NULL with DEFAULT ensures the column always has a valid value
 ALTER TABLE profiles
-ADD COLUMN IF NOT EXISTS custom_bank_count INTEGER DEFAULT 0;
+ADD COLUMN IF NOT EXISTS custom_bank_count INTEGER DEFAULT 0 NOT NULL
+CHECK (custom_bank_count >= 0);
 
 -- ==============================================================================
 -- INDEXES
@@ -43,14 +45,47 @@ ON profiles(custom_bank_count);
 -- TRIGGER FUNCTION - Maintain custom_bank_count Automatically
 -- ==============================================================================
 
--- Function to update the custom_bank_count when custom banks are created/deleted
+-- Function to update the custom_bank_count when custom banks are created/deleted/modified
+-- Uses SECURITY DEFINER to ensure count updates work regardless of RLS policies
+-- SET search_path prevents schema injection attacks
 CREATE OR REPLACE FUNCTION update_custom_bank_count()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Handle INSERT and UPDATE operations
-  IF (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
-    -- Only update if the bank is marked as custom
+  -- Handle INSERT operations
+  IF (TG_OP = 'INSERT') THEN
+    -- Only update if the new bank is marked as custom
     IF NEW.is_custom = true THEN
+      UPDATE profiles
+      SET custom_bank_count = (
+        SELECT COUNT(*)
+        FROM question_banks
+        WHERE owner_id = NEW.owner_id AND is_custom = true
+      )
+      WHERE id = NEW.owner_id;
+    END IF;
+    RETURN NEW;
+
+  -- Handle UPDATE operations
+  ELSIF (TG_OP = 'UPDATE') THEN
+    -- Handle both is_custom toggling and owner_id changes
+    -- Case 1: is_custom changed from TRUE to FALSE (decrement old owner)
+    -- Case 2: is_custom changed from FALSE to TRUE (increment new owner)
+    -- Case 3: owner_id changed while is_custom = TRUE (decrement old owner, increment new owner)
+
+    -- Update old owner's count if this was a custom bank or became non-custom
+    IF OLD.is_custom = true THEN
+      UPDATE profiles
+      SET custom_bank_count = (
+        SELECT COUNT(*)
+        FROM question_banks
+        WHERE owner_id = OLD.owner_id AND is_custom = true
+      )
+      WHERE id = OLD.owner_id;
+    END IF;
+
+    -- Update new owner's count if this is now a custom bank
+    -- AND (owner changed OR is_custom changed to true)
+    IF NEW.is_custom = true AND (NEW.owner_id != OLD.owner_id OR OLD.is_custom = false) THEN
       UPDATE profiles
       SET custom_bank_count = (
         SELECT COUNT(*)
@@ -78,12 +113,13 @@ BEGIN
 
   RETURN NULL;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Create trigger on question_banks table
+-- Only fires when is_custom or owner_id columns change (performance optimization)
 DROP TRIGGER IF EXISTS trigger_update_custom_bank_count ON question_banks;
 CREATE TRIGGER trigger_update_custom_bank_count
-AFTER INSERT OR UPDATE OR DELETE ON question_banks
+AFTER INSERT OR DELETE OR UPDATE OF is_custom, owner_id ON question_banks
 FOR EACH ROW
 EXECUTE FUNCTION update_custom_bank_count();
 
@@ -98,11 +134,14 @@ COMMENT ON COLUMN profiles.custom_bank_limit IS
   'Maximum number of custom question banks the user can create. 0 for FREE, 15 for BASIC, NULL for PREMIUM (unlimited).';
 
 COMMENT ON COLUMN profiles.custom_bank_count IS
-  'Current count of custom question banks created by this user. Maintained automatically by trigger.';
+  'Current count of custom question banks created by this user. Maintained automatically by trigger. NOT NULL, >= 0 enforced by constraint.';
 
 -- ==============================================================================
--- DATA MIGRATION - Set Default Values Based on Subscription Tier
+-- DATA MIGRATION - Set Tier-Appropriate Values for Existing Users
 -- ==============================================================================
+-- Note: ADD COLUMN ... DEFAULT backfills immediately, so IS NULL conditions
+-- are removed (they would never match). This is an initial migration, so we
+-- unconditionally set all existing users to tier-appropriate values.
 
 -- For FREE tier users: set limits to 0 (no custom banks allowed)
 UPDATE profiles
@@ -110,10 +149,9 @@ SET
   custom_bank_limit = 0,
   custom_bank_count = 0,
   accessible_prebuilt_bank_ids = '[]'::jsonb
-WHERE subscription_tier = 'FREE'
-  AND (custom_bank_limit IS NULL OR custom_bank_count IS NULL OR accessible_prebuilt_bank_ids IS NULL);
+WHERE subscription_tier = 'FREE';
 
--- For BASIC tier users: set custom bank limit to 15
+-- For BASIC tier users: set custom bank limit to 15, calculate existing count
 UPDATE profiles
 SET
   custom_bank_limit = 15,
@@ -122,10 +160,9 @@ SET
     0
   ),
   accessible_prebuilt_bank_ids = NULL  -- NULL indicates access to all prebuilt banks
-WHERE subscription_tier = 'BASIC'
-  AND (custom_bank_limit IS NULL OR custom_bank_count IS NULL);
+WHERE subscription_tier = 'BASIC';
 
--- For PREMIUM tier users: set unlimited custom banks (NULL = unlimited)
+-- For PREMIUM tier users: set unlimited custom banks (NULL = unlimited), calculate existing count
 UPDATE profiles
 SET
   custom_bank_limit = NULL,  -- NULL indicates unlimited
@@ -134,8 +171,7 @@ SET
     0
   ),
   accessible_prebuilt_bank_ids = NULL  -- NULL indicates access to all prebuilt banks
-WHERE subscription_tier = 'PREMIUM'
-  AND custom_bank_count IS NULL;
+WHERE subscription_tier = 'PREMIUM';
 
 -- ==============================================================================
 -- VERIFICATION QUERIES (for manual testing)
@@ -143,8 +179,13 @@ WHERE subscription_tier = 'PREMIUM'
 
 -- Uncomment these queries to verify the migration in the Supabase SQL Editor:
 /*
--- Check that all columns were added
-SELECT column_name, data_type, column_default
+-- Check that all columns were added with correct constraints
+SELECT
+  column_name,
+  data_type,
+  column_default,
+  is_nullable,
+  character_maximum_length
 FROM information_schema.columns
 WHERE table_name = 'profiles'
   AND column_name IN ('accessible_prebuilt_bank_ids', 'custom_bank_limit', 'custom_bank_count')
@@ -156,10 +197,22 @@ FROM pg_indexes
 WHERE tablename = 'profiles'
   AND indexname IN ('idx_profiles_accessible_banks', 'idx_profiles_custom_bank_count');
 
--- Check that trigger was created
-SELECT trigger_name, event_manipulation, event_object_table
+-- Check that trigger was created with correct event columns
+SELECT
+  trigger_name,
+  event_manipulation,
+  event_object_table,
+  action_statement
 FROM information_schema.triggers
 WHERE trigger_name = 'trigger_update_custom_bank_count';
+
+-- Verify CHECK constraint exists
+SELECT
+  conname AS constraint_name,
+  pg_get_constraintdef(oid) AS constraint_definition
+FROM pg_constraint
+WHERE conrelid = 'profiles'::regclass
+  AND conname LIKE '%custom_bank_count%';
 
 -- Verify tier-based defaults were applied correctly
 SELECT
@@ -167,7 +220,21 @@ SELECT
   COUNT(*) as user_count,
   COUNT(CASE WHEN custom_bank_limit = 0 THEN 1 END) as free_tier_limit,
   COUNT(CASE WHEN custom_bank_limit = 15 THEN 1 END) as basic_tier_limit,
-  COUNT(CASE WHEN custom_bank_limit IS NULL THEN 1 END) as premium_tier_unlimited
+  COUNT(CASE WHEN custom_bank_limit IS NULL THEN 1 END) as premium_tier_unlimited,
+  AVG(custom_bank_count) as avg_custom_banks
 FROM profiles
 GROUP BY subscription_tier;
+
+-- Verify custom_bank_count matches actual custom banks
+SELECT
+  p.id,
+  p.subscription_tier,
+  p.custom_bank_count AS stored_count,
+  COUNT(qb.id) AS actual_count,
+  (p.custom_bank_count = COUNT(qb.id)) AS counts_match
+FROM profiles p
+LEFT JOIN question_banks qb ON qb.owner_id = p.id AND qb.is_custom = true
+GROUP BY p.id, p.subscription_tier, p.custom_bank_count
+HAVING p.custom_bank_count != COUNT(qb.id);
+-- Should return 0 rows if all counts are accurate
 */
