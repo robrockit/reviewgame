@@ -23,13 +23,13 @@ ADD COLUMN IF NOT EXISTS accessible_prebuilt_bank_ids JSONB DEFAULT NULL;
 -- NULL means unlimited (PREMIUM tier), non-negative integers enforce limit
 ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS custom_bank_limit INTEGER DEFAULT 0
-CHECK (custom_bank_limit IS NULL OR custom_bank_limit >= 0);
+CONSTRAINT chk_custom_bank_limit CHECK (custom_bank_limit IS NULL OR custom_bank_limit >= 0);
 
 -- Add custom_bank_count to track how many custom banks a user has created
 -- NOT NULL with DEFAULT ensures the column always has a valid value
 ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS custom_bank_count INTEGER DEFAULT 0 NOT NULL
-CHECK (custom_bank_count >= 0);
+CONSTRAINT chk_custom_bank_count CHECK (custom_bank_count >= 0);
 
 -- ==============================================================================
 -- INDEXES
@@ -194,6 +194,13 @@ EXECUTE FUNCTION update_custom_bank_count();
 CREATE OR REPLACE FUNCTION prevent_protected_column_updates()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Allow service role operations (migrations, Stripe webhooks, system processes)
+  -- When running as service role (e.g., migrations, webhooks), auth.uid() returns NULL
+  -- These operations are trusted and need to update tier limits
+  IF auth.uid() IS NULL THEN
+    RETURN NEW;
+  END IF;
+
   -- Allow admins to update these columns if needed (role = 'admin')
   -- Check if user is admin by looking up their profile
   IF EXISTS (
@@ -217,16 +224,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- Create trigger on profiles table to enforce column protection
--- Fires BEFORE UPDATE so we can block the update before it commits
-DROP TRIGGER IF EXISTS trigger_prevent_protected_column_updates ON profiles;
-CREATE TRIGGER trigger_prevent_protected_column_updates
-BEFORE UPDATE ON profiles
-FOR EACH ROW
-EXECUTE FUNCTION prevent_protected_column_updates();
-
 COMMENT ON FUNCTION prevent_protected_column_updates IS
-  'Security trigger: Prevents non-admin users from directly updating custom_bank_count and custom_bank_limit. These columns are managed by triggers and enforcement functions. Admins can update if needed for manual intervention.';
+  'Security trigger: Prevents non-admin users from directly updating custom_bank_count and custom_bank_limit. These columns are managed by triggers and enforcement functions. Service role (auth.uid() = NULL) and admins can update if needed.';
+
+-- NOTE: The trigger for this function is created AFTER the data migration
+-- (see "SECURITY TRIGGER: ENABLE PROTECTED COLUMN ENFORCEMENT" section below)
+-- to avoid blocking the initial backfill of custom_bank_count values.
 
 -- ==============================================================================
 -- ATOMIC LIMIT ENFORCEMENT FUNCTION
@@ -468,6 +471,20 @@ WHERE (subscription_tier NOT IN ('FREE', 'BASIC', 'PREMIUM') OR subscription_tie
   AND NOT EXISTS (
     SELECT 1 FROM question_banks WHERE owner_id = profiles.id AND is_custom = true
   );
+
+-- ==============================================================================
+-- SECURITY TRIGGER: ENABLE PROTECTED COLUMN ENFORCEMENT
+-- ==============================================================================
+
+-- NOW that the data migration is complete, enable the security trigger
+-- to prevent non-admin users from directly updating trigger-managed columns.
+-- This trigger is created AFTER the migration to avoid blocking the initial
+-- backfill of custom_bank_count values.
+DROP TRIGGER IF EXISTS trigger_prevent_protected_column_updates ON profiles;
+CREATE TRIGGER trigger_prevent_protected_column_updates
+BEFORE UPDATE ON profiles
+FOR EACH ROW
+EXECUTE FUNCTION prevent_protected_column_updates();
 
 -- ==============================================================================
 -- VERIFICATION QUERIES (for manual testing)
