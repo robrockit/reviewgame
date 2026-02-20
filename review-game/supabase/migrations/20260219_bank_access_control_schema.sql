@@ -15,8 +15,9 @@
 -- ==============================================================================
 
 -- Add accessible_prebuilt_bank_ids column to track which prebuilt banks FREE users can access
+-- DEFAULT NULL (not '[]') so new BASIC/PREMIUM users get full access, not zero access
 ALTER TABLE profiles
-ADD COLUMN IF NOT EXISTS accessible_prebuilt_bank_ids JSONB DEFAULT '[]'::jsonb;
+ADD COLUMN IF NOT EXISTS accessible_prebuilt_bank_ids JSONB DEFAULT NULL;
 
 -- Add custom_bank_limit to enforce how many custom banks a user can create
 -- NULL means unlimited (PREMIUM tier), non-negative integers enforce limit
@@ -202,6 +203,17 @@ DECLARE
   v_tier TEXT;
   v_bank_id UUID;
 BEGIN
+  -- Authorization check: Ensure caller is acting on their own behalf
+  -- Prevents users from creating custom banks under another user's account
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Unauthorized: authentication required';
+  END IF;
+
+  IF auth.uid() != p_owner_id THEN
+    RAISE EXCEPTION 'Unauthorized: cannot create banks for another user (caller: %, requested: %)',
+      auth.uid(), p_owner_id;
+  END IF;
+
   -- Lock the profile row to prevent race conditions
   -- This ensures only one concurrent transaction can check/update limits at a time
   SELECT
@@ -292,37 +304,102 @@ COMMENT ON COLUMN profiles.custom_bank_count IS
 
 -- For FREE tier users: set limits to 0 (no custom banks allowed)
 -- Count existing custom banks to maintain data integrity (even though limit = 0)
+-- Uses JOIN-based update for O(n + m) performance instead of O(n × m) correlated subquery
+UPDATE profiles p
+SET
+  custom_bank_limit = 0,
+  custom_bank_count = COALESCE(qb.cnt, 0),
+  accessible_prebuilt_bank_ids = '[]'::jsonb
+FROM (
+  SELECT owner_id, COUNT(*) AS cnt
+  FROM question_banks
+  WHERE is_custom = true
+  GROUP BY owner_id
+) qb
+WHERE p.id = qb.owner_id
+  AND p.subscription_tier = 'FREE';
+
+-- Update FREE users with no custom banks (not in the JOIN above)
 UPDATE profiles
 SET
   custom_bank_limit = 0,
-  custom_bank_count = COALESCE(
-    (SELECT COUNT(*) FROM question_banks WHERE owner_id = profiles.id AND is_custom = true),
-    0
-  ),
+  custom_bank_count = 0,
   accessible_prebuilt_bank_ids = '[]'::jsonb
-WHERE subscription_tier = 'FREE';
+WHERE subscription_tier = 'FREE'
+  AND id NOT IN (SELECT owner_id FROM question_banks WHERE is_custom = true);
 
 -- For BASIC tier users: set custom bank limit to 15, calculate existing count
+UPDATE profiles p
+SET
+  custom_bank_limit = 15,
+  custom_bank_count = COALESCE(qb.cnt, 0),
+  accessible_prebuilt_bank_ids = NULL  -- NULL indicates access to all prebuilt banks
+FROM (
+  SELECT owner_id, COUNT(*) AS cnt
+  FROM question_banks
+  WHERE is_custom = true
+  GROUP BY owner_id
+) qb
+WHERE p.id = qb.owner_id
+  AND p.subscription_tier = 'BASIC';
+
+-- Update BASIC users with no custom banks
 UPDATE profiles
 SET
   custom_bank_limit = 15,
-  custom_bank_count = COALESCE(
-    (SELECT COUNT(*) FROM question_banks WHERE owner_id = profiles.id AND is_custom = true),
-    0
-  ),
-  accessible_prebuilt_bank_ids = NULL  -- NULL indicates access to all prebuilt banks
-WHERE subscription_tier = 'BASIC';
+  custom_bank_count = 0,
+  accessible_prebuilt_bank_ids = NULL
+WHERE subscription_tier = 'BASIC'
+  AND id NOT IN (SELECT owner_id FROM question_banks WHERE is_custom = true);
 
 -- For PREMIUM tier users: set unlimited custom banks (NULL = unlimited), calculate existing count
-UPDATE profiles
+UPDATE profiles p
 SET
   custom_bank_limit = NULL,  -- NULL indicates unlimited
-  custom_bank_count = COALESCE(
-    (SELECT COUNT(*) FROM question_banks WHERE owner_id = profiles.id AND is_custom = true),
-    0
-  ),
+  custom_bank_count = COALESCE(qb.cnt, 0),
   accessible_prebuilt_bank_ids = NULL  -- NULL indicates access to all prebuilt banks
-WHERE subscription_tier = 'PREMIUM';
+FROM (
+  SELECT owner_id, COUNT(*) AS cnt
+  FROM question_banks
+  WHERE is_custom = true
+  GROUP BY owner_id
+) qb
+WHERE p.id = qb.owner_id
+  AND p.subscription_tier = 'PREMIUM';
+
+-- Update PREMIUM users with no custom banks
+UPDATE profiles
+SET
+  custom_bank_limit = NULL,
+  custom_bank_count = 0,
+  accessible_prebuilt_bank_ids = NULL
+WHERE subscription_tier = 'PREMIUM'
+  AND id NOT IN (SELECT owner_id FROM question_banks WHERE is_custom = true);
+
+-- Catch-all for users with unexpected tier values (NULL, 'admin', legacy values, etc.)
+-- Treat them like FREE tier (limit = 0) for safety, but log for manual review
+UPDATE profiles p
+SET
+  custom_bank_limit = 0,
+  custom_bank_count = COALESCE(qb.cnt, 0),
+  accessible_prebuilt_bank_ids = '[]'::jsonb  -- No prebuilt access for unknown tiers
+FROM (
+  SELECT owner_id, COUNT(*) AS cnt
+  FROM question_banks
+  WHERE is_custom = true
+  GROUP BY owner_id
+) qb
+WHERE p.id = qb.owner_id
+  AND (p.subscription_tier NOT IN ('FREE', 'BASIC', 'PREMIUM') OR p.subscription_tier IS NULL);
+
+-- Update catch-all users with no custom banks
+UPDATE profiles
+SET
+  custom_bank_limit = 0,
+  custom_bank_count = 0,
+  accessible_prebuilt_bank_ids = '[]'::jsonb
+WHERE (subscription_tier NOT IN ('FREE', 'BASIC', 'PREMIUM') OR subscription_tier IS NULL)
+  AND id NOT IN (SELECT owner_id FROM question_banks WHERE is_custom = true);
 
 -- ==============================================================================
 -- VERIFICATION QUERIES (for manual testing)
