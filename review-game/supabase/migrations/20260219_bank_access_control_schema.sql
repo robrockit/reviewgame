@@ -180,6 +180,55 @@ FOR EACH ROW
 EXECUTE FUNCTION update_custom_bank_count();
 
 -- ==============================================================================
+-- SECURITY: PREVENT DIRECT USER UPDATES TO TRIGGER-MANAGED COLUMNS
+-- ==============================================================================
+
+-- Function to block direct updates to custom_bank_count and custom_bank_limit
+-- These columns are managed by triggers and the atomic enforcement function.
+-- Allowing direct user updates would bypass limit enforcement.
+--
+-- Security Issue: The existing RLS policy "Users can update own profile" allows
+-- users to UPDATE any column in their own profile row. Without this trigger,
+-- users could set custom_bank_count = 0, then call create_custom_bank_with_limit_check()
+-- repeatedly to bypass their tier's limit.
+CREATE OR REPLACE FUNCTION prevent_protected_column_updates()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Allow admins to update these columns if needed (role = 'admin')
+  -- Check if user is admin by looking up their profile
+  IF EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  -- Block non-admin users from updating custom_bank_count
+  IF OLD.custom_bank_count IS DISTINCT FROM NEW.custom_bank_count THEN
+    RAISE EXCEPTION 'Direct updates to custom_bank_count are not allowed. This column is managed automatically by triggers.';
+  END IF;
+
+  -- Block non-admin users from updating custom_bank_limit
+  IF OLD.custom_bank_limit IS DISTINCT FROM NEW.custom_bank_limit THEN
+    RAISE EXCEPTION 'Direct updates to custom_bank_limit are not allowed. Upgrade your subscription tier to increase limits.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Create trigger on profiles table to enforce column protection
+-- Fires BEFORE UPDATE so we can block the update before it commits
+DROP TRIGGER IF EXISTS trigger_prevent_protected_column_updates ON profiles;
+CREATE TRIGGER trigger_prevent_protected_column_updates
+BEFORE UPDATE ON profiles
+FOR EACH ROW
+EXECUTE FUNCTION prevent_protected_column_updates();
+
+COMMENT ON FUNCTION prevent_protected_column_updates IS
+  'Security trigger: Prevents non-admin users from directly updating custom_bank_count and custom_bank_limit. These columns are managed by triggers and enforcement functions. Admins can update if needed for manual intervention.';
+
+-- ==============================================================================
 -- ATOMIC LIMIT ENFORCEMENT FUNCTION
 -- ==============================================================================
 
@@ -305,6 +354,13 @@ COMMENT ON COLUMN profiles.custom_bank_count IS
 -- For FREE tier users: set limits to 0 (no custom banks allowed)
 -- Count existing custom banks to maintain data integrity (even though limit = 0)
 -- Uses JOIN-based update for O(n + m) performance instead of O(n × m) correlated subquery
+--
+-- INTENTIONAL DATA INCONSISTENCY: FREE users who somehow acquired custom banks
+-- before this migration will have custom_bank_count > custom_bank_limit (e.g., count=5, limit=0).
+-- This is correct behavior:
+--   - They keep their existing custom banks (no data loss)
+--   - create_custom_bank_with_limit_check() will block further creation (limit enforced)
+--   - Admins can identify these users with the query at the end of this migration
 UPDATE profiles p
 SET
   custom_bank_limit = 0,
@@ -320,13 +376,16 @@ WHERE p.id = qb.owner_id
   AND p.subscription_tier = 'FREE';
 
 -- Update FREE users with no custom banks (not in the JOIN above)
+-- Uses NOT EXISTS instead of NOT IN for null-safety
 UPDATE profiles
 SET
   custom_bank_limit = 0,
   custom_bank_count = 0,
   accessible_prebuilt_bank_ids = '[]'::jsonb
 WHERE subscription_tier = 'FREE'
-  AND id NOT IN (SELECT owner_id FROM question_banks WHERE is_custom = true);
+  AND NOT EXISTS (
+    SELECT 1 FROM question_banks WHERE owner_id = profiles.id AND is_custom = true
+  );
 
 -- For BASIC tier users: set custom bank limit to 15, calculate existing count
 UPDATE profiles p
@@ -344,13 +403,16 @@ WHERE p.id = qb.owner_id
   AND p.subscription_tier = 'BASIC';
 
 -- Update BASIC users with no custom banks
+-- Uses NOT EXISTS instead of NOT IN for null-safety
 UPDATE profiles
 SET
   custom_bank_limit = 15,
   custom_bank_count = 0,
   accessible_prebuilt_bank_ids = NULL
 WHERE subscription_tier = 'BASIC'
-  AND id NOT IN (SELECT owner_id FROM question_banks WHERE is_custom = true);
+  AND NOT EXISTS (
+    SELECT 1 FROM question_banks WHERE owner_id = profiles.id AND is_custom = true
+  );
 
 -- For PREMIUM tier users: set unlimited custom banks (NULL = unlimited), calculate existing count
 UPDATE profiles p
@@ -368,13 +430,16 @@ WHERE p.id = qb.owner_id
   AND p.subscription_tier = 'PREMIUM';
 
 -- Update PREMIUM users with no custom banks
+-- Uses NOT EXISTS instead of NOT IN for null-safety
 UPDATE profiles
 SET
   custom_bank_limit = NULL,
   custom_bank_count = 0,
   accessible_prebuilt_bank_ids = NULL
 WHERE subscription_tier = 'PREMIUM'
-  AND id NOT IN (SELECT owner_id FROM question_banks WHERE is_custom = true);
+  AND NOT EXISTS (
+    SELECT 1 FROM question_banks WHERE owner_id = profiles.id AND is_custom = true
+  );
 
 -- Catch-all for users with unexpected tier values (NULL, 'admin', legacy values, etc.)
 -- Treat them like FREE tier (limit = 0) for safety, but log for manual review
@@ -393,13 +458,16 @@ WHERE p.id = qb.owner_id
   AND (p.subscription_tier NOT IN ('FREE', 'BASIC', 'PREMIUM') OR p.subscription_tier IS NULL);
 
 -- Update catch-all users with no custom banks
+-- Uses NOT EXISTS instead of NOT IN for null-safety
 UPDATE profiles
 SET
   custom_bank_limit = 0,
   custom_bank_count = 0,
   accessible_prebuilt_bank_ids = '[]'::jsonb
 WHERE (subscription_tier NOT IN ('FREE', 'BASIC', 'PREMIUM') OR subscription_tier IS NULL)
-  AND id NOT IN (SELECT owner_id FROM question_banks WHERE is_custom = true);
+  AND NOT EXISTS (
+    SELECT 1 FROM question_banks WHERE owner_id = profiles.id AND is_custom = true
+  );
 
 -- ==============================================================================
 -- VERIFICATION QUERIES (for manual testing)
@@ -465,6 +533,23 @@ LEFT JOIN question_banks qb ON qb.owner_id = p.id AND qb.is_custom = true
 GROUP BY p.id, p.subscription_tier, p.custom_bank_count
 HAVING p.custom_bank_count != COUNT(qb.id);
 -- Should return 0 rows if all counts are accurate
+
+-- Identify FREE users with existing custom banks (count > limit)
+-- These users acquired banks before this migration and are grandfathered in
+SELECT
+  p.id,
+  p.email,
+  p.full_name,
+  p.subscription_tier,
+  p.custom_bank_limit,
+  p.custom_bank_count,
+  (p.custom_bank_count - p.custom_bank_limit) AS over_limit_by
+FROM profiles p
+WHERE p.subscription_tier = 'FREE'
+  AND p.custom_bank_count > COALESCE(p.custom_bank_limit, 0)
+ORDER BY p.custom_bank_count DESC;
+-- If any rows returned, these users have custom banks but are on FREE tier.
+-- They keep existing banks but cannot create more.
 
 -- Test atomic limit enforcement function
 -- (Replace 'user-uuid-here' with an actual FREE tier user ID)

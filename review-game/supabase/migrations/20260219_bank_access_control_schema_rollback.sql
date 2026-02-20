@@ -10,14 +10,16 @@
 -- DROP TRIGGER AND FUNCTIONS
 -- ==============================================================================
 
--- Drop the trigger first (must be done before dropping the function)
+-- Drop triggers first (must be done before dropping the functions)
 DROP TRIGGER IF EXISTS trigger_update_custom_bank_count ON question_banks;
+DROP TRIGGER IF EXISTS trigger_prevent_protected_column_updates ON profiles;
 
 -- Drop the atomic limit enforcement function
 DROP FUNCTION IF EXISTS create_custom_bank_with_limit_check(UUID, TEXT, TEXT, TEXT, TEXT);
 
--- Drop the trigger function
+-- Drop the trigger functions
 DROP FUNCTION IF EXISTS update_custom_bank_count();
+DROP FUNCTION IF EXISTS prevent_protected_column_updates();
 
 -- ==============================================================================
 -- DROP INDEXES
@@ -57,12 +59,13 @@ WHERE table_name = 'profiles'
 SELECT indexname
 FROM pg_indexes
 WHERE tablename = 'profiles'
-  AND indexname IN ('idx_profiles_accessible_banks', 'idx_profiles_custom_bank_count');
+  AND indexname = 'idx_profiles_accessible_banks';
 -- Should return 0 rows
+-- Note: idx_profiles_custom_bank_count was never created (see forward migration comments)
 
--- Verify trigger was removed
+-- Verify triggers were removed
 SELECT trigger_name
 FROM information_schema.triggers
-WHERE trigger_name = 'trigger_update_custom_bank_count';
+WHERE trigger_name IN ('trigger_update_custom_bank_count', 'trigger_prevent_protected_column_updates');
 -- Should return 0 rows
 */
