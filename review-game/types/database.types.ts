@@ -255,10 +255,13 @@ export type Database = {
       }
       profiles: {
         Row: {
+          accessible_prebuilt_bank_ids: Json | null
           admin_notes: string | null
           billing_cycle: string | null
           created_at: string | null
           current_period_end: string | null
+          custom_bank_count: number
+          custom_bank_limit: number | null
           custom_plan_expires_at: string | null
           custom_plan_name: string | null
           custom_plan_notes: string | null
@@ -282,10 +285,13 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          accessible_prebuilt_bank_ids?: Json | null
           admin_notes?: string | null
           billing_cycle?: string | null
           created_at?: string | null
           current_period_end?: string | null
+          custom_bank_count?: number
+          custom_bank_limit?: number | null
           custom_plan_expires_at?: string | null
           custom_plan_name?: string | null
           custom_plan_notes?: string | null
@@ -308,11 +314,25 @@ export type Database = {
           trial_end_date?: string | null
           updated_at?: string | null
         }
+        /**
+         * IMPORTANT: The following columns are protected by database triggers:
+         * - custom_bank_count: Managed automatically by triggers. Direct updates blocked for non-admin users.
+         * - custom_bank_limit: Set by subscription tier. Direct updates blocked for non-admin users.
+         *
+         * Attempting to UPDATE these columns will throw a PostgreSQL exception at runtime.
+         * Use create_custom_bank_with_limit_check() RPC for bank creation.
+         * Subscription tier changes must go through Stripe webhooks or admin functions.
+         */
         Update: {
+          accessible_prebuilt_bank_ids?: Json | null
           admin_notes?: string | null
           billing_cycle?: string | null
           created_at?: string | null
           current_period_end?: string | null
+          /** @deprecated Managed by trigger. Direct updates blocked. Use create_custom_bank_with_limit_check() RPC. */
+          custom_bank_count?: number
+          /** @deprecated Managed by subscription tier. Direct updates blocked. Upgrade via Stripe. */
+          custom_bank_limit?: number | null
           custom_plan_expires_at?: string | null
           custom_plan_name?: string | null
           custom_plan_notes?: string | null
