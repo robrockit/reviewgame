@@ -7,19 +7,26 @@
 -- This will remove the bank access control columns and trigger from the database.
 
 -- ==============================================================================
+-- RESTORE COLUMN PRIVILEGES
+-- ==============================================================================
+
+-- Restore UPDATE privileges on the columns we're about to drop
+-- This ensures the authenticated role has normal access after rollback
+GRANT UPDATE (custom_bank_count) ON profiles TO authenticated;
+GRANT UPDATE (custom_bank_limit) ON profiles TO authenticated;
+
+-- ==============================================================================
 -- DROP TRIGGER AND FUNCTIONS
 -- ==============================================================================
 
 -- Drop triggers first (must be done before dropping the functions)
 DROP TRIGGER IF EXISTS trigger_update_custom_bank_count ON question_banks;
-DROP TRIGGER IF EXISTS trigger_prevent_protected_column_updates ON profiles;
 
 -- Drop the atomic limit enforcement function
 DROP FUNCTION IF EXISTS create_custom_bank_with_limit_check(UUID, TEXT, TEXT, TEXT, TEXT);
 
--- Drop the trigger functions
+-- Drop the trigger function
 DROP FUNCTION IF EXISTS update_custom_bank_count();
-DROP FUNCTION IF EXISTS prevent_protected_column_updates();
 
 -- ==============================================================================
 -- DROP INDEXES
@@ -63,9 +70,18 @@ WHERE tablename = 'profiles'
 -- Should return 0 rows
 -- Note: idx_profiles_custom_bank_count was never created (see forward migration comments)
 
--- Verify triggers were removed
+-- Verify trigger was removed
 SELECT trigger_name
 FROM information_schema.triggers
-WHERE trigger_name IN ('trigger_update_custom_bank_count', 'trigger_prevent_protected_column_updates');
+WHERE trigger_name = 'trigger_update_custom_bank_count';
 -- Should return 0 rows
+
+-- Verify column privileges restored
+SELECT privilege_type, column_name
+FROM information_schema.column_privileges
+WHERE table_name = 'profiles'
+  AND grantee = 'authenticated'
+  AND column_name IN ('custom_bank_count', 'custom_bank_limit')
+  AND privilege_type = 'UPDATE';
+-- Should return 2 rows (both columns with UPDATE privilege)
 */

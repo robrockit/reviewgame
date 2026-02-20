@@ -16,8 +16,11 @@
 
 -- Add accessible_prebuilt_bank_ids column to track which prebuilt banks FREE users can access
 -- DEFAULT NULL (not '[]') so new BASIC/PREMIUM users get full access, not zero access
+-- CHECK constraint ensures value is either NULL or a valid JSON array
 ALTER TABLE profiles
-ADD COLUMN IF NOT EXISTS accessible_prebuilt_bank_ids JSONB DEFAULT NULL;
+ADD COLUMN IF NOT EXISTS accessible_prebuilt_bank_ids JSONB DEFAULT NULL
+CONSTRAINT chk_accessible_prebuilt_bank_ids_is_array
+  CHECK (accessible_prebuilt_bank_ids IS NULL OR jsonb_typeof(accessible_prebuilt_bank_ids) = 'array');
 
 -- Add custom_bank_limit to enforce how many custom banks a user can create
 -- NULL means unlimited (PREMIUM tier), non-negative integers enforce limit
@@ -180,56 +183,36 @@ FOR EACH ROW
 EXECUTE FUNCTION update_custom_bank_count();
 
 -- ==============================================================================
--- SECURITY: PREVENT DIRECT USER UPDATES TO TRIGGER-MANAGED COLUMNS
+-- SECURITY: COLUMN-LEVEL PRIVILEGE RESTRICTIONS
 -- ==============================================================================
 
--- Function to block direct updates to custom_bank_count and custom_bank_limit
--- These columns are managed by triggers and the atomic enforcement function.
--- Allowing direct user updates would bypass limit enforcement.
+-- Revoke UPDATE privileges on trigger-managed columns from authenticated users.
+-- This is the idiomatic PostgreSQL approach for column-level access control.
 --
 -- Security Issue: The existing RLS policy "Users can update own profile" allows
--- users to UPDATE any column in their own profile row. Without this trigger,
--- users could set custom_bank_count = 0, then call create_custom_bank_with_limit_check()
--- repeatedly to bypass their tier's limit.
-CREATE OR REPLACE FUNCTION prevent_protected_column_updates()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Allow service role operations (migrations, Stripe webhooks, system processes)
-  -- When running as service role (e.g., migrations, webhooks), auth.uid() returns NULL
-  -- These operations are trusted and need to update tier limits
-  IF auth.uid() IS NULL THEN
-    RETURN NEW;
-  END IF;
+-- users to UPDATE any column in their own profile row. Without column-level
+-- restrictions, users could set custom_bank_count = 0, then call
+-- create_custom_bank_with_limit_check() repeatedly to bypass their tier's limit.
+--
+-- How this works:
+-- - authenticated role: Cannot UPDATE these columns (revoked below)
+-- - SECURITY DEFINER functions: Run as postgres role, CAN update these columns
+-- - This allows triggers and atomic functions to update while blocking users
+--
+-- Advantages over trigger-based approach:
+-- 1. No circular trigger dependencies (trigger can update without blocking itself)
+-- 2. Clearer error messages from PostgreSQL privilege system
+-- 3. Lower overhead (privilege check vs trigger execution)
+-- 4. Standard PostgreSQL pattern for column-level access control
 
-  -- Allow admins to update these columns if needed (role = 'admin')
-  -- Check if user is admin by looking up their profile
-  IF EXISTS (
-    SELECT 1 FROM profiles
-    WHERE id = auth.uid() AND role = 'admin'
-  ) THEN
-    RETURN NEW;
-  END IF;
+REVOKE UPDATE (custom_bank_count) ON profiles FROM authenticated;
+REVOKE UPDATE (custom_bank_limit) ON profiles FROM authenticated;
 
-  -- Block non-admin users from updating custom_bank_count
-  IF OLD.custom_bank_count IS DISTINCT FROM NEW.custom_bank_count THEN
-    RAISE EXCEPTION 'Direct updates to custom_bank_count are not allowed. This column is managed automatically by triggers.';
-  END IF;
+COMMENT ON COLUMN profiles.custom_bank_count IS
+  'Current count of custom question banks created by this user. Maintained automatically by trigger. UPDATE privilege revoked from authenticated role - only SECURITY DEFINER functions can modify.';
 
-  -- Block non-admin users from updating custom_bank_limit
-  IF OLD.custom_bank_limit IS DISTINCT FROM NEW.custom_bank_limit THEN
-    RAISE EXCEPTION 'Direct updates to custom_bank_limit are not allowed. Upgrade your subscription tier to increase limits.';
-  END IF;
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
-
-COMMENT ON FUNCTION prevent_protected_column_updates IS
-  'Security trigger: Prevents non-admin users from directly updating custom_bank_count and custom_bank_limit. These columns are managed by triggers and enforcement functions. Service role (auth.uid() = NULL) and admins can update if needed.';
-
--- NOTE: The trigger for this function is created AFTER the data migration
--- (see "SECURITY TRIGGER: ENABLE PROTECTED COLUMN ENFORCEMENT" section below)
--- to avoid blocking the initial backfill of custom_bank_count values.
+COMMENT ON COLUMN profiles.custom_bank_limit IS
+  'Maximum number of custom question banks the user can create. 0 for FREE, 15 for BASIC, NULL for PREMIUM (unlimited). UPDATE privilege revoked from authenticated role - only subscription tier changes (via service role) can modify.';
 
 -- ==============================================================================
 -- ATOMIC LIMIT ENFORCEMENT FUNCTION
@@ -339,7 +322,7 @@ COMMENT ON FUNCTION create_custom_bank_with_limit_check IS
 -- ==============================================================================
 
 COMMENT ON COLUMN profiles.accessible_prebuilt_bank_ids IS
-  'Array of question bank IDs that FREE tier users can access. For BASIC/PREMIUM tiers, this is NULL (indicating access to all prebuilt banks).';
+  'Array of question bank IDs that FREE tier users can access. For BASIC/PREMIUM tiers, this is NULL (indicating access to all prebuilt banks). CHECK constraint ensures this is NULL or a valid JSON array.';
 
 COMMENT ON COLUMN profiles.custom_bank_limit IS
   'Maximum number of custom question banks the user can create. 0 for FREE, 15 for BASIC, NULL for PREMIUM (unlimited).';
@@ -471,20 +454,6 @@ WHERE (subscription_tier NOT IN ('FREE', 'BASIC', 'PREMIUM') OR subscription_tie
   AND NOT EXISTS (
     SELECT 1 FROM question_banks WHERE owner_id = profiles.id AND is_custom = true
   );
-
--- ==============================================================================
--- SECURITY TRIGGER: ENABLE PROTECTED COLUMN ENFORCEMENT
--- ==============================================================================
-
--- NOW that the data migration is complete, enable the security trigger
--- to prevent non-admin users from directly updating trigger-managed columns.
--- This trigger is created AFTER the migration to avoid blocking the initial
--- backfill of custom_bank_count values.
-DROP TRIGGER IF EXISTS trigger_prevent_protected_column_updates ON profiles;
-CREATE TRIGGER trigger_prevent_protected_column_updates
-BEFORE UPDATE ON profiles
-FOR EACH ROW
-EXECUTE FUNCTION prevent_protected_column_updates();
 
 -- ==============================================================================
 -- VERIFICATION QUERIES (for manual testing)
