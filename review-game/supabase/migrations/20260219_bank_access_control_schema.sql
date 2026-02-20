@@ -19,8 +19,10 @@ ALTER TABLE profiles
 ADD COLUMN IF NOT EXISTS accessible_prebuilt_bank_ids JSONB DEFAULT '[]'::jsonb;
 
 -- Add custom_bank_limit to enforce how many custom banks a user can create
+-- NULL means unlimited (PREMIUM tier), non-negative integers enforce limit
 ALTER TABLE profiles
-ADD COLUMN IF NOT EXISTS custom_bank_limit INTEGER DEFAULT 0;
+ADD COLUMN IF NOT EXISTS custom_bank_limit INTEGER DEFAULT 0
+CHECK (custom_bank_limit IS NULL OR custom_bank_limit >= 0);
 
 -- Add custom_bank_count to track how many custom banks a user has created
 -- NOT NULL with DEFAULT ensures the column always has a valid value
@@ -34,12 +36,15 @@ CHECK (custom_bank_count >= 0);
 
 -- Create GIN index for efficient querying of accessible bank IDs
 -- GIN (Generalized Inverted Index) is optimized for JSONB array containment queries
+-- Used for: SELECT * FROM profiles WHERE accessible_prebuilt_bank_ids @> '["bank-id"]'::jsonb
 CREATE INDEX IF NOT EXISTS idx_profiles_accessible_banks
 ON profiles USING gin(accessible_prebuilt_bank_ids);
 
--- Create index on custom_bank_count for efficient tier limit checks
-CREATE INDEX IF NOT EXISTS idx_profiles_custom_bank_count
-ON profiles(custom_bank_count);
+-- Note: No index on custom_bank_count needed.
+-- The atomic function uses WHERE id = p_owner_id (primary key lookup).
+-- An index on custom_bank_count would only help queries like
+-- "find all users with > N custom banks" which we don't have.
+-- Removing the index reduces write overhead from trigger updates.
 
 -- ==============================================================================
 -- TRIGGER FUNCTION - Maintain custom_bank_count Automatically
@@ -82,39 +87,61 @@ BEGIN
     -- Case 2: is_custom changed from FALSE to TRUE (increment new owner)
     -- Case 3: owner_id changed while is_custom = TRUE (decrement old owner, increment new owner)
 
-    -- Update old owner's count if this was a custom bank or became non-custom
-    IF OLD.is_custom = true THEN
-      -- Lock the old owner's profile row
-      SELECT id INTO v_profile_id
-      FROM profiles
-      WHERE id = OLD.owner_id
-      FOR UPDATE;
+    -- DEADLOCK PREVENTION: When both OLD and NEW owners need updates (owner_id change),
+    -- lock them in a consistent order (by UUID value) to prevent deadlock scenarios
+    -- where two concurrent transactions swap ownership between the same two users.
 
+    -- Determine which profiles need updating
+    IF OLD.is_custom = true AND NEW.is_custom = true AND NEW.owner_id != OLD.owner_id THEN
+      -- Both owners need updates - lock in consistent order to prevent deadlock
+      IF OLD.owner_id < NEW.owner_id THEN
+        -- Lock smaller UUID first
+        SELECT id INTO v_profile_id FROM profiles WHERE id = OLD.owner_id FOR UPDATE;
+        SELECT id INTO v_profile_id FROM profiles WHERE id = NEW.owner_id FOR UPDATE;
+      ELSE
+        -- Lock smaller UUID first
+        SELECT id INTO v_profile_id FROM profiles WHERE id = NEW.owner_id FOR UPDATE;
+        SELECT id INTO v_profile_id FROM profiles WHERE id = OLD.owner_id FOR UPDATE;
+      END IF;
+
+      -- Update both counts
       UPDATE profiles
       SET custom_bank_count = (
-        SELECT COUNT(*)
-        FROM question_banks
-        WHERE owner_id = OLD.owner_id AND is_custom = true
+        SELECT COUNT(*) FROM question_banks WHERE owner_id = OLD.owner_id AND is_custom = true
       )
       WHERE id = OLD.owner_id;
-    END IF;
-
-    -- Update new owner's count if this is now a custom bank
-    -- AND (owner changed OR is_custom changed to true)
-    IF NEW.is_custom = true AND (NEW.owner_id != OLD.owner_id OR OLD.is_custom = false) THEN
-      -- Lock the new owner's profile row
-      SELECT id INTO v_profile_id
-      FROM profiles
-      WHERE id = NEW.owner_id
-      FOR UPDATE;
 
       UPDATE profiles
       SET custom_bank_count = (
-        SELECT COUNT(*)
-        FROM question_banks
-        WHERE owner_id = NEW.owner_id AND is_custom = true
+        SELECT COUNT(*) FROM question_banks WHERE owner_id = NEW.owner_id AND is_custom = true
       )
       WHERE id = NEW.owner_id;
+
+    ELSE
+      -- Single owner update (is_custom toggle or owner_id unchanged)
+
+      -- Update old owner's count if this was a custom bank or became non-custom
+      IF OLD.is_custom = true THEN
+        SELECT id INTO v_profile_id FROM profiles WHERE id = OLD.owner_id FOR UPDATE;
+
+        UPDATE profiles
+        SET custom_bank_count = (
+          SELECT COUNT(*) FROM question_banks WHERE owner_id = OLD.owner_id AND is_custom = true
+        )
+        WHERE id = OLD.owner_id;
+      END IF;
+
+      -- Update new owner's count if this is now a custom bank
+      -- AND (owner changed OR is_custom changed to true)
+      IF NEW.is_custom = true AND (NEW.owner_id != OLD.owner_id OR OLD.is_custom = false) THEN
+        SELECT id INTO v_profile_id FROM profiles WHERE id = NEW.owner_id FOR UPDATE;
+
+        UPDATE profiles
+        SET custom_bank_count = (
+          SELECT COUNT(*) FROM question_banks WHERE owner_id = NEW.owner_id AND is_custom = true
+        )
+        WHERE id = NEW.owner_id;
+      END IF;
     END IF;
     RETURN NEW;
 
@@ -264,10 +291,14 @@ COMMENT ON COLUMN profiles.custom_bank_count IS
 -- unconditionally set all existing users to tier-appropriate values.
 
 -- For FREE tier users: set limits to 0 (no custom banks allowed)
+-- Count existing custom banks to maintain data integrity (even though limit = 0)
 UPDATE profiles
 SET
   custom_bank_limit = 0,
-  custom_bank_count = 0,
+  custom_bank_count = COALESCE(
+    (SELECT COUNT(*) FROM question_banks WHERE owner_id = profiles.id AND is_custom = true),
+    0
+  ),
   accessible_prebuilt_bank_ids = '[]'::jsonb
 WHERE subscription_tier = 'FREE';
 

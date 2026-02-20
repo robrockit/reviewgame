@@ -26,9 +26,6 @@ DROP FUNCTION IF EXISTS update_custom_bank_count();
 -- Drop the GIN index on accessible_prebuilt_bank_ids
 DROP INDEX IF EXISTS idx_profiles_accessible_banks;
 
--- Drop the index on custom_bank_count
-DROP INDEX IF EXISTS idx_profiles_custom_bank_count;
-
 -- ==============================================================================
 -- REMOVE COLUMNS FROM PROFILES TABLE
 -- ==============================================================================
