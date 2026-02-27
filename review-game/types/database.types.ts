@@ -397,6 +397,11 @@ export type Database = {
          * - custom_bank_limit: Set by subscription tier. Direct updates blocked for non-admin users.
          *
          * Attempting to UPDATE these columns will throw a PostgreSQL permission error at runtime.
+         * IMPORTANT: The following columns are protected by database triggers:
+         * - custom_bank_count: Managed automatically by triggers. Direct updates blocked for non-admin users.
+         * - custom_bank_limit: Set by subscription tier. Direct updates blocked for non-admin users.
+         *
+         * Attempting to UPDATE these columns will throw a PostgreSQL exception at runtime.
          * Use create_custom_bank_with_limit_check() RPC for bank creation.
          * Subscription tier changes must go through Stripe webhooks or admin functions.
          */
