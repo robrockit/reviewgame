@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
-import { canCreateCustomBank, getRemainingCustomBankSlots } from '@/lib/access-control/banks';
+import { _checkCanCreateCustomBank } from '@/lib/access-control/banks';
 
 /**
  * GET /api/question-banks/can-create
@@ -73,11 +73,23 @@ export async function GET() {
       );
     }
 
-    // 3. Check if user can create custom banks
-    const canCreate = await canCreateCustomBank(user.id, supabase);
+    // 3. Use synchronous utilities to avoid redundant database queries
+    // We already have the profile from step 2, so use sync utilities instead of async wrappers
+    const canCreate = _checkCanCreateCustomBank(profile);
 
-    // 4. Get remaining custom bank slots
-    const slotsRemaining = await getRemainingCustomBankSlots(user.id, supabase);
+    // 4. Calculate remaining slots inline (same logic as getRemainingCustomBankSlots)
+    const tier = profile.subscription_tier?.toUpperCase();
+    let slotsRemaining: number | null;
+    if (tier === 'FREE') {
+      slotsRemaining = 0;
+    } else if (tier === 'PREMIUM') {
+      slotsRemaining = null; // unlimited
+    } else {
+      // BASIC tier
+      const limit = profile.custom_bank_limit ?? 15;
+      const count = profile.custom_bank_count ?? 0;
+      slotsRemaining = Math.max(0, limit - count);
+    }
 
     logger.info('Custom bank creation status fetched', {
       operation: 'canCreateCustomBank',
@@ -91,7 +103,7 @@ export async function GET() {
     return NextResponse.json({
       canCreate,
       slotsRemaining,
-      currentTier: profile.subscription_tier?.toUpperCase() || 'FREE',
+      currentTier: tier || 'FREE',
       currentCount: profile.custom_bank_count ?? 0,
       maxLimit: profile.custom_bank_limit,
     });

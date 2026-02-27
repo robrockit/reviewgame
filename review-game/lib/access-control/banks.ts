@@ -134,9 +134,11 @@ export function _checkCanCreateCustomBank(profile: CreationLimitProfile): boolea
     return false;
   }
 
-  // PREMIUM tier: Unlimited (custom_bank_limit = NULL)
+  // PREMIUM tier: Always unlimited, regardless of custom_bank_limit value
+  // This handles edge cases where custom_bank_limit is non-null due to
+  // migration issues, manual DB edits, or subscription tier changes
   if (tier === 'PREMIUM') {
-    return profile.custom_bank_limit === null;
+    return true;
   }
 
   // BASIC tier: Check if under limit
@@ -184,8 +186,9 @@ export async function canAccessBank(
   const client = supabase ?? (await createAdminServerClient());
 
   try {
-    // Single query with JOIN for optimal performance
-    // Fetch both profile and bank in one round-trip
+    // Fetch profile and bank separately (two queries)
+    // Note: Could be optimized to a single JOIN query in the future,
+    // but separate queries are simpler and performance is acceptable
     const { data: profile, error: profileError } = await client
       .from('profiles')
       .select('id, subscription_tier, accessible_prebuilt_bank_ids')
@@ -331,6 +334,18 @@ export async function getAccessibleBanks(
 
     const tier = profile.subscription_tier?.toUpperCase();
 
+    // Validate userId is a valid UUID (defense in depth)
+    // While userId comes from supabase.auth.getUser() (trusted source),
+    // we validate it for consistency with bankIds validation and defense in depth
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      logger.error('Invalid userId format in getAccessibleBanks', new Error('Invalid UUID'), {
+        operation: 'getAccessibleBanks',
+        userId,
+      });
+      return []; // Fail-secure
+    }
+
     // Build query based on tier
     let query = client.from('question_banks').select('*');
 
@@ -447,8 +462,10 @@ export async function getRemainingCustomBankSlots(
       return 0;
     }
 
-    // PREMIUM tier: Unlimited (custom_bank_limit = NULL)
-    if (tier === 'PREMIUM' && profile.custom_bank_limit === null) {
+    // PREMIUM tier: Always unlimited, regardless of custom_bank_limit value
+    // This handles edge cases where custom_bank_limit is non-null due to
+    // migration issues, manual DB edits, or subscription tier changes
+    if (tier === 'PREMIUM') {
       return null; // null = unlimited
     }
 
