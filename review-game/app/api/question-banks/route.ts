@@ -1,17 +1,18 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
-import type { TablesInsert } from '@/types/database.types';
 import { canAccessCustomQuestionBanks } from '@/lib/utils/feature-access';
 import { QUESTION_BANK_VALIDATION } from '@/lib/constants/question-banks';
+import { getAccessibleBanks, canCreateCustomBank } from '@/lib/access-control/banks';
 
 /**
  * GET /api/question-banks
  * Fetches available question banks for the authenticated user.
  *
- * Returns:
- * - Public question banks (is_public = true)
- * - User's own question banks (owner_id = user.id)
+ * Returns tier-appropriate banks:
+ * - FREE: Only banks in accessible_prebuilt_bank_ids + owned custom banks
+ * - BASIC: All prebuilt banks + owned custom banks
+ * - PREMIUM: All prebuilt banks + owned custom banks
  */
 export async function GET() {
   try {
@@ -26,31 +27,16 @@ export async function GET() {
       );
     }
 
-    // Fetch public banks and user's own banks
-    const { data: banks, error: fetchError } = await supabase
-      .from('question_banks')
-      .select('id, title, subject, is_custom, is_public, owner_id')
-      .or('is_public.eq.true,owner_id.eq.' + user.id)
-      .order('title', { ascending: true });
-
-    if (fetchError) {
-      logger.error('Failed to fetch question banks', fetchError, {
-        operation: 'getQuestionBanks',
-        userId: user.id,
-      });
-      return NextResponse.json(
-        { error: 'Failed to fetch question banks' },
-        { status: 500 }
-      );
-    }
+    // Fetch accessible banks using RG-108 access control
+    const banks = await getAccessibleBanks(user.id, supabase);
 
     logger.info('Question banks fetched successfully', {
       operation: 'getQuestionBanks',
       userId: user.id,
-      count: banks?.length || 0,
+      count: banks.length,
     });
 
-    return NextResponse.json({ data: banks || [] });
+    return NextResponse.json({ data: banks });
   } catch (error) {
     logger.error('Question banks fetch failed', error, {
       operation: 'getQuestionBanks',
@@ -119,7 +105,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Get and validate request body
+    // 4. Check custom bank limit (RG-108)
+    const canCreate = await canCreateCustomBank(user.id, supabase);
+    if (!canCreate) {
+      logger.info('Custom question bank creation denied - limit reached', {
+        operation: 'createQuestionBank',
+        userId: user.id,
+        tier: profile.subscription_tier,
+        customBankCount: profile.custom_bank_count,
+        customBankLimit: profile.custom_bank_limit,
+      });
+      return NextResponse.json(
+        {
+          error: 'Custom bank limit reached',
+          message: profile.custom_bank_limit === 0
+            ? 'Custom question banks require a BASIC or PREMIUM subscription. Upgrade to create custom banks.'
+            : 'You have reached your custom bank limit. Upgrade to PREMIUM for unlimited banks.'
+        },
+        { status: 403 }
+      );
+    }
+
+    // 5. Get and validate request body
     const body = await req.json();
     const { title, subject, description, difficulty } = body;
 
@@ -179,25 +186,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Create question bank
-    const bankData: TablesInsert<'question_banks'> = {
-      title: title.trim(),
-      subject: subject.trim(),
-      description: description?.trim() || null,
-      difficulty: difficulty || null,
-      owner_id: user.id,
-      is_custom: true,
-      is_public: false, // Custom banks are private by default
-    };
+    // 6. Create question bank using RPC (atomic limit enforcement)
+    const { data: bankId, error: rpcError } = await supabase.rpc(
+      'create_custom_bank_with_limit_check',
+      {
+        p_owner_id: user.id,
+        p_title: title.trim(),
+        p_subject: subject.trim(),
+        p_description: description?.trim() || null,
+        p_difficulty: difficulty || null,
+      }
+    );
 
-    const { data: newBank, error: createError } = await supabase
-      .from('question_banks')
-      .insert(bankData)
-      .select()
-      .single();
+    if (rpcError) {
+      // Check if error is limit exceeded
+      if (rpcError.message?.includes('Custom bank limit exceeded')) {
+        logger.info('Custom question bank creation denied - limit exceeded (concurrent)', {
+          operation: 'createQuestionBank',
+          userId: user.id,
+          error: rpcError.message,
+        });
+        return NextResponse.json(
+          { error: 'Custom bank limit reached. Another bank was created concurrently.' },
+          { status: 403 }
+        );
+      }
 
-    if (createError) {
-      logger.error('Failed to create question bank', createError, {
+      // Other database errors
+      logger.error('Failed to create question bank', rpcError, {
         operation: 'createQuestionBank',
         userId: user.id,
       });
@@ -207,13 +223,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 7. Fetch the created bank to return full details
+    const { data: newBank, error: fetchError } = await supabase
+      .from('question_banks')
+      .select('*')
+      .eq('id', bankId)
+      .single();
+
+    if (fetchError || !newBank) {
+      logger.error('Failed to fetch created question bank', fetchError, {
+        operation: 'createQuestionBank',
+        userId: user.id,
+        bankId,
+      });
+      // Bank was created but we can't fetch it - return minimal response
+      return NextResponse.json(
+        { id: bankId, message: 'Bank created but details unavailable' },
+        { status: 201 }
+      );
+    }
+
     logger.info('Question bank created successfully', {
       operation: 'createQuestionBank',
       userId: user.id,
       bankId: newBank.id,
     });
 
-    // 6. Return created bank
+    // 8. Return created bank
     return NextResponse.json(newBank, { status: 201 });
 
   } catch (error) {
