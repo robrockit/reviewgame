@@ -35,6 +35,36 @@ type BankAccessProfile = Pick<Profile, 'id' | 'subscription_tier' | 'accessible_
 type CreationLimitProfile = Pick<Profile, 'subscription_tier' | 'custom_bank_limit' | 'custom_bank_count'>;
 
 /**
+ * Calculate remaining custom bank slots for a profile.
+ * Shared logic extracted to avoid duplication between sync and async functions.
+ *
+ * @param profile - User profile with subscription and bank count data
+ * @returns Remaining slots (number), unlimited (null), or at limit (0)
+ *
+ * @remarks
+ * This is an internal helper function exported for use in API routes
+ * that already have profile data and want to avoid redundant database queries.
+ */
+export function calculateRemainingSlots(profile: CreationLimitProfile): number | null {
+  const tier = profile.subscription_tier?.toUpperCase();
+
+  // FREE tier: No custom banks allowed
+  if (tier === 'FREE') {
+    return 0;
+  }
+
+  // PREMIUM tier: Always unlimited
+  if (tier === 'PREMIUM') {
+    return null;
+  }
+
+  // BASIC tier: Calculate remaining slots
+  const limit = profile.custom_bank_limit ?? 15;
+  const count = profile.custom_bank_count ?? 0;
+  return Math.max(0, limit - count);
+}
+
+/**
  * Bank data required for access checks
  */
 type BankAccessInfo = Pick<QuestionBank, 'id' | 'is_custom' | 'owner_id'>;
@@ -42,6 +72,11 @@ type BankAccessInfo = Pick<QuestionBank, 'id' | 'is_custom' | 'owner_id'>;
 /**
  * Synchronous utility to check if a user profile can access a specific bank.
  * Used for batching operations to avoid N+1 queries.
+ *
+ * **Note:** The underscore prefix is intentional but this function IS exported and public.
+ * The prefix distinguishes it from the async wrapper ({@link canAccessBank}) which fetches
+ * the profile internally. Use this sync version when you already have profile data
+ * to avoid redundant database queries.
  *
  * @param profile - User profile with subscription data (partial)
  * @param bank - Question bank to check access for (partial)
@@ -105,6 +140,11 @@ export function _checkCanAccessBank(profile: BankAccessProfile, bank: BankAccess
 /**
  * Synchronous utility to check if a user profile can create custom banks.
  * Used for batching operations to avoid N+1 queries.
+ *
+ * **Note:** The underscore prefix is intentional but this function IS exported and public.
+ * The prefix distinguishes it from the async wrapper ({@link canCreateCustomBank}) which
+ * fetches the profile internally. Use this sync version when you already have profile
+ * data to avoid redundant database queries.
  *
  * @param profile - User profile with subscription data (partial)
  * @returns true if user can create custom banks, false otherwise
@@ -334,10 +374,10 @@ export async function getAccessibleBanks(
 
     const tier = profile.subscription_tier?.toUpperCase();
 
-    // Validate userId is a valid UUID (defense in depth)
-    // While userId comes from supabase.auth.getUser() (trusted source),
-    // we validate it for consistency with bankIds validation and defense in depth
+    // UUID validation regex (hoisted to avoid redeclaration)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Validate userId is a valid UUID (defense in depth)
     if (!uuidRegex.test(userId)) {
       logger.error('Invalid userId format in getAccessibleBanks', new Error('Invalid UUID'), {
         operation: 'getAccessibleBanks',
@@ -346,57 +386,105 @@ export async function getAccessibleBanks(
       return []; // Fail-secure
     }
 
-    // Build query based on tier
-    let query = client.from('question_banks').select('*');
+    // Fetch banks using separate queries to avoid string interpolation
+    // This is safer than embedding userId/bankIds in .or() query strings
+    let banks: QuestionBank[] = [];
 
     if (tier === 'FREE') {
       // FREE: Only accessible prebuilt banks OR owned custom banks
       const accessibleIds = profile.accessible_prebuilt_bank_ids;
       const bankIds = Array.isArray(accessibleIds) ? accessibleIds : [];
 
-      if (bankIds.length > 0) {
-        // Validate that all IDs are strings and match UUID format before string interpolation
-        // This prevents SQL injection through malformed JSONB data
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const validBankIds = bankIds
-          .filter((id): id is string => typeof id === 'string')
-          .filter(id => uuidRegex.test(id));
+      // Validate bank IDs
+      const validBankIds = bankIds
+        .filter((id): id is string => typeof id === 'string')
+        .filter(id => uuidRegex.test(id));
 
-        if (validBankIds.length > 0) {
-          // Has accessible banks: (id IN validBankIds AND is_custom = false) OR (owner_id = userId AND is_custom = true)
-          query = query.or(
-            `and(id.in.(${validBankIds.join(',')}),is_custom.eq.false),and(owner_id.eq.${userId},is_custom.eq.true)`
-          );
-        } else {
-          // No valid bank IDs: Only owned custom banks
-          logger.warn('No valid UUIDs in accessible_prebuilt_bank_ids', {
-            operation: 'getAccessibleBanks',
-            userId,
-            rawBankIds: bankIds,
-          });
-          query = query.eq('owner_id', userId).eq('is_custom', true);
-        }
-      } else {
-        // No accessible banks: Only owned custom banks
-        query = query.eq('owner_id', userId).eq('is_custom', true);
+      if (validBankIds.length === 0) {
+        logger.warn('No valid UUIDs in accessible_prebuilt_bank_ids', {
+          operation: 'getAccessibleBanks',
+          userId,
+          rawBankIds: bankIds,
+        });
       }
+
+      // Query 1: Accessible prebuilt banks (if any)
+      const prebuiltBanks = validBankIds.length > 0
+        ? await client
+            .from('question_banks')
+            .select('*')
+            .in('id', validBankIds)
+            .eq('is_custom', false)
+        : { data: [], error: null };
+
+      // Query 2: Owned custom banks
+      const customBanks = await client
+        .from('question_banks')
+        .select('*')
+        .eq('owner_id', userId)
+        .eq('is_custom', true);
+
+      if (prebuiltBanks.error) {
+        logger.error('Failed to fetch prebuilt banks', prebuiltBanks.error, {
+          operation: 'getAccessibleBanks',
+          userId,
+        });
+        throw prebuiltBanks.error;
+      }
+
+      if (customBanks.error) {
+        logger.error('Failed to fetch custom banks', customBanks.error, {
+          operation: 'getAccessibleBanks',
+          userId,
+        });
+        throw customBanks.error;
+      }
+
+      // Combine results (avoiding duplicates by using Map)
+      const bankMap = new Map<string, QuestionBank>();
+      [...(prebuiltBanks.data || []), ...(customBanks.data || [])].forEach(bank => {
+        bankMap.set(bank.id, bank);
+      });
+      banks = Array.from(bankMap.values());
     } else {
       // BASIC/PREMIUM: All prebuilt banks OR owned custom banks
-      query = query.or(`is_custom.eq.false,and(owner_id.eq.${userId},is_custom.eq.true)`);
+      // Query 1: All prebuilt banks
+      const prebuiltBanks = await client
+        .from('question_banks')
+        .select('*')
+        .eq('is_custom', false);
+
+      // Query 2: Owned custom banks
+      const customBanks = await client
+        .from('question_banks')
+        .select('*')
+        .eq('owner_id', userId)
+        .eq('is_custom', true);
+
+      if (prebuiltBanks.error) {
+        logger.error('Failed to fetch prebuilt banks', prebuiltBanks.error, {
+          operation: 'getAccessibleBanks',
+          userId,
+        });
+        throw prebuiltBanks.error;
+      }
+
+      if (customBanks.error) {
+        logger.error('Failed to fetch custom banks', customBanks.error, {
+          operation: 'getAccessibleBanks',
+          userId,
+        });
+        throw customBanks.error;
+      }
+
+      // Combine results
+      banks = [...(prebuiltBanks.data || []), ...(customBanks.data || [])];
     }
 
-    const { data: banks, error: banksError } = await query.order('title');
+    // Sort by title
+    banks.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 
-    if (banksError) {
-      logger.error('Failed to fetch accessible banks', banksError, {
-        operation: 'getAccessibleBanks',
-        userId,
-        tier,
-      });
-      throw banksError;
-    }
-
-    return banks || [];
+    return banks;
   } catch (error) {
     logger.error('Unexpected error in getAccessibleBanks', error, {
       operation: 'getAccessibleBanks',
@@ -455,26 +543,8 @@ export async function getRemainingCustomBankSlots(
       return 0; // Fail-secure
     }
 
-    const tier = profile.subscription_tier?.toUpperCase();
-
-    // FREE tier: No custom banks allowed
-    if (tier === 'FREE') {
-      return 0;
-    }
-
-    // PREMIUM tier: Always unlimited, regardless of custom_bank_limit value
-    // This handles edge cases where custom_bank_limit is non-null due to
-    // migration issues, manual DB edits, or subscription tier changes
-    if (tier === 'PREMIUM') {
-      return null; // null = unlimited
-    }
-
-    // BASIC tier: Calculate remaining slots
-    const limit = profile.custom_bank_limit ?? 15;
-    const count = profile.custom_bank_count ?? 0;
-    const remaining = Math.max(0, limit - count);
-
-    return remaining;
+    // Use shared calculation logic
+    return calculateRemainingSlots(profile);
   } catch (error) {
     logger.error('Unexpected error in getRemainingCustomBankSlots', error, {
       operation: 'getRemainingCustomBankSlots',

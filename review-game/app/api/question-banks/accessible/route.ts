@@ -46,14 +46,24 @@ export async function GET() {
     // 2. Get accessible banks using RG-108 access control
     const banks = await getAccessibleBanks(user.id, supabase);
 
+    // 3. Transform to lightweight format for UI dropdowns (id, title, subject, is_custom only)
+    // This reduces payload size compared to the main GET /api/question-banks route
+    const lightweightBanks = banks.map(bank => ({
+      id: bank.id,
+      title: bank.title,
+      subject: bank.subject,
+      is_custom: bank.is_custom,
+      is_public: bank.is_public,
+    }));
+
     logger.info('Accessible question banks fetched', {
       operation: 'getAccessibleQuestionBanks',
       userId: user.id,
-      count: banks.length,
+      count: lightweightBanks.length,
     });
 
-    // 3. Return filtered bank list
-    return NextResponse.json({ data: banks });
+    // 4. Return lightweight bank list optimized for UI components
+    return NextResponse.json({ data: lightweightBanks });
 
   } catch (error) {
     logger.error('Failed to fetch accessible question banks', error, {

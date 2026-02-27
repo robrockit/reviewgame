@@ -3,7 +3,7 @@ import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { canAccessCustomQuestionBanks } from '@/lib/utils/feature-access';
 import { QUESTION_BANK_VALIDATION } from '@/lib/constants/question-banks';
-import { getAccessibleBanks, canCreateCustomBank } from '@/lib/access-control/banks';
+import { getAccessibleBanks, _checkCanCreateCustomBank } from '@/lib/access-control/banks';
 
 /**
  * GET /api/question-banks
@@ -106,7 +106,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Check custom bank limit (RG-108)
-    const canCreate = await canCreateCustomBank(user.id, supabase);
+    // Use sync utility since we already have the profile (avoids redundant DB query)
+    const canCreate = _checkCanCreateCustomBank(profile);
     if (!canCreate) {
       logger.info('Custom question bank creation denied - limit reached', {
         operation: 'createQuestionBank',

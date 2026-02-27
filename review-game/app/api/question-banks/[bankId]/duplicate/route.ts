@@ -68,6 +68,11 @@ export async function POST(
     const { bankId } = await context.params;
 
     // 5. Verify user can access the source bank (RG-108)
+    // NOTE: canAccessBank returns false for both "bank doesn't exist" and "user lacks access"
+    // This is intentional security-by-obscurity to prevent bank ID enumeration.
+    // A 403 response doesn't reveal whether the bank exists or not.
+    // Trade-off: Genuine typos also get 403 instead of 404, but this prevents
+    // attackers from discovering valid bank IDs through enumeration attacks.
     const hasAccess = await canAccessBank(user.id, bankId, supabase);
     if (!hasAccess) {
       logger.info('Question bank duplication denied - no access to source bank', {
