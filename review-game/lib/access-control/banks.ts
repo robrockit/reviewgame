@@ -59,9 +59,14 @@ export function calculateRemainingSlots(profile: CreationLimitProfile): number |
   }
 
   // BASIC tier: Calculate remaining slots
-  const limit = profile.custom_bank_limit ?? 15;
-  const count = profile.custom_bank_count ?? 0;
-  return Math.max(0, limit - count);
+  if (tier === 'BASIC') {
+    const limit = profile.custom_bank_limit ?? 15;
+    const count = profile.custom_bank_count ?? 0;
+    return Math.max(0, limit - count);
+  }
+
+  // Unknown tier: fail-secure (consistent with _checkCanCreateCustomBank)
+  return 0;
 }
 
 /**
@@ -226,6 +231,29 @@ export async function canAccessBank(
   const client = supabase ?? (await createAdminServerClient());
 
   try {
+    // UUID validation regex
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Validate userId BEFORE any database queries (defense in depth)
+    if (!uuidRegex.test(userId)) {
+      logger.error('Invalid userId format in canAccessBank', new Error('Invalid UUID'), {
+        operation: 'canAccessBank',
+        userId,
+        bankId,
+      });
+      return false; // Fail-secure
+    }
+
+    // Validate bankId BEFORE any database queries
+    if (!uuidRegex.test(bankId)) {
+      logger.error('Invalid bankId format in canAccessBank', new Error('Invalid UUID'), {
+        operation: 'canAccessBank',
+        userId,
+        bankId,
+      });
+      return false; // Fail-secure
+    }
+
     // Fetch profile and bank separately (two queries)
     // Note: Could be optimized to a single JOIN query in the future,
     // but separate queries are simpler and performance is acceptable
@@ -302,6 +330,16 @@ export async function canCreateCustomBank(
   const client = supabase ?? (await createAdminServerClient());
 
   try {
+    // Validate userId BEFORE any database queries (defense in depth)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      logger.error('Invalid userId format in canCreateCustomBank', new Error('Invalid UUID'), {
+        operation: 'canCreateCustomBank',
+        userId,
+      });
+      return false; // Fail-secure
+    }
+
     const { data: profile, error } = await client
       .from('profiles')
       .select('subscription_tier, custom_bank_limit, custom_bank_count')
@@ -529,6 +567,16 @@ export async function getRemainingCustomBankSlots(
   const client = supabase ?? (await createAdminServerClient());
 
   try {
+    // Validate userId BEFORE any database queries (defense in depth)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      logger.error('Invalid userId format in getRemainingCustomBankSlots', new Error('Invalid UUID'), {
+        operation: 'getRemainingCustomBankSlots',
+        userId,
+      });
+      return 0; // Fail-secure
+    }
+
     const { data: profile, error } = await client
       .from('profiles')
       .select('subscription_tier, custom_bank_limit, custom_bank_count')

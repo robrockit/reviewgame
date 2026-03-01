@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { canAccessCustomQuestionBanks } from '@/lib/utils/feature-access';
-import { canAccessBank, canCreateCustomBank } from '@/lib/access-control/banks';
+import { canAccessBank, _checkCanCreateCustomBank } from '@/lib/access-control/banks';
 
 /**
  * POST /api/question-banks/[bankId]/duplicate
@@ -91,7 +91,8 @@ export async function POST(
     // If the duplicate_question_bank RPC doesn't atomically check limits,
     // concurrent requests could exceed the limit. The check here is defensive
     // to provide user-friendly errors before calling the RPC.
-    const canCreate = await canCreateCustomBank(user.id, supabase);
+    // Use sync utility since we already have the profile (avoids redundant DB query)
+    const canCreate = _checkCanCreateCustomBank(profile);
     if (!canCreate) {
       logger.info('Question bank duplication denied - custom bank limit reached', {
         operation: 'duplicateQuestionBank',
