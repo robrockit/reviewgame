@@ -38,7 +38,6 @@ export async function GET() {
     // This function checks for:
     // - Session not ended (ended_at IS NULL)
     // - Session not expired (started_at within last 15 minutes)
-    // @ts-expect-error - Function added in migration 20251118_impersonation_functions.sql
     // Types will be available after running: npx supabase gen types typescript
     const { data, error: rpcError } = await supabase.rpc('get_active_impersonation') as {
       data: unknown;

@@ -126,7 +126,6 @@ export async function POST(
     // Atomically activate user and create audit log using database function
     // This ensures both operations succeed or both fail (transaction safety)
     // Also includes admin re-verification to prevent TOCTOU race conditions
-    // @ts-expect-error - Function added in migration 20251113_suspension_security_enhancements.sql
     // Types will be available after running: npx supabase gen types typescript
     const { data, error: rpcError } = await supabase.rpc('activate_user_with_audit', {
       p_user_id: userId,

@@ -67,7 +67,6 @@ export async function POST(req: NextRequest) {
     // - Only the admin who started the session can end it
     // - Session exists and is active
     // - Audit logging
-    // @ts-expect-error - Function added in migration 20251118_impersonation_functions.sql
     // Types will be available after running: npx supabase gen types typescript
     const { data, error: rpcError } = await supabase.rpc('end_impersonation_session', {
       p_session_id: body.sessionId,
