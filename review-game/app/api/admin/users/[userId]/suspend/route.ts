@@ -205,7 +205,7 @@ export async function POST(
       p_admin_id: adminUser.id,
       p_action_type: 'suspend_user',
       p_reason: body.reason,
-      p_notes: notes || null,
+      p_notes: notes || undefined,
       p_ip_address: ipAddress,
       p_user_agent: userAgent,
       p_changes: changes,
