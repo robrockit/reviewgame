@@ -42,18 +42,16 @@ async function fetchWithTimeout<T>(
  */
 interface StripeSubscriptionWithFields extends Stripe.Subscription {
   current_period_end: number;
-  items: {
-    data: Array<{
+  items: Stripe.ApiList<{
+    id: string;
+    price: {
       id: string;
-      price: {
-        id: string;
-        unit_amount: number | null;
-        recurring: {
-          interval: string;
-        } | null;
-      };
-    }>;
-  };
+      unit_amount: number | null;
+      recurring: {
+        interval: string;
+      } | null;
+    };
+  }>;
 }
 
 export interface UpdateSubscriptionRequest {
