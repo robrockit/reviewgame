@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { canAccessCustomQuestionBanks } from '@/lib/utils/feature-access';
+import { canAccessBank, _checkCanCreateCustomBank } from '@/lib/access-control/banks';
 
 /**
  * POST /api/question-banks/[bankId]/duplicate
@@ -66,28 +67,15 @@ export async function POST(
     // 4. Get bankId from params
     const { bankId } = await context.params;
 
-    // 5. Fetch the original bank (must be public OR owned by user)
-    const { data: originalBank, error: bankError } = await supabase
-      .from('question_banks')
-      .select('*')
-      .eq('id', bankId)
-      .single();
-
-    if (bankError || !originalBank) {
-      logger.error('Original question bank not found', bankError, {
-        operation: 'duplicateQuestionBank',
-        userId: user.id,
-        bankId,
-      });
-      return NextResponse.json(
-        { error: 'Question bank not found' },
-        { status: 404 }
-      );
-    }
-
-    // Verify user can access this bank (public OR owned)
-    if (!originalBank.is_public && originalBank.owner_id !== user.id) {
-      logger.info('Question bank duplication denied - no access', {
+    // 5. Verify user can access the source bank (RG-108)
+    // NOTE: canAccessBank returns false for both "bank doesn't exist" and "user lacks access"
+    // This is intentional security-by-obscurity to prevent bank ID enumeration.
+    // A 403 response doesn't reveal whether the bank exists or not.
+    // Trade-off: Genuine typos also get 403 instead of 404, but this prevents
+    // attackers from discovering valid bank IDs through enumeration attacks.
+    const hasAccess = await canAccessBank(user.id, bankId, supabase);
+    if (!hasAccess) {
+      logger.info('Question bank duplication denied - no access to source bank', {
         operation: 'duplicateQuestionBank',
         userId: user.id,
         bankId,
@@ -98,7 +86,34 @@ export async function POST(
       );
     }
 
-    // 6. Call atomic database function to duplicate bank + questions
+    // 6. Check custom bank creation limit (RG-108)
+    // NOTE: This check provides fast feedback but has a TOCTOU race condition.
+    // If the duplicate_question_bank RPC doesn't atomically check limits,
+    // concurrent requests could exceed the limit. The check here is defensive
+    // to provide user-friendly errors before calling the RPC.
+    // Use sync utility since we already have the profile (avoids redundant DB query)
+    const canCreate = _checkCanCreateCustomBank(profile);
+    if (!canCreate) {
+      logger.info('Question bank duplication denied - custom bank limit reached', {
+        operation: 'duplicateQuestionBank',
+        userId: user.id,
+        bankId,
+        tier: profile.subscription_tier,
+        customBankCount: profile.custom_bank_count,
+        customBankLimit: profile.custom_bank_limit,
+      });
+      return NextResponse.json(
+        {
+          error: 'Custom bank limit reached',
+          message: profile.custom_bank_limit === 0
+            ? 'Custom question banks require a BASIC or PREMIUM subscription. Upgrade to create custom banks.'
+            : 'You have reached your custom bank limit. Upgrade to PREMIUM for unlimited banks.'
+        },
+        { status: 403 }
+      );
+    }
+
+    // 7. Call atomic database function to duplicate bank + questions
     // This ensures no orphaned banks are created if question insertion fails
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
     const { data: result, error: rpcError } = await (supabase as any)
@@ -114,6 +129,7 @@ export async function POST(
         bankId,
         errorCode: rpcError?.code,
         errorMessage: rpcError?.message,
+        errorDetails: rpcError?.details,
       });
 
       // Check for specific error types
@@ -131,6 +147,14 @@ export async function POST(
         );
       }
 
+      // Handle limit exceeded errors (concurrent duplication)
+      if (rpcError?.message?.includes('limit exceeded') || rpcError?.message?.includes('limit reached')) {
+        return NextResponse.json(
+          { error: 'Custom bank limit reached. Another bank may have been created concurrently.' },
+          { status: 403 }
+        );
+      }
+
       return NextResponse.json(
         { error: 'Failed to duplicate question bank' },
         { status: 500 }
@@ -145,7 +169,7 @@ export async function POST(
       questionCount: result.questions_count,
     });
 
-    // 7. Return the new bank
+    // 8. Return the new bank
     return NextResponse.json(result, { status: 201 });
 
   } catch (error) {
