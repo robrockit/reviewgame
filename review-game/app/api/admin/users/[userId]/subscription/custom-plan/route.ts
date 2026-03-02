@@ -380,7 +380,10 @@ export async function POST(
       // Use existing product if configured, otherwise create inline product
       if (customPlanProductId) {
         priceCreateParams.product = customPlanProductId;
-        logger.info('Using existing Custom Plans product', { productId: customPlanProductId });
+        logger.info('Using existing Custom Plans product', {
+          operation: 'createCustomPlan',
+          productId: customPlanProductId
+        });
       } else {
         priceCreateParams.product_data = {
           name: `Custom Plan: ${planName}`,
