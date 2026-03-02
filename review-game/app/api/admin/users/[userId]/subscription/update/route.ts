@@ -38,20 +38,12 @@ async function fetchWithTimeout<T>(
 }
 
 /**
- * Extended Stripe Subscription interface with properties we need
+ * Type alias for Stripe Subscription with expanded fields
+ * Note: Using type alias instead of interface to avoid extends compatibility issues
  */
-interface StripeSubscriptionWithFields extends Stripe.Subscription {
+type StripeSubscriptionWithFields = Stripe.Subscription & {
   current_period_end: number;
-  items: Stripe.ApiList<{
-    id: string;
-    price: {
-      id: string;
-      unit_amount: number | null;
-      recurring: {
-        interval: string;
-      } | null;
-    };
-  }>;
+  items: Stripe.ApiList<Stripe.SubscriptionItem>;
 }
 
 export interface UpdateSubscriptionRequest {
