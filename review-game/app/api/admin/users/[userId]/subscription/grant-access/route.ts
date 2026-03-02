@@ -16,7 +16,7 @@ import Stripe from 'stripe';
 
 // Initialize Stripe with version pinning for consistency
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-09-30.clover' as const,
+  apiVersion: '2025-12-15.clover' as const,
 });
 
 /**
