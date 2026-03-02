@@ -143,7 +143,6 @@ export async function POST(
     // - Cannot impersonate self
     // - Rate limit: 5 per hour
     // - Auto-ends any existing active session
-    // @ts-expect-error - Function added in migration 20251118_impersonation_functions.sql
     // Types will be available after running: npx supabase gen types typescript
     const { data, error: rpcError } = await supabase.rpc('start_impersonation_session', {
       p_target_user_id: userId,
