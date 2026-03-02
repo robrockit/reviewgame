@@ -66,7 +66,9 @@ export async function POST(
     }
 
     // Check subscription quota (increment count if allowed)
-    const { data: allowed, error: incrementError } = await supabase
+    // Note: increment_game_count_if_allowed is defined in migration but not yet in generated types
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
+    const { data: allowed, error: incrementError } = await (supabase as any)
       .rpc('increment_game_count_if_allowed', { p_user_id: user.id });
 
     if (incrementError) {
