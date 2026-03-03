@@ -170,7 +170,9 @@ export async function POST(
       });
 
       // Rollback counter increment
-      await supabase.rpc('decrement_game_count', { p_user_id: user.id });
+      // Note: decrement_game_count is defined in migration but not yet in generated types
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
+      await (supabase as any).rpc('decrement_game_count', { p_user_id: user.id });
 
       return NextResponse.json(
         { error: 'Failed to create duplicated game' },
@@ -200,7 +202,9 @@ export async function POST(
 
       // Rollback: Delete game and decrement counter
       await supabase.from('games').delete().eq('id', newGame.id);
-      await supabase.rpc('decrement_game_count', { p_user_id: user.id });
+      // Note: decrement_game_count is defined in migration but not yet in generated types
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
+      await (supabase as any).rpc('decrement_game_count', { p_user_id: user.id });
 
       return NextResponse.json(
         { error: 'Failed to create team records' },
