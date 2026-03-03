@@ -147,7 +147,7 @@ export default function StudentJoinPage() {
 
     try {
       // Get team name from game settings if available
-      const teamName = game.team_names?.[selectedTeamNumber - 1] || `Team ${selectedTeamNumber}`;
+      const teamName = (game.team_names as string[] | null)?.[selectedTeamNumber - 1] || `Team ${selectedTeamNumber}`;
 
       // Create team record
       const { data: newTeam, error: insertError } = await supabase
@@ -360,7 +360,7 @@ export default function StudentJoinPage() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
                 >
                   {availableTeams.map(num => {
-                    const teamName = game.team_names?.[num - 1];
+                    const teamName = (game.team_names as string[] | null)?.[num - 1];
                     return (
                       <option key={num} value={num}>
                         Team {num}{teamName ? ` - ${teamName}` : ''}

@@ -181,10 +181,11 @@ export async function POST(
     }
 
     // Create team records for duplicated game
+    const teamNames = (originalGame.team_names as string[] | null) || [];
     const teamRecords = Array.from({ length: originalGame.num_teams }, (_, i) => ({
       game_id: newGame.id,
       team_number: i + 1,
-      team_name: originalGame.team_names?.[i] || `Team ${i + 1}`,
+      team_name: teamNames[i] || `Team ${i + 1}`,
       score: 0,
       connection_status: 'pending' as const,
     }));

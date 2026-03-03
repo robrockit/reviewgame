@@ -188,7 +188,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Create question bank using RPC (atomic limit enforcement)
-    const { data: bankId, error: rpcError } = await supabase.rpc(
+    // Note: create_custom_bank_with_limit_check is defined in migration but not yet in generated types
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
+    const { data: bankId, error: rpcError } = await (supabase as any).rpc(
       'create_custom_bank_with_limit_check',
       {
         p_owner_id: user.id,
