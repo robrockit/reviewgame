@@ -339,6 +339,8 @@ export async function POST(req: NextRequest) {
     // Atomically check and increment game count (prevents race conditions)
     // This MUST happen BEFORE creating the game to ensure proper enforcement
     const { data: allowed, error: incrementError } = await supabase
+    // Note: increment_game_count_if_allowed is defined in migration but not yet in generated types
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
       .rpc('increment_game_count_if_allowed', { p_user_id: targetUserId });
 
     if (incrementError) {
@@ -427,7 +429,9 @@ export async function POST(req: NextRequest) {
       });
 
       // Rollback counter increment for FREE tier users
-      await supabase.rpc('decrement_game_count', { p_user_id: targetUserId });
+      // Note: decrement_game_count is defined in migration but not yet in generated types
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
+      await (supabase as any).rpc('decrement_game_count', { p_user_id: targetUserId });
 
       return NextResponse.json(
         { error: 'Failed to create game' },
@@ -457,7 +461,9 @@ export async function POST(req: NextRequest) {
 
       // Rollback: Delete game and decrement counter
       await supabase.from('games').delete().eq('id', newGame.id);
-      await supabase.rpc('decrement_game_count', { p_user_id: targetUserId });
+      // Note: decrement_game_count is defined in migration but not yet in generated types
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
+      await (supabase as any).rpc('decrement_game_count', { p_user_id: targetUserId });
 
       return NextResponse.json(
         { error: 'Failed to create team records' },

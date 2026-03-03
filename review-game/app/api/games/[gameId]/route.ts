@@ -167,7 +167,9 @@ export async function DELETE(
     }
 
     // Decrement games_created_count for FREE tier users
-    await supabase.rpc('decrement_game_count', { p_user_id: user.id });
+      // Note: decrement_game_count is defined in migration but not yet in generated types
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
+    await (supabase as any).rpc('decrement_game_count', { p_user_id: user.id });
 
     logger.info('Game deleted successfully', {
       operation: 'deleteGame',
