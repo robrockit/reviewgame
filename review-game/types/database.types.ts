@@ -571,6 +571,16 @@ export type Database = {
       }
       cleanup_old_audit_logs: { Args: never; Returns: number }
       cleanup_old_stripe_events: { Args: never; Returns: undefined }
+      create_custom_bank_with_limit_check: {
+        Args: {
+          p_description?: string
+          p_difficulty?: string
+          p_owner_id: string
+          p_subject?: string
+          p_title: string
+        }
+        Returns: string
+      }
       decrement_game_count: { Args: { p_user_id: string }; Returns: boolean }
       end_game: { Args: { p_game_id: string }; Returns: Json }
       end_impersonation_session: {

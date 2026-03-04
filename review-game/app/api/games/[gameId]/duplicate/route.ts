@@ -66,9 +66,7 @@ export async function POST(
     }
 
     // Check subscription quota (increment count if allowed)
-    // Note: increment_game_count_if_allowed is defined in migration but not yet in generated types
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
-    const { data: allowed, error: incrementError } = await (supabase as any)
+    const { data: allowed, error: incrementError } = await supabase
       .rpc('increment_game_count_if_allowed', { p_user_id: user.id });
 
     if (incrementError) {
@@ -170,9 +168,7 @@ export async function POST(
       });
 
       // Rollback counter increment
-      // Note: decrement_game_count is defined in migration but not yet in generated types
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
-      await (supabase as any).rpc('decrement_game_count', { p_user_id: user.id });
+      await supabase.rpc('decrement_game_count', { p_user_id: user.id });
 
       return NextResponse.json(
         { error: 'Failed to create duplicated game' },
@@ -203,9 +199,7 @@ export async function POST(
 
       // Rollback: Delete game and decrement counter
       await supabase.from('games').delete().eq('id', newGame.id);
-      // Note: decrement_game_count is defined in migration but not yet in generated types
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
-      await (supabase as any).rpc('decrement_game_count', { p_user_id: user.id });
+      await supabase.rpc('decrement_game_count', { p_user_id: user.id });
 
       return NextResponse.json(
         { error: 'Failed to create team records' },
