@@ -505,7 +505,8 @@ export type Database = {
           final_jeopardy_answer: string | null
           final_jeopardy_submitted_at: string | null
           final_jeopardy_wager: number | null
-          game_id: string | null
+          /** NOT NULL confirmed via pg_attribute.attnotnull — type generator bug */
+          game_id: string
           id: string
           last_seen: string | null
           score: number | null
@@ -520,7 +521,8 @@ export type Database = {
           final_jeopardy_answer?: string | null
           final_jeopardy_submitted_at?: string | null
           final_jeopardy_wager?: number | null
-          game_id?: string | null
+          /** NOT NULL, no default — required on insert */
+          game_id: string
           id?: string
           last_seen?: string | null
           score?: number | null
@@ -535,7 +537,7 @@ export type Database = {
           final_jeopardy_answer?: string | null
           final_jeopardy_submitted_at?: string | null
           final_jeopardy_wager?: number | null
-          game_id?: string | null
+          game_id?: string
           id?: string
           last_seen?: string | null
           score?: number | null
