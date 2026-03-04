@@ -115,7 +115,7 @@ export async function POST(
 
     // 7. Call atomic database function to duplicate bank + questions
     // This ensures no orphaned banks are created if question insertion fails
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- duplicate_question_bank not present in generated types; regenerate after verifying function exists
     const { data: result, error: rpcError } = await (supabase as any)
       .rpc('duplicate_question_bank', {
         source_bank_id: bankId,

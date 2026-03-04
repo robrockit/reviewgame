@@ -66,9 +66,7 @@ export async function POST(
     }
 
     // Check subscription quota (increment count if allowed)
-    // Note: increment_game_count_if_allowed is defined in migration but not yet in generated types
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
-    const { data: allowed, error: incrementError } = await (supabase as any)
+    const { data: allowed, error: incrementError } = await supabase
       .rpc('increment_game_count_if_allowed', { p_user_id: user.id });
 
     if (incrementError) {
@@ -170,9 +168,7 @@ export async function POST(
       });
 
       // Rollback counter increment
-      // Note: decrement_game_count is defined in migration but not yet in generated types
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
-      await (supabase as any).rpc('decrement_game_count', { p_user_id: user.id });
+      await supabase.rpc('decrement_game_count', { p_user_id: user.id });
 
       return NextResponse.json(
         { error: 'Failed to create duplicated game' },
@@ -181,10 +177,11 @@ export async function POST(
     }
 
     // Create team records for duplicated game
+    const teamNames = (originalGame.team_names as string[] | null) || [];
     const teamRecords = Array.from({ length: originalGame.num_teams }, (_, i) => ({
       game_id: newGame.id,
       team_number: i + 1,
-      team_name: originalGame.team_names?.[i] || `Team ${i + 1}`,
+      team_name: teamNames[i] || `Team ${i + 1}`,
       score: 0,
       connection_status: 'pending' as const,
     }));
@@ -202,9 +199,7 @@ export async function POST(
 
       // Rollback: Delete game and decrement counter
       await supabase.from('games').delete().eq('id', newGame.id);
-      // Note: decrement_game_count is defined in migration but not yet in generated types
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
-      await (supabase as any).rpc('decrement_game_count', { p_user_id: user.id });
+      await supabase.rpc('decrement_game_count', { p_user_id: user.id });
 
       return NextResponse.json(
         { error: 'Failed to create team records' },

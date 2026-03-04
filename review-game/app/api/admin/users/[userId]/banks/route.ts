@@ -17,7 +17,7 @@ import { logger } from '@/lib/logger';
 export type AdminUserQuestionBank = {
   id: string;
   title: string;
-  subject: string;
+  subject: string | null;
   description: string | null;
   difficulty: string | null;
   is_custom: boolean | null;
@@ -156,8 +156,10 @@ export async function GET(
       if (!questionError && questionData) {
         // Count questions per bank
         questionData.forEach((question) => {
-          const currentCount = questionCounts.get(question.bank_id) || 0;
-          questionCounts.set(question.bank_id, currentCount + 1);
+          if (question.bank_id) {
+            const currentCount = questionCounts.get(question.bank_id) || 0;
+            questionCounts.set(question.bank_id, currentCount + 1);
+          }
         });
       }
     }

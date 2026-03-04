@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { logger } from '@/lib/logger';
+import type { StripeSubscriptionWithFields } from '@/lib/utils/stripe';
 
 // Validate required environment variables at module load
 const requiredEnvVars = {
@@ -23,15 +24,16 @@ if (missingEnvVars.length > 0) {
 }
 
 // Initialize Stripe with validated secret key
-const stripe = new Stripe(requiredEnvVars.STRIPE_SECRET_KEY, {
+// Safe to use non-null assertion since we validated above
+const stripe = new Stripe(requiredEnvVars.STRIPE_SECRET_KEY!, {
   typescript: true,
 });
 
 // Create Supabase admin client for webhook (bypasses RLS)
 const getSupabaseAdmin = () => {
   return createClient(
-    requiredEnvVars.NEXT_PUBLIC_SUPABASE_URL,
-    requiredEnvVars.SUPABASE_SERVICE_ROLE_KEY,
+    requiredEnvVars.NEXT_PUBLIC_SUPABASE_URL!,
+    requiredEnvVars.SUPABASE_SERVICE_ROLE_KEY!,
     {
       auth: {
         autoRefreshToken: false,
@@ -174,10 +176,11 @@ export async function POST(req: NextRequest) {
 
   try {
     // Verify the event
+    // Safe to use non-null assertion since we validated above
     const event: Stripe.Event = stripe.webhooks.constructEvent(
       body,
       signature,
-      requiredEnvVars.STRIPE_WEBHOOK_SECRET
+      requiredEnvVars.STRIPE_WEBHOOK_SECRET!
     );
 
     // Initialize Supabase admin client (bypasses RLS for webhook operations)
@@ -271,7 +274,7 @@ export async function POST(req: NextRequest) {
                 billing_cycle: priceMapping?.billingCycle || null,
                 stripe_subscription_id: subscription.id,
                 trial_end_date: trialEndDate,
-                current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+                current_period_end: new Date((subscription as unknown as StripeSubscriptionWithFields).current_period_end * 1000).toISOString(),
               })
               .eq('id', profile.id);
 
@@ -324,7 +327,7 @@ export async function POST(req: NextRequest) {
       }
 
       case 'customer.subscription.updated': {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as unknown as StripeSubscriptionWithFields;
         const customerId = subscription.customer as string;
 
         if (customerId) {
@@ -532,7 +535,7 @@ export async function POST(req: NextRequest) {
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = invoice.customer as string;
-        const subscriptionId = invoice.subscription as string;
+        const subscriptionId = (invoice as unknown as { subscription: string | null }).subscription as string;
 
         if (customerId && subscriptionId) {
           // Fetch profile from Supabase
@@ -627,7 +630,7 @@ export async function POST(req: NextRequest) {
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = invoice.customer as string;
-        const subscriptionId = invoice.subscription as string;
+        const subscriptionId = (invoice as unknown as { subscription: string | null }).subscription as string;
 
         if (customerId && subscriptionId) {
           // Fetch profile from Supabase

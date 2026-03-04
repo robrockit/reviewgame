@@ -29,7 +29,7 @@ export type AdminUserLoginHistory = {
  */
 export type AdminUserAdminAction = {
   id: string;
-  admin_user_id: string;
+  admin_user_id: string | null;
   admin_email?: string | null;
   action_type: string;
   target_type: string;

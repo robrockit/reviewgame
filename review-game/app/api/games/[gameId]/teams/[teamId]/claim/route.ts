@@ -66,8 +66,7 @@ export async function POST(
     }
 
     // Use atomic database function with row-level locking to prevent race conditions
-    // Note: claim_team is defined in migration but not yet in generated types
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC function not in generated types yet
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- claim_team not present in generated types; regenerate after verifying function exists
     const { data: rawResult, error: claimError } = await (supabase as any).rpc(
       'claim_team',
       {
