@@ -35,6 +35,30 @@ export async function GET(request: Request) {
       });
       return NextResponse.redirect(`${requestUrl.origin}/login?error=auth_failed`);
     }
+
+    // Check if new FREE user needs to select banks
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('subscription_tier, accessible_prebuilt_bank_ids')
+        .eq('id', user.id)
+        .single();
+
+      // If profile is null (trigger not yet fired), fall through to /dashboard
+      if (profile) {
+        const ids = profile.accessible_prebuilt_bank_ids;
+        const needsOnboarding =
+          profile.subscription_tier?.toUpperCase() === 'FREE' &&
+          (!Array.isArray(ids) || ids.length < 3);
+
+        if (needsOnboarding) {
+          return NextResponse.redirect(`${requestUrl.origin}/onboarding/select-banks`);
+        }
+      }
+
+      return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
+    }
   }
 
   // URL to redirect to after sign in process completes
