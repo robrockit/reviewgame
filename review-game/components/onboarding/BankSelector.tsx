@@ -35,6 +35,10 @@ export default function BankSelector({
   isSubmitting = false,
   submitLabel = 'Continue',
 }: BankSelectorProps) {
+  // useState captures initialSelection only at mount. ChangeBanksModal unmounts
+  // this component when the modal closes, so the selection correctly resets on
+  // each open. If this component is ever kept mounted across opens, add a
+  // `key={currentBankIds.join(',')}` prop at the call site to force remount.
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelection);
   const [error, setError] = useState<string | null>(null);
 

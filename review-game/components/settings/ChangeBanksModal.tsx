@@ -119,30 +119,38 @@ export default function ChangeBanksModal({
                     <div className="text-gray-500">Loading available banks...</div>
                   </div>
                 ) : fetchError ? (
-                  <div className="bg-red-50 border border-red-200 rounded-md p-4">
-                    <p className="text-sm text-red-800">{fetchError}</p>
-                  </div>
-                ) : (
-                  <BankSelector
-                    banks={banks}
-                    initialSelection={currentBankIds}
-                    onConfirm={handleConfirm}
-                    isSubmitting={isSubmitting}
-                    submitLabel="Save Changes"
-                  />
-                )}
-
-                {!loading && !fetchError && (
-                  <div className="mt-4">
+                  <div className="space-y-4">
+                    <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                      <p className="text-sm text-red-800">{fetchError}</p>
+                    </div>
                     <button
                       type="button"
                       onClick={handleClose}
-                      disabled={isSubmitting}
-                      className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                      className="text-sm text-gray-500 hover:text-gray-700"
                     >
                       Cancel
                     </button>
                   </div>
+                ) : (
+                  <>
+                    <BankSelector
+                      banks={banks}
+                      initialSelection={currentBankIds}
+                      onConfirm={handleConfirm}
+                      isSubmitting={isSubmitting}
+                      submitLabel="Save Changes"
+                    />
+                    <div className="mt-4">
+                      <button
+                        type="button"
+                        onClick={handleClose}
+                        disabled={isSubmitting}
+                        className="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
                 )}
               </Dialog.Panel>
             </Transition.Child>

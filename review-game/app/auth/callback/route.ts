@@ -45,7 +45,7 @@ export async function GET(request: Request) {
         .eq('id', user.id)
         .single();
 
-      // If profile is null (trigger not yet fired), fall through to /dashboard
+      // If profile is null (trigger not yet fired), fall through to next/dashboard
       if (profile) {
         const ids = profile.accessible_prebuilt_bank_ids;
         const needsOnboarding =
@@ -56,11 +56,13 @@ export async function GET(request: Request) {
           return NextResponse.redirect(`${requestUrl.origin}/onboarding/select-banks`);
         }
       }
-
-      return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
     }
+
+    // Preserve any next-param encoded in the callback URL (e.g. magic-link logins)
+    const next = requestUrl.searchParams.get('next') ?? '/dashboard';
+    return NextResponse.redirect(`${requestUrl.origin}${next}`);
   }
 
-  // URL to redirect to after sign in process completes
+  // No code — fall back to dashboard
   return NextResponse.redirect(`${requestUrl.origin}/dashboard`);
 }

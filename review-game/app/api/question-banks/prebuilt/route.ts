@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createAdminServerClient } from '@/lib/admin/auth';
+import { createServerClient } from '@supabase/ssr';
 import { logger } from '@/lib/logger';
 import type { PrebuiltBank } from '@/types/question-banks';
+import type { Database } from '@/types/database.types';
 
 // Re-export so callers can import from this route module if preferred
 export type { PrebuiltBank };
@@ -11,12 +12,20 @@ export type { PrebuiltBank };
  * Returns all public prebuilt banks with question counts.
  * No auth required — used by onboarding and settings to display all options.
  *
- * Note: uses anon key (createAdminServerClient) — public banks are readable
- * without authentication because RLS allows reads on is_public=true rows.
+ * Uses a minimal no-cookie anon client (no session needed for a public read).
+ * RLS permits reads on is_public=true rows for the anon role.
  */
 export async function GET() {
   try {
-    const supabase = await createAdminServerClient();
+    // No cookies — this is a public endpoint, no user session required.
+    // Do NOT use createAdminServerClient (anon+cookies) or
+    // createAdminServiceClient (service role) here; anon key with no session
+    // context is the correct least-privilege choice for a public read.
+    const supabase = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { cookies: { get: () => undefined, set: () => {}, remove: () => {} } }
+    );
 
     const { data: banks, error } = await supabase
       .from('question_banks')

@@ -34,8 +34,11 @@ export async function validateAndSaveBankSelection(
     return NextResponse.json({ error: 'Invalid bank selection' }, { status: 400 });
   }
 
-  // Uses anon key with cookie-based session — subject to RLS policies.
-  // RLS allows users to read their own profile and all public prebuilt banks.
+  // createAdminServerClient uses the ANON key + request cookies (not service role).
+  // The caller (route handler) has already authenticated the user via
+  // getAuthenticatedUser(), so the session cookie is present. RLS therefore
+  // scopes the profile UPDATE to rows where auth.uid() = userId, which is exactly
+  // what we want — users can only update their own bank selection.
   const supabase = await createAdminServerClient();
 
   const { data: profile, error: profileError } = await supabase
