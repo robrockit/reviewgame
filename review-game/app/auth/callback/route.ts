@@ -36,7 +36,9 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${requestUrl.origin}/login?error=auth_failed`);
     }
 
-    // Check if new FREE user needs to select banks
+    // Check if new FREE user needs to select banks.
+    // Requires profiles.accessible_prebuilt_bank_ids (JSONB) — added in RG-107
+    // via supabase/migrations/20260219_bank_access_control_schema.sql
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data: profile } = await supabase
@@ -58,8 +60,11 @@ export async function GET(request: Request) {
       }
     }
 
-    // Preserve any next-param encoded in the callback URL (e.g. magic-link logins)
-    const next = requestUrl.searchParams.get('next') ?? '/dashboard';
+    // Preserve any next-param encoded in the callback URL (e.g. magic-link logins).
+    // Validate it is a safe root-relative path: must start with '/' but not '//'
+    // (scheme-relative URLs like //evil.com would redirect off-site).
+    const rawNext = requestUrl.searchParams.get('next') ?? '/dashboard';
+    const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/dashboard';
     return NextResponse.redirect(`${requestUrl.origin}${next}`);
   }
 

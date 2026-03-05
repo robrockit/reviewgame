@@ -41,16 +41,24 @@ export async function GET() {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
-    const transformed: PrebuiltBank[] = (banks ?? []).map((bank) => ({
-      id: bank.id,
-      title: bank.title,
-      subject: bank.subject,
-      description: bank.description,
-      difficulty: bank.difficulty,
-      question_count: Array.isArray(bank.questions) && bank.questions.length > 0
-        ? (bank.questions[0] as { count: number }).count
-        : 0,
-    }));
+    const transformed: PrebuiltBank[] = (banks ?? []).map((bank) => {
+      // Supabase returns embedded aggregate counts as [{ count: N }].
+      // Guard defensively against shape changes rather than casting blindly.
+      const countRow = Array.isArray(bank.questions) ? bank.questions[0] : undefined;
+      const question_count =
+        typeof countRow === 'object' && countRow !== null && 'count' in countRow
+          ? Number((countRow as { count: number }).count)
+          : 0;
+
+      return {
+        id: bank.id,
+        title: bank.title,
+        subject: bank.subject,
+        description: bank.description,
+        difficulty: bank.difficulty,
+        question_count,
+      };
+    });
 
     logger.info('Prebuilt question banks fetched', {
       operation: 'getPrebuiltQuestionBanks',
