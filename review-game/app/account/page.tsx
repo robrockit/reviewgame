@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { BackButton } from '@/components/navigation/BackButton';
+import ChangeBanksModal from '@/components/settings/ChangeBanksModal';
 import type { User } from '@supabase/supabase-js';
+import type { PrebuiltBank } from '@/types/question-banks';
 
 interface Profile {
   id: string;
@@ -14,44 +16,88 @@ interface Profile {
   stripe_subscription_id: string | null;
   trial_end_date: string | null;
   current_period_end: string | null;
+  subscription_tier: string | null;
+  accessible_prebuilt_bank_ids: string[] | null;
 }
 
 export default function AccountPage() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isChangeBanksOpen, setIsChangeBanksOpen] = useState(false);
+  const [selectedBankNames, setSelectedBankNames] = useState<string[]>([]);
   const router = useRouter();
   const supabase = createClient();
 
-  useEffect(() => {
-    const fetchUserData = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+  const fetchBankNames = useCallback(async (bankIds: string[]) => {
+    if (bankIds.length === 0) {
+      setSelectedBankNames([]);
+      return;
+    }
+    try {
+      const response = await fetch('/api/question-banks/prebuilt');
+      const json = await response.json() as { data?: PrebuiltBank[] };
+      const allBanks = json.data ?? [];
+      const names = bankIds
+        .map((id) => allBanks.find((b) => b.id === id)?.title)
+        .filter((name): name is string => name !== undefined);
+      setSelectedBankNames(names);
+    } catch {
+      setSelectedBankNames([]);
+    }
+  }, []);
 
-      if (!user) {
-        router.push('/login');
-        return;
-      }
+  const fetchUserData = useCallback(async () => {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
 
-      setUser(user);
+    if (!authUser) {
+      setLoading(false);
+      router.push('/login');
+      return;
+    }
 
-      // Fetch profile data
+    setUser(authUser);
+
+    try {
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('*')
-        .eq('id', user.id)
+        .select('id, email, stripe_customer_id, subscription_status, stripe_subscription_id, trial_end_date, current_period_end, subscription_tier, accessible_prebuilt_bank_ids')
+        .eq('id', authUser.id)
         .single();
 
-      setProfile(profileData);
-      setLoading(false);
-    };
+      if (profileData) {
+        const rawIds = profileData.accessible_prebuilt_bank_ids;
+        const bankIds = Array.isArray(rawIds)
+          ? rawIds.filter((id): id is string => typeof id === 'string')
+          : null;
 
-    fetchUserData();
-  }, [router, supabase]);
+        const typedProfile: Profile = {
+          ...profileData,
+          accessible_prebuilt_bank_ids: bankIds,
+        };
+        setProfile(typedProfile);
+
+        if (typedProfile.subscription_tier?.toUpperCase() === 'FREE' && bankIds) {
+          void fetchBankNames(bankIds);
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [router, supabase, fetchBankNames]);
+
+  useEffect(() => {
+    void fetchUserData();
+  }, [fetchUserData]);
 
   const handleManageSubscription = async () => {
     // Redirect to Stripe customer portal for subscription management
     // This would require a backend endpoint to generate a portal session
     alert('Subscription management portal coming soon!');
+  };
+
+  const handleChangeBanksSuccess = () => {
+    void fetchUserData();
   };
 
   if (loading) {
@@ -61,6 +107,9 @@ export default function AccountPage() {
       </div>
     );
   }
+
+  const isFreeUser = profile?.subscription_tier?.toUpperCase() === 'FREE';
+  const currentBankIds = profile?.accessible_prebuilt_bank_ids ?? [];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -91,6 +140,45 @@ export default function AccountPage() {
             </div>
           </div>
         </div>
+
+        {/* Your Question Banks — FREE users only */}
+        {isFreeUser && (
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Your Question Banks</h2>
+              <button
+                onClick={() => setIsChangeBanksOpen(true)}
+                className="px-4 py-2 text-sm font-medium text-indigo-600 border border-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors"
+              >
+                Change Banks
+              </button>
+            </div>
+
+            {currentBankIds.length === 0 ? (
+              <p className="text-gray-500 text-sm">No banks selected yet.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {selectedBankNames.length > 0
+                  ? selectedBankNames.map((name) => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800"
+                      >
+                        {name}
+                      </span>
+                    ))
+                  : currentBankIds.map((id) => (
+                      <span
+                        key={id}
+                        className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700 font-mono"
+                      >
+                        {id}
+                      </span>
+                    ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Subscription Status */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
@@ -179,6 +267,16 @@ export default function AccountPage() {
           </div>
         </div>
       </div>
+
+      {/* Change Banks Modal */}
+      {isFreeUser && (
+        <ChangeBanksModal
+          isOpen={isChangeBanksOpen}
+          onClose={() => setIsChangeBanksOpen(false)}
+          currentBankIds={currentBankIds}
+          onSuccess={handleChangeBanksSuccess}
+        />
+      )}
     </div>
   );
 }
