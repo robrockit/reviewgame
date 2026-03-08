@@ -37,7 +37,9 @@ export default function ImageModal({ src, alt, onClose }: ImageModalProps) {
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') { onClose(); return; }
+      // Only one focusable element exists; prevent Tab from escaping to the background.
+      if (e.key === 'Tab') e.preventDefault();
     },
     [onClose]
   );

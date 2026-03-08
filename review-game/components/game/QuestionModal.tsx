@@ -176,6 +176,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
   const [srAnnouncement, setSrAnnouncement] = useState('');
   const [previousBuzzQueueLength, setPreviousBuzzQueueLength] = useState(0);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   // Supabase client - memoized to ensure stable reference for callbacks
   const supabase = useMemo(() => createClient(), []);
@@ -243,6 +244,12 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       isMountedRef.current = false;
     };
   }, []);
+
+  // Reset broken-image flag when the question changes so a new question's
+  // valid image isn't hidden because the previous question had a bad URL.
+  useEffect(() => {
+    setImgError(false);
+  }, [currentQuestion?.id]);
 
   // Performance monitoring: Track modal open/close
   useEffect(() => {
@@ -668,15 +675,15 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         onClick={handleBackdropClick}
         role="presentation"
       >
-      <div
-        ref={modalRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="modal-category"
-        aria-describedby="modal-question"
-        aria-busy={isProcessing}
-        className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
-      >
+        <div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-category"
+          aria-describedby="modal-question"
+          aria-busy={isProcessing}
+          className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+        >
         {/* Header Section */}
         <div className="sticky top-0 bg-gray-800 border-b border-gray-700 p-6 flex items-center justify-between gap-6">
           <div className="flex-1">
@@ -736,7 +743,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         <div className="p-8">
           <div className="text-center mb-8">
             {/* Question image — displayed above the text when present */}
-            {isSafeImageUrl(currentQuestion.image_url) && (
+            {isSafeImageUrl(currentQuestion.image_url) && !imgError && (
               <div className="mb-6 flex justify-center">
                 <button
                   type="button"
@@ -748,6 +755,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
                   <img
                     src={currentQuestion.image_url}
                     alt="Question image"
+                    loading="lazy"
+                    onError={() => setImgError(true)}
                     className="max-w-[600px] w-full h-auto rounded-lg hover:opacity-90 transition-opacity"
                   />
                 </button>
@@ -875,8 +884,8 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
             <p>Press <kbd className="px-2 py-1 bg-gray-700 rounded">ESC</kbd> to close without scoring</p>
           </div>
         </div>
+        </div>
       </div>
-    </div>
 
       {/* Image lightbox — rendered outside the modal scroll container */}
       {isImageModalOpen && isSafeImageUrl(currentQuestion.image_url) && (

@@ -102,6 +102,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
   const [wagerInput, setWagerInput] = useState('');
   const [wagerError, setWagerError] = useState<string | null>(null);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   // Supabase client - memoized to ensure stable reference for callbacks
   const supabase = useMemo(() => createClient(), []);
@@ -136,6 +137,12 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
       clearWager();
     }
   }, [isOpen, clearWager]);
+
+  // Reset broken-image flag when question changes so a new question's image
+  // isn't hidden because the previous question had an unreachable URL.
+  useEffect(() => {
+    setImgError(false);
+  }, [currentQuestion?.id]);
 
   /**
    * Calculates the maximum wager allowed for the controlling team.
@@ -752,7 +759,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
               </div>
 
               <div className="text-center mb-8">
-                {isSafeImageUrl(currentQuestion.image_url) && (
+                {isSafeImageUrl(currentQuestion.image_url) && !imgError && (
                   <div className="mb-6 flex justify-center">
                     <button
                       type="button"
@@ -764,6 +771,8 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
                       <img
                         src={currentQuestion.image_url}
                         alt="Question image"
+                        loading="lazy"
+                        onError={() => setImgError(true)}
                         className="max-w-[600px] w-full h-auto rounded-lg hover:opacity-90 transition-opacity"
                       />
                     </button>
