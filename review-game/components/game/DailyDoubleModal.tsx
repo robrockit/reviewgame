@@ -21,6 +21,8 @@ import { useGameStore } from '../../lib/stores/gameStore';
 import { createClient } from '@/lib/supabase/client';
 import { logger } from '@/lib/logger';
 import { BUTTON_TEXT } from '@/lib/constants/ui';
+import { isSafeImageUrl } from '@/lib/utils/url';
+import ImageModal from '@/components/ui/ImageModal';
 
 /**
  * Props for the DailyDoubleModal component.
@@ -99,6 +101,8 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
   const [isProcessing, setIsProcessing] = useState(false);
   const [wagerInput, setWagerInput] = useState('');
   const [wagerError, setWagerError] = useState<string | null>(null);
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   // Supabase client - memoized to ensure stable reference for callbacks
   const supabase = useMemo(() => createClient(), []);
@@ -133,6 +137,12 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
       clearWager();
     }
   }, [isOpen, clearWager]);
+
+  // Reset broken-image flag when question changes so a new question's image
+  // isn't hidden because the previous question had an unreachable URL.
+  useEffect(() => {
+    setImgError(false);
+  }, [currentQuestion?.id]);
 
   /**
    * Calculates the maximum wager allowed for the controlling team.
@@ -331,7 +341,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
    *
    * @async
    */
-  const handleCorrect = async () => {
+  const handleCorrect = useCallback(async () => {
     if (isProcessing || !currentQuestion || !controllingTeamId || !controllingTeam || !currentWager) return;
 
     // IMPORTANT: Snapshot values before any async operations to prevent race conditions
@@ -439,7 +449,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
         setIsProcessing(false);
       }
     }
-  };
+  }, [isProcessing, currentQuestion, controllingTeamId, controllingTeam, currentWager, supabase, gameId, clearWager, setCurrentQuestion, onQuestionClose]);
 
   /**
    * Handles an incorrect answer by deducting the wagered points.
@@ -457,7 +467,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
    *
    * @async
    */
-  const handleIncorrect = async () => {
+  const handleIncorrect = useCallback(async () => {
     if (isProcessing || !currentQuestion || !controllingTeamId || !controllingTeam || !currentWager) return;
 
     // IMPORTANT: Snapshot values before any async operations to prevent race conditions
@@ -567,7 +577,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
         setIsProcessing(false);
       }
     }
-  };
+  }, [isProcessing, currentQuestion, controllingTeamId, controllingTeam, currentWager, supabase, gameId, clearWager, setCurrentQuestion, onQuestionClose]);
 
   // Handle escape key to close modal
   useEffect(() => {
@@ -590,7 +600,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
 
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, [isOpen, isProcessing, handleClose, isWagerSubmitted, currentWager, controllingTeamId, clearWager]);
 
@@ -598,15 +608,16 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
   if (!isOpen || !currentQuestion) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4"
-      onClick={(e) => {
-        // Close modal if clicking the backdrop (only if wager not submitted)
-        if (e.target === e.currentTarget && !isProcessing && !isWagerSubmitted) {
-          handleClose();
-        }
-      }}
-    >
+    <>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4"
+        onClick={(e) => {
+          // Close modal if clicking the backdrop (only if wager not submitted)
+          if (e.target === e.currentTarget && !isProcessing && !isWagerSubmitted) {
+            handleClose();
+          }
+        }}
+      >
       <div className="bg-gradient-to-br from-green-800 to-green-900 rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border-4 border-yellow-400">
         {/* Header Section with DAILY DOUBLE announcement */}
         <div className="sticky top-0 bg-green-800 border-b-4 border-yellow-400 p-6">
@@ -748,6 +759,25 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
               </div>
 
               <div className="text-center mb-8">
+                {isSafeImageUrl(currentQuestion.imageUrl) && !imgError && (
+                  <div className="mb-6 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setIsImageModalOpen(true)}
+                      className="focus:outline-none focus:ring-2 focus:ring-white rounded-lg"
+                      aria-label="View question image enlarged"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- external user-supplied URLs */}
+                      <img
+                        src={currentQuestion.imageUrl}
+                        alt="Question image"
+                        loading="lazy"
+                        onError={() => setImgError(true)}
+                        className="max-w-[600px] w-full h-auto rounded-lg hover:opacity-90 transition-opacity"
+                      />
+                    </button>
+                  </div>
+                )}
                 <p className="text-2xl md:text-3xl lg:text-4xl text-white font-medium leading-relaxed">
                   {currentQuestion.text}
                 </p>
@@ -786,6 +816,16 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
           )}
         </div>
       </div>
-    </div>
+      </div>
+
+      {/* Image lightbox */}
+      {isImageModalOpen && isSafeImageUrl(currentQuestion.imageUrl) && (
+        <ImageModal
+          src={currentQuestion.imageUrl}
+          alt="Question image enlarged"
+          onClose={() => setIsImageModalOpen(false)}
+        />
+      )}
+    </>
   );
 };
