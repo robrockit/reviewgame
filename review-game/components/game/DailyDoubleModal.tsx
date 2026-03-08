@@ -759,7 +759,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
               </div>
 
               <div className="text-center mb-8">
-                {isSafeImageUrl(currentQuestion.image_url) && !imgError && (
+                {isSafeImageUrl(currentQuestion.imageUrl) && !imgError && (
                   <div className="mb-6 flex justify-center">
                     <button
                       type="button"
@@ -769,7 +769,7 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element -- external user-supplied URLs */}
                       <img
-                        src={currentQuestion.image_url}
+                        src={currentQuestion.imageUrl}
                         alt="Question image"
                         loading="lazy"
                         onError={() => setImgError(true)}
@@ -819,9 +819,9 @@ export const DailyDoubleModal: React.FC<DailyDoubleModalProps> = ({ gameId, onQu
       </div>
 
       {/* Image lightbox */}
-      {isImageModalOpen && isSafeImageUrl(currentQuestion.image_url) && (
+      {isImageModalOpen && isSafeImageUrl(currentQuestion.imageUrl) && (
         <ImageModal
-          src={currentQuestion.image_url}
+          src={currentQuestion.imageUrl}
           alt="Question image enlarged"
           onClose={() => setIsImageModalOpen(false)}
         />

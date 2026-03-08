@@ -253,7 +253,7 @@ export default function GameBoardPage() {
             isUsed: usedQuestions.includes(q.id),
             isDailyDouble,
             categoryName, // Include category name for modal display
-            image_url: q.image_url,
+            imageUrl: q.image_url,
           };
         });
 
