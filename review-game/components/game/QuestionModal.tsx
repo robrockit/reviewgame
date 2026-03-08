@@ -23,6 +23,7 @@ import { useGameStore } from '../../lib/stores/gameStore';
 import { createClient } from '@/lib/supabase/client';
 import { Timer } from './Timer';
 import { getPositionDisplay } from '@/lib/utils/position';
+import { isSafeImageUrl } from '@/lib/utils/url';
 import { logger } from '@/lib/logger';
 import { BUZZ_QUEUE_LABELS, BUTTON_TEXT, QUESTION_MODAL_MESSAGES } from '@/lib/constants/ui';
 import ImageModal from '@/components/ui/ImageModal';
@@ -287,9 +288,11 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
     }
   }, [isOpen, categoryName, currentQuestion?.value, currentQuestion?.text]);
 
-  // Focus trap: Keep focus within modal
+  // Focus trap: Keep focus within modal.
+  // Suspended while isImageModalOpen — ImageModal manages its own focus and
+  // competing Tab handlers would cause confusing behaviour.
   useEffect(() => {
-    if (!isOpen || !modalRef.current) return;
+    if (!isOpen || isImageModalOpen || !modalRef.current) return;
 
     const updateFocusableElements = () => {
       if (!modalRef.current) return;
@@ -349,7 +352,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       document.removeEventListener('keydown', handleTabKey);
       observer.disconnect();
     };
-  }, [isOpen]);
+  }, [isOpen, isImageModalOpen]);
 
   // Announce buzz queue changes
   useEffect(() => {
@@ -636,7 +639,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
 
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = '';
     };
   }, [isOpen, isProcessing, handleClose]);
 
@@ -660,11 +663,11 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
 
   return (
     <>
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4"
-      onClick={handleBackdropClick}
-      role="presentation"
-    >
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-80 p-4"
+        onClick={handleBackdropClick}
+        role="presentation"
+      >
       <div
         ref={modalRef}
         role="dialog"
@@ -733,16 +736,21 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
         <div className="p-8">
           <div className="text-center mb-8">
             {/* Question image — displayed above the text when present */}
-            {currentQuestion.image_url && (
+            {isSafeImageUrl(currentQuestion.image_url) && (
               <div className="mb-6 flex justify-center">
-                {/* eslint-disable-next-line @next/next/no-img-element -- external user-supplied URLs */}
-                <img
-                  src={currentQuestion.image_url}
-                  alt="Question image"
-                  className="max-w-[600px] w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                <button
+                  type="button"
                   onClick={() => setIsImageModalOpen(true)}
-                  title="Click to enlarge"
-                />
+                  className="focus:outline-none focus:ring-2 focus:ring-white rounded-lg"
+                  aria-label="View question image enlarged"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- external user-supplied URLs */}
+                  <img
+                    src={currentQuestion.image_url}
+                    alt="Question image"
+                    className="max-w-[600px] w-full h-auto rounded-lg hover:opacity-90 transition-opacity"
+                  />
+                </button>
               </div>
             )}
             <p id="modal-question" className="text-2xl md:text-3xl lg:text-4xl text-white font-medium leading-relaxed">
@@ -870,14 +878,14 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       </div>
     </div>
 
-    {/* Image lightbox — rendered outside the modal scroll container */}
-    {isImageModalOpen && currentQuestion.image_url && (
-      <ImageModal
-        src={currentQuestion.image_url}
-        alt="Question image enlarged"
-        onClose={() => setIsImageModalOpen(false)}
-      />
-    )}
+      {/* Image lightbox — rendered outside the modal scroll container */}
+      {isImageModalOpen && isSafeImageUrl(currentQuestion.image_url) && (
+        <ImageModal
+          src={currentQuestion.image_url}
+          alt="Question image enlarged"
+          onClose={() => setIsImageModalOpen(false)}
+        />
+      )}
     </>
   );
 };

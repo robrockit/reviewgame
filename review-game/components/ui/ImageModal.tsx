@@ -14,19 +14,23 @@ interface ImageModalProps {
  * - Dark overlay backdrop
  * - Closes on ESC, backdrop click, or X button
  * - Focus trapped inside while open; restored to trigger element on close
+ * - Saves and restores body overflow so the outer modal's scroll lock is preserved
  */
 export default function ImageModal({ src, alt, onClose }: ImageModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
-  // Save the previously focused element and focus the close button on mount
+  // Save the previously focused element and focus the close button on mount.
+  // Snapshot the current overflow value so restoring it doesn't clear a lock
+  // that was set by the parent QuestionModal.
   useEffect(() => {
     previousFocusRef.current = document.activeElement as HTMLElement;
     closeButtonRef.current?.focus();
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = previousOverflow;
       previousFocusRef.current?.focus();
     };
   }, []);
@@ -53,7 +57,7 @@ export default function ImageModal({ src, alt, onClose }: ImageModalProps) {
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
-      aria-label="Image enlarged view"
+      aria-label={`Enlarged view: ${alt}`}
     >
       <button
         ref={closeButtonRef}
