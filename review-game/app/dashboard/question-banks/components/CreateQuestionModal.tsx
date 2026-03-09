@@ -54,6 +54,7 @@ export default function CreateQuestionModal({
         useExistingCategory: initialCategory ? categories.includes(initialCategory) : true,
         pointValue: initialPointValue ?? 100,
       });
+      setError(null);
     }
   }, [isOpen, initialCategory, initialPointValue, categories, initForm]);
 

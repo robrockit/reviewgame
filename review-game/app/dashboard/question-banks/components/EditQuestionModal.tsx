@@ -58,6 +58,7 @@ export default function EditQuestionModal({
         teacherNotes: question.teacher_notes ?? '',
         imageUrl: question.image_url ?? '',
       });
+      setError(null);
     }
   }, [isOpen, question, categories, initForm]);
 
