@@ -52,6 +52,7 @@ export default function QuestionBankDetailPage({
   const [selectedPointValue, setSelectedPointValue] = useState<number>(100);
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
   const [questionToEdit, setQuestionToEdit] = useState<Question | null>(null);
+  const [deleteTriggeredFromEdit, setDeleteTriggeredFromEdit] = useState(false);
 
   // Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -167,12 +168,24 @@ export default function QuestionBankDetailPage({
   const handleDeleteRequest = () => {
     setEditModalOpen(false);
     setSelectedQuestion(questionToEdit);
+    setDeleteTriggeredFromEdit(true);
     setDeleteModalOpen(true);
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteModalOpen(false);
+    setSelectedQuestion(null);
+    if (deleteTriggeredFromEdit) {
+      setDeleteTriggeredFromEdit(false);
+      setEditModalOpen(true);
+    }
   };
 
   const handleDeleteConfirm = async () => {
     if (selectedQuestion) {
       await deleteQuestion(selectedQuestion.id);
+      setDeleteTriggeredFromEdit(false);
+      setQuestionToEdit(null);
       showToast('Question deleted successfully');
     }
   };
@@ -361,7 +374,7 @@ export default function QuestionBankDetailPage({
 
       <DeleteQuestionModal
         isOpen={deleteModalOpen}
-        onClose={() => { setDeleteModalOpen(false); setSelectedQuestion(null); }}
+        onClose={handleDeleteCancel}
         onConfirm={handleDeleteConfirm}
         question={selectedQuestion}
       />
