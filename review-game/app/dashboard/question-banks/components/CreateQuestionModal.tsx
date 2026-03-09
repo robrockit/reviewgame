@@ -3,19 +3,14 @@
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment, useState, useEffect } from 'react';
 import { PlusIcon } from '@heroicons/react/24/outline';
-import { QUESTION_VALIDATION, URL_REGEX } from '@/lib/constants/question-banks';
+import { QUESTION_VALIDATION } from '@/lib/constants/question-banks';
+import type { QuestionFormData } from '@/types/question-bank.types';
+import { useQuestionForm } from '../hooks/useQuestionForm';
 
 interface CreateQuestionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (data: {
-    category: string;
-    point_value: number;
-    question_text: string;
-    answer_text: string;
-    teacher_notes?: string;
-    image_url?: string;
-  }) => Promise<void>;
+  onConfirm: (data: QuestionFormData) => Promise<void>;
   categories: string[];
   initialCategory?: string;
   initialPointValue?: number;
@@ -34,113 +29,42 @@ export default function CreateQuestionModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Form state
-  const [category, setCategory] = useState('');
-  const [useExistingCategory, setUseExistingCategory] = useState(true);
-  const [pointValue, setPointValue] = useState<number>(100);
-  const [questionText, setQuestionText] = useState('');
-  const [answerText, setAnswerText] = useState('');
-  const [teacherNotes, setTeacherNotes] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const {
+    category, setCategory,
+    useExistingCategory, setUseExistingCategory,
+    pointValue, setPointValue,
+    questionText, setQuestionText,
+    answerText, setAnswerText,
+    teacherNotes, setTeacherNotes,
+    imageUrl, setImageUrl,
+    categoryError,
+    questionTextError,
+    answerTextError,
+    imageUrlError,
+    initForm,
+    resetForm,
+    validateForm,
+    buildPayload,
+  } = useQuestionForm();
 
-  // Validation errors
-  const [categoryError, setCategoryError] = useState('');
-  const [questionTextError, setQuestionTextError] = useState('');
-  const [answerTextError, setAnswerTextError] = useState('');
-  const [imageUrlError, setImageUrlError] = useState('');
-
-  // Initialize with provided values
   useEffect(() => {
     if (isOpen) {
-      if (initialCategory) {
-        setCategory(initialCategory);
-        setUseExistingCategory(categories.includes(initialCategory));
-      }
-      if (initialPointValue) {
-        setPointValue(initialPointValue);
-      }
+      initForm({
+        category: initialCategory ?? '',
+        useExistingCategory: initialCategory ? categories.includes(initialCategory) : true,
+        pointValue: initialPointValue ?? 100,
+      });
     }
-  }, [isOpen, initialCategory, initialPointValue, categories]);
-
-  const resetForm = () => {
-    setCategory('');
-    setUseExistingCategory(true);
-    setPointValue(100);
-    setQuestionText('');
-    setAnswerText('');
-    setTeacherNotes('');
-    setImageUrl('');
-    setCategoryError('');
-    setQuestionTextError('');
-    setAnswerTextError('');
-    setImageUrlError('');
-    setError(null);
-  };
-
-  const validateForm = (): boolean => {
-    let isValid = true;
-
-    // Validate category
-    if (!category.trim()) {
-      setCategoryError('Category is required');
-      isValid = false;
-    } else if (category.length > QUESTION_VALIDATION.CATEGORY_MAX_LENGTH) {
-      setCategoryError(`Category must not exceed ${QUESTION_VALIDATION.CATEGORY_MAX_LENGTH} characters`);
-      isValid = false;
-    } else {
-      setCategoryError('');
-    }
-
-    // Validate question text
-    if (!questionText.trim()) {
-      setQuestionTextError('Question text is required');
-      isValid = false;
-    } else if (questionText.length > QUESTION_VALIDATION.QUESTION_TEXT_MAX_LENGTH) {
-      setQuestionTextError(`Question text must not exceed ${QUESTION_VALIDATION.QUESTION_TEXT_MAX_LENGTH} characters`);
-      isValid = false;
-    } else {
-      setQuestionTextError('');
-    }
-
-    // Validate answer text
-    if (!answerText.trim()) {
-      setAnswerTextError('Answer text is required');
-      isValid = false;
-    } else if (answerText.length > QUESTION_VALIDATION.ANSWER_TEXT_MAX_LENGTH) {
-      setAnswerTextError(`Answer text must not exceed ${QUESTION_VALIDATION.ANSWER_TEXT_MAX_LENGTH} characters`);
-      isValid = false;
-    } else {
-      setAnswerTextError('');
-    }
-
-    // Validate image URL if provided
-    if (imageUrl.trim() && !URL_REGEX.test(imageUrl.trim())) {
-      setImageUrlError('Please enter a valid HTTP/HTTPS URL');
-      isValid = false;
-    } else {
-      setImageUrlError('');
-    }
-
-    return isValid;
-  };
+  }, [isOpen, initialCategory, initialPointValue, categories, initForm]);
 
   const handleConfirm = async () => {
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     setIsSubmitting(true);
     setError(null);
 
     try {
-      await onConfirm({
-        category: category.trim(),
-        point_value: pointValue,
-        question_text: questionText.trim(),
-        answer_text: answerText.trim(),
-        teacher_notes: teacherNotes.trim() || undefined,
-        image_url: imageUrl.trim() || undefined,
-      });
+      await onConfirm(buildPayload());
       resetForm();
       onClose();
     } catch (err) {
@@ -281,11 +205,11 @@ export default function CreateQuestionModal({
 
                   {/* Point Value */}
                   <div>
-                    <label htmlFor="pointValue" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="create-pointValue" className="block text-sm font-medium text-gray-700">
                       Point Value <span className="text-red-500">*</span>
                     </label>
                     <select
-                      id="pointValue"
+                      id="create-pointValue"
                       value={pointValue}
                       onChange={(e) => setPointValue(Number(e.target.value))}
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
@@ -301,11 +225,11 @@ export default function CreateQuestionModal({
 
                   {/* Question Text */}
                   <div>
-                    <label htmlFor="questionText" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="create-questionText" className="block text-sm font-medium text-gray-700">
                       Question <span className="text-red-500">*</span>
                     </label>
                     <textarea
-                      id="questionText"
+                      id="create-questionText"
                       value={questionText}
                       onChange={(e) => setQuestionText(e.target.value)}
                       rows={3}
@@ -328,11 +252,11 @@ export default function CreateQuestionModal({
 
                   {/* Answer Text */}
                   <div>
-                    <label htmlFor="answerText" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="create-answerText" className="block text-sm font-medium text-gray-700">
                       Answer <span className="text-red-500">*</span>
                     </label>
                     <textarea
-                      id="answerText"
+                      id="create-answerText"
                       value={answerText}
                       onChange={(e) => setAnswerText(e.target.value)}
                       rows={2}
@@ -355,11 +279,11 @@ export default function CreateQuestionModal({
 
                   {/* Teacher Notes */}
                   <div>
-                    <label htmlFor="teacherNotes" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="create-teacherNotes" className="block text-sm font-medium text-gray-700">
                       Teacher Notes (optional)
                     </label>
                     <textarea
-                      id="teacherNotes"
+                      id="create-teacherNotes"
                       value={teacherNotes}
                       onChange={(e) => setTeacherNotes(e.target.value)}
                       rows={2}
@@ -375,7 +299,7 @@ export default function CreateQuestionModal({
 
                   {/* Image URL */}
                   <div>
-                    <label htmlFor="imageUrl" className="flex items-center text-sm font-medium text-gray-700">
+                    <label htmlFor="create-imageUrl" className="flex items-center text-sm font-medium text-gray-700">
                       Image URL (optional)
                       {!canAddImages && (
                         <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -385,7 +309,7 @@ export default function CreateQuestionModal({
                     </label>
                     <input
                       type="url"
-                      id="imageUrl"
+                      id="create-imageUrl"
                       value={imageUrl}
                       onChange={(e) => setImageUrl(e.target.value)}
                       className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${

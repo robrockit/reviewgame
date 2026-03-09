@@ -62,6 +62,7 @@ export const JEOPARDY_GRID = {
 
 /**
  * URL validation regex
- * Basic URL validation - accepts http/https URLs
+ * Accepts HTTPS URLs only. HTTP is intentionally excluded: http: images are
+ * blocked as mixed-content by browsers on HTTPS pages, causing silent failures.
  */
-export const URL_REGEX = /^https?:\/\/.+/i;
+export const URL_REGEX = /^https:\/\/.+/i;

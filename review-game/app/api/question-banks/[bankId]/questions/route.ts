@@ -292,7 +292,7 @@ export async function POST(
       }
       if (!URL_REGEX.test(image_url)) {
         return NextResponse.json(
-          { error: 'Image URL must be a valid HTTP/HTTPS URL' },
+          { error: 'Image URL must be a valid HTTPS URL' },
           { status: 400 }
         );
       }

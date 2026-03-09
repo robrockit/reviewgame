@@ -3,8 +3,9 @@
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment, useState, useEffect } from 'react';
 import { PencilSquareIcon } from '@heroicons/react/24/outline';
-import { QUESTION_VALIDATION, URL_REGEX } from '@/lib/constants/question-banks';
+import { QUESTION_VALIDATION } from '@/lib/constants/question-banks';
 import type { Question, QuestionFormData } from '@/types/question-bank.types';
+import { useQuestionForm } from '../hooks/useQuestionForm';
 
 interface EditQuestionModalProps {
   isOpen: boolean;
@@ -28,99 +29,46 @@ export default function EditQuestionModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Form state
-  const [category, setCategory] = useState('');
-  const [useExistingCategory, setUseExistingCategory] = useState(true);
-  const [pointValue, setPointValue] = useState<number>(100);
-  const [questionText, setQuestionText] = useState('');
-  const [answerText, setAnswerText] = useState('');
-  const [teacherNotes, setTeacherNotes] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-
-  // Validation errors
-  const [categoryError, setCategoryError] = useState('');
-  const [questionTextError, setQuestionTextError] = useState('');
-  const [answerTextError, setAnswerTextError] = useState('');
-  const [imageUrlError, setImageUrlError] = useState('');
+  const {
+    category, setCategory,
+    useExistingCategory, setUseExistingCategory,
+    pointValue, setPointValue,
+    questionText, setQuestionText,
+    answerText, setAnswerText,
+    teacherNotes, setTeacherNotes,
+    imageUrl, setImageUrl,
+    categoryError,
+    questionTextError,
+    answerTextError,
+    imageUrlError,
+    initForm,
+    validateForm,
+    buildPayload,
+  } = useQuestionForm();
 
   // Pre-populate from question prop on each open
   useEffect(() => {
     if (isOpen) {
-      setCategory(question.category);
-      setUseExistingCategory(categories.includes(question.category));
-      setPointValue(question.point_value);
-      setQuestionText(question.question_text);
-      setAnswerText(question.answer_text);
-      setTeacherNotes(question.teacher_notes || '');
-      setImageUrl(question.image_url || '');
-      setCategoryError('');
-      setQuestionTextError('');
-      setAnswerTextError('');
-      setImageUrlError('');
-      setError(null);
+      initForm({
+        category: question.category,
+        useExistingCategory: categories.includes(question.category),
+        pointValue: question.point_value,
+        questionText: question.question_text,
+        answerText: question.answer_text,
+        teacherNotes: question.teacher_notes ?? '',
+        imageUrl: question.image_url ?? '',
+      });
     }
-  }, [isOpen, question, categories]);
-
-  const validateForm = (): boolean => {
-    let isValid = true;
-
-    if (!category.trim()) {
-      setCategoryError('Category is required');
-      isValid = false;
-    } else if (category.length > QUESTION_VALIDATION.CATEGORY_MAX_LENGTH) {
-      setCategoryError(`Category must not exceed ${QUESTION_VALIDATION.CATEGORY_MAX_LENGTH} characters`);
-      isValid = false;
-    } else {
-      setCategoryError('');
-    }
-
-    if (!questionText.trim()) {
-      setQuestionTextError('Question text is required');
-      isValid = false;
-    } else if (questionText.length > QUESTION_VALIDATION.QUESTION_TEXT_MAX_LENGTH) {
-      setQuestionTextError(`Question text must not exceed ${QUESTION_VALIDATION.QUESTION_TEXT_MAX_LENGTH} characters`);
-      isValid = false;
-    } else {
-      setQuestionTextError('');
-    }
-
-    if (!answerText.trim()) {
-      setAnswerTextError('Answer text is required');
-      isValid = false;
-    } else if (answerText.length > QUESTION_VALIDATION.ANSWER_TEXT_MAX_LENGTH) {
-      setAnswerTextError(`Answer text must not exceed ${QUESTION_VALIDATION.ANSWER_TEXT_MAX_LENGTH} characters`);
-      isValid = false;
-    } else {
-      setAnswerTextError('');
-    }
-
-    if (imageUrl.trim() && !URL_REGEX.test(imageUrl.trim())) {
-      setImageUrlError('Please enter a valid HTTP/HTTPS URL');
-      isValid = false;
-    } else {
-      setImageUrlError('');
-    }
-
-    return isValid;
-  };
+  }, [isOpen, question, categories, initForm]);
 
   const handleConfirm = async () => {
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     setIsSubmitting(true);
     setError(null);
 
     try {
-      await onConfirm({
-        category: category.trim(),
-        point_value: pointValue,
-        question_text: questionText.trim(),
-        answer_text: answerText.trim(),
-        teacher_notes: teacherNotes.trim() || null,
-        image_url: imageUrl.trim() || null,
-      });
+      await onConfirm(buildPayload());
       onClose();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update question';
