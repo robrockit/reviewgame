@@ -77,8 +77,8 @@ export function useQuestions({ bankId }: { bankId: string }) {
     point_value: number;
     question_text: string;
     answer_text: string;
-    teacher_notes?: string;
-    image_url?: string;
+    teacher_notes?: string | null;
+    image_url?: string | null;
   }): Promise<Question | null> => {
     try {
       const response = await fetch(`/api/question-banks/${bankId}/questions`, {
