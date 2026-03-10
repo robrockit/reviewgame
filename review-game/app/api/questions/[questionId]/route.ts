@@ -3,7 +3,8 @@ import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import type { TablesUpdate } from '@/types/database.types';
 import { canAccessVideoImages } from '@/lib/utils/feature-access';
-import { QUESTION_VALIDATION, URL_REGEX } from '@/lib/constants/question-banks';
+import { QUESTION_VALIDATION } from '@/lib/constants/question-banks';
+import { isSafeImageUrl } from '@/lib/utils/url';
 
 /**
  * PATCH /api/questions/[questionId]
@@ -219,7 +220,7 @@ export async function PATCH(
             { status: 400 }
           );
         }
-        if (!URL_REGEX.test(image_url)) {
+        if (!isSafeImageUrl(image_url)) {
           return NextResponse.json(
             { error: 'Image URL must be a valid HTTPS URL' },
             { status: 400 }
