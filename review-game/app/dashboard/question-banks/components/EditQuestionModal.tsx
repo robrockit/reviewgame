@@ -2,30 +2,32 @@
 
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment, useState, useEffect } from 'react';
-import { PlusIcon } from '@heroicons/react/24/outline';
+import { PencilSquareIcon } from '@heroicons/react/24/outline';
 import { QUESTION_VALIDATION } from '@/lib/constants/question-banks';
-import type { QuestionFormData } from '@/types/question-bank.types';
+import type { Question, QuestionFormData } from '@/types/question-bank.types';
 import { useQuestionForm } from '../hooks/useQuestionForm';
 
-interface CreateQuestionModalProps {
+interface EditQuestionModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onAfterLeave: () => void;
   onConfirm: (data: QuestionFormData) => Promise<void>;
+  onDeleteRequest: () => void;
+  question: Question;
   categories: string[];
-  initialCategory?: string;
-  initialPointValue?: number;
   canAddImages: boolean;
 }
 
-export default function CreateQuestionModal({
+export default function EditQuestionModal({
   isOpen,
   onClose,
+  onAfterLeave,
   onConfirm,
+  onDeleteRequest,
+  question,
   categories,
-  initialCategory,
-  initialPointValue,
   canAddImages,
-}: CreateQuestionModalProps) {
+}: EditQuestionModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,21 +44,25 @@ export default function CreateQuestionModal({
     answerTextError,
     imageUrlError,
     initForm,
-    resetForm,
     validateForm,
     buildPayload,
   } = useQuestionForm();
 
+  // Pre-populate from question prop on each open
   useEffect(() => {
     if (isOpen) {
       initForm({
-        category: initialCategory ?? '',
-        useExistingCategory: initialCategory ? categories.includes(initialCategory) : true,
-        pointValue: initialPointValue ?? 100,
+        category: question.category,
+        useExistingCategory: categories.includes(question.category),
+        pointValue: question.point_value,
+        questionText: question.question_text,
+        answerText: question.answer_text,
+        teacherNotes: question.teacher_notes ?? '',
+        imageUrl: question.image_url ?? '',
       });
       setError(null);
     }
-  }, [isOpen, initialCategory, initialPointValue, categories, initForm]);
+  }, [isOpen, question, categories, initForm]);
 
   const handleConfirm = async () => {
     if (!validateForm()) return;
@@ -66,12 +72,11 @@ export default function CreateQuestionModal({
 
     try {
       await onConfirm(buildPayload());
-      resetForm();
       onClose();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create question';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update question';
       setError(errorMessage);
-      console.error('Failed to create question:', err);
+      console.error('Failed to update question:', err);
     } finally {
       setIsSubmitting(false);
     }
@@ -79,13 +84,12 @@ export default function CreateQuestionModal({
 
   const handleClose = () => {
     if (!isSubmitting) {
-      resetForm();
       onClose();
     }
   };
 
   return (
-    <Transition show={isOpen} as={Fragment}>
+    <Transition show={isOpen} as={Fragment} afterLeave={onAfterLeave}>
       <Dialog onClose={handleClose} className="relative z-50">
         <Transition.Child
           as={Fragment}
@@ -113,15 +117,15 @@ export default function CreateQuestionModal({
               <Dialog.Panel className="w-full max-w-2xl transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
                 <div className="flex items-start">
                   <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-indigo-100">
-                    <PlusIcon className="h-6 w-6 text-indigo-600" aria-hidden="true" />
+                    <PencilSquareIcon className="h-6 w-6 text-indigo-600" aria-hidden="true" />
                   </div>
                   <div className="ml-4 mt-0 text-left flex-1">
                     <Dialog.Title as="h3" className="text-lg font-medium leading-6 text-gray-900">
-                      Add Question
+                      Edit Question
                     </Dialog.Title>
                     <div className="mt-2">
                       <p className="text-sm text-gray-500">
-                        Add a new question to your question bank.
+                        Update the details for this question.
                       </p>
                     </div>
                   </div>
@@ -131,7 +135,7 @@ export default function CreateQuestionModal({
                 <div className="mt-4 space-y-4 max-h-96 overflow-y-auto pr-2">
                   {/* Category */}
                   <div>
-                    <label htmlFor="create-category" className="block text-sm font-medium text-gray-700 mb-2">
+                    <label htmlFor="edit-category" className="block text-sm font-medium text-gray-700 mb-2">
                       Category <span className="text-red-500">*</span>
                     </label>
 
@@ -140,7 +144,7 @@ export default function CreateQuestionModal({
                         <label className="inline-flex items-center">
                           <input
                             type="radio"
-                            name="create-category-mode"
+                            name="edit-category-mode"
                             value="existing"
                             checked={useExistingCategory}
                             onChange={() => setUseExistingCategory(true)}
@@ -152,7 +156,7 @@ export default function CreateQuestionModal({
                         <label className="inline-flex items-center">
                           <input
                             type="radio"
-                            name="create-category-mode"
+                            name="edit-category-mode"
                             value="new"
                             checked={!useExistingCategory}
                             onChange={() => setUseExistingCategory(false)}
@@ -166,7 +170,7 @@ export default function CreateQuestionModal({
 
                     {useExistingCategory && categories.length > 0 ? (
                       <select
-                        id="create-category"
+                        id="edit-category"
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
                         className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
@@ -185,7 +189,7 @@ export default function CreateQuestionModal({
                       </select>
                     ) : (
                       <input
-                        id="create-category"
+                        id="edit-category"
                         type="text"
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
@@ -206,11 +210,11 @@ export default function CreateQuestionModal({
 
                   {/* Point Value */}
                   <div>
-                    <label htmlFor="create-pointValue" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="edit-pointValue" className="block text-sm font-medium text-gray-700">
                       Point Value <span className="text-red-500">*</span>
                     </label>
                     <select
-                      id="create-pointValue"
+                      id="edit-pointValue"
                       value={pointValue}
                       onChange={(e) => setPointValue(Number(e.target.value))}
                       className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
@@ -226,11 +230,11 @@ export default function CreateQuestionModal({
 
                   {/* Question Text */}
                   <div>
-                    <label htmlFor="create-questionText" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="edit-questionText" className="block text-sm font-medium text-gray-700">
                       Question <span className="text-red-500">*</span>
                     </label>
                     <textarea
-                      id="create-questionText"
+                      id="edit-questionText"
                       value={questionText}
                       onChange={(e) => setQuestionText(e.target.value)}
                       rows={3}
@@ -253,11 +257,11 @@ export default function CreateQuestionModal({
 
                   {/* Answer Text */}
                   <div>
-                    <label htmlFor="create-answerText" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="edit-answerText" className="block text-sm font-medium text-gray-700">
                       Answer <span className="text-red-500">*</span>
                     </label>
                     <textarea
-                      id="create-answerText"
+                      id="edit-answerText"
                       value={answerText}
                       onChange={(e) => setAnswerText(e.target.value)}
                       rows={2}
@@ -280,11 +284,11 @@ export default function CreateQuestionModal({
 
                   {/* Teacher Notes */}
                   <div>
-                    <label htmlFor="create-teacherNotes" className="block text-sm font-medium text-gray-700">
+                    <label htmlFor="edit-teacherNotes" className="block text-sm font-medium text-gray-700">
                       Teacher Notes (optional)
                     </label>
                     <textarea
-                      id="create-teacherNotes"
+                      id="edit-teacherNotes"
                       value={teacherNotes}
                       onChange={(e) => setTeacherNotes(e.target.value)}
                       rows={2}
@@ -300,7 +304,7 @@ export default function CreateQuestionModal({
 
                   {/* Image URL */}
                   <div>
-                    <label htmlFor="create-imageUrl" className="flex items-center text-sm font-medium text-gray-700">
+                    <label htmlFor="edit-imageUrl" className="flex items-center text-sm font-medium text-gray-700">
                       Image URL (optional)
                       {!canAddImages && (
                         <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -310,7 +314,7 @@ export default function CreateQuestionModal({
                     </label>
                     <input
                       type="url"
-                      id="create-imageUrl"
+                      id="edit-imageUrl"
                       value={imageUrl}
                       onChange={(e) => setImageUrl(e.target.value)}
                       className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
@@ -339,23 +343,31 @@ export default function CreateQuestionModal({
                   </div>
                 )}
 
-                {/* Actions */}
-                <div className="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                {/* Actions — 3-column: Delete | Cancel | Save Changes */}
+                <div className="mt-5 sm:mt-6 sm:grid sm:grid-cols-3 sm:gap-3">
                   <button
                     type="button"
-                    className="inline-flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:col-start-2 sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={handleConfirm}
+                    className="inline-flex w-full justify-center rounded-md border border-red-300 bg-white px-4 py-2 text-base font-medium text-red-700 shadow-sm hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={onDeleteRequest}
                     disabled={isSubmitting}
                   >
-                    {isSubmitting ? 'Adding...' : 'Add Question'}
+                    Delete Question
                   </button>
                   <button
                     type="button"
-                    className="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:col-start-1 sm:mt-0 sm:text-sm"
+                    className="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:mt-0 sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={handleClose}
                     disabled={isSubmitting}
                   >
                     Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-3 inline-flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:mt-0 sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={handleConfirm}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
               </Dialog.Panel>

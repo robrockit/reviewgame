@@ -61,7 +61,11 @@ export const JEOPARDY_GRID = {
 } as const;
 
 /**
- * URL validation regex
- * Basic URL validation - accepts http/https URLs
+ * URL validation regex for client-side form feedback.
+ * Requires https:// followed by a non-whitespace host segment and a dot
+ * (e.g. https://example.com), which rejects bare paths like https://x or
+ * https:// (space). HTTP is intentionally excluded: http: images are blocked
+ * as mixed-content by browsers on HTTPS pages, causing silent failures.
+ * Server-side routes use isSafeImageUrl (new URL() parsing) for belt-and-suspenders.
  */
-export const URL_REGEX = /^https?:\/\/.+/i;
+export const URL_REGEX = /^https:\/\/[^\s]+\.[^\s]+/i;

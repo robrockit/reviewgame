@@ -8,10 +8,12 @@ import { createClient } from '@/lib/supabase/client';
 import type { Tables } from '@/types/database.types';
 import type { Question } from '@/types/question-bank.types';
 import { canAccessVideoImages } from '@/lib/utils/feature-access';
+import type { QuestionFormData } from '@/types/question-bank.types';
 import { useQuestions } from '../hooks/useQuestions';
 import QuestionGrid from '../components/QuestionGrid';
 import CreateQuestionModal from '../components/CreateQuestionModal';
 import DeleteQuestionModal from '../components/DeleteQuestionModal';
+import EditQuestionModal from '../components/EditQuestionModal';
 
 type Profile = Tables<'profiles'>;
 type QuestionBank = Tables<'question_banks'>;
@@ -31,6 +33,7 @@ export default function QuestionBankDetailPage({
     loading: questionsLoading,
     error: questionsError,
     createQuestion,
+    updateQuestion,
     deleteQuestion,
     getCategories,
   } = useQuestions({ bankId });
@@ -44,9 +47,12 @@ export default function QuestionBankDetailPage({
   // Modal states
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedPointValue, setSelectedPointValue] = useState<number>(100);
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
+  const [questionToEdit, setQuestionToEdit] = useState<Question | null>(null);
+  const [deleteTriggeredFromEdit, setDeleteTriggeredFromEdit] = useState(false);
 
   // Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -136,8 +142,8 @@ export default function QuestionBankDetailPage({
 
     if (question) {
       // Edit existing question
-      setSelectedQuestion(question);
-      setDeleteModalOpen(true);
+      setQuestionToEdit(question);
+      setEditModalOpen(true);
     } else {
       // Add new question
       setSelectedCategory(category);
@@ -146,26 +152,46 @@ export default function QuestionBankDetailPage({
     }
   };
 
-  const handleCreateConfirm = async (data: {
-    category: string;
-    point_value: number;
-    question_text: string;
-    answer_text: string;
-    teacher_notes?: string;
-    image_url?: string;
-  }) => {
+  const handleCreateConfirm = async (data: QuestionFormData) => {
     await createQuestion(data);
     showToast('Question added successfully');
+  };
+
+  const handleEditConfirm = async (data: QuestionFormData) => {
+    if (!questionToEdit) {
+      throw new Error('No question selected for editing');
+    }
+    await updateQuestion(questionToEdit.id, data);
+    showToast('Question updated successfully');
+  };
+
+  const handleDeleteRequest = () => {
+    setEditModalOpen(false);
+    setSelectedQuestion(questionToEdit);
+    setDeleteTriggeredFromEdit(true);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteModalOpen(false);
+    setSelectedQuestion(null);
+    if (deleteTriggeredFromEdit) {
+      setDeleteTriggeredFromEdit(false);
+      setEditModalOpen(true);
+    }
   };
 
   const handleDeleteConfirm = async () => {
     if (selectedQuestion) {
       await deleteQuestion(selectedQuestion.id);
+      setDeleteTriggeredFromEdit(false);
+      setQuestionToEdit(null);
       showToast('Question deleted successfully');
     }
   };
 
   const isLoading = bankLoading || questionsLoading;
+  const categories = getCategories();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -256,7 +282,7 @@ export default function QuestionBankDetailPage({
           // Question Grid
           <QuestionGrid
             gridData={gridData}
-            categories={getCategories()}
+            categories={categories}
             isEditable={isOwner}
             onCellClick={handleCellClick}
           />
@@ -264,7 +290,7 @@ export default function QuestionBankDetailPage({
 
         {/* Toast Notification */}
         {toastMessage && (
-          <div className="fixed bottom-4 right-4 z-50">
+          <div role="alert" aria-live="polite" className="fixed bottom-4 right-4 z-50">
             <div
               className={`rounded-md p-4 shadow-lg ${
                 toastType === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
@@ -340,7 +366,7 @@ export default function QuestionBankDetailPage({
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onConfirm={handleCreateConfirm}
-        categories={getCategories()}
+        categories={categories}
         initialCategory={selectedCategory}
         initialPointValue={selectedPointValue}
         canAddImages={canAddImages}
@@ -348,10 +374,27 @@ export default function QuestionBankDetailPage({
 
       <DeleteQuestionModal
         isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
+        onClose={handleDeleteCancel}
         onConfirm={handleDeleteConfirm}
         question={selectedQuestion}
       />
+
+      {questionToEdit && (
+        <EditQuestionModal
+          isOpen={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+          onAfterLeave={() => {
+            if (!deleteTriggeredFromEdit) {
+              setQuestionToEdit(null);
+            }
+          }}
+          onConfirm={handleEditConfirm}
+          onDeleteRequest={handleDeleteRequest}
+          question={questionToEdit}
+          categories={categories}
+          canAddImages={canAddImages}
+        />
+      )}
     </div>
   );
 }
