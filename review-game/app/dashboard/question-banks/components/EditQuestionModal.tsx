@@ -10,6 +10,7 @@ import { useQuestionForm } from '../hooks/useQuestionForm';
 interface EditQuestionModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onAfterLeave: () => void;
   onConfirm: (data: QuestionFormData) => Promise<void>;
   onDeleteRequest: () => void;
   question: Question;
@@ -20,6 +21,7 @@ interface EditQuestionModalProps {
 export default function EditQuestionModal({
   isOpen,
   onClose,
+  onAfterLeave,
   onConfirm,
   onDeleteRequest,
   question,
@@ -87,7 +89,7 @@ export default function EditQuestionModal({
   };
 
   return (
-    <Transition show={isOpen} as={Fragment}>
+    <Transition show={isOpen} as={Fragment} afterLeave={onAfterLeave}>
       <Dialog onClose={handleClose} className="relative z-50">
         <Transition.Child
           as={Fragment}

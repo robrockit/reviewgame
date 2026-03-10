@@ -382,7 +382,12 @@ export default function QuestionBankDetailPage({
       {questionToEdit && (
         <EditQuestionModal
           isOpen={editModalOpen}
-          onClose={() => { setEditModalOpen(false); setQuestionToEdit(null); }}
+          onClose={() => setEditModalOpen(false)}
+          onAfterLeave={() => {
+            if (!deleteTriggeredFromEdit) {
+              setQuestionToEdit(null);
+            }
+          }}
           onConfirm={handleEditConfirm}
           onDeleteRequest={handleDeleteRequest}
           question={questionToEdit}
