@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Tables } from '@/types/database.types';
 import type { UserContextResponse } from '@/app/api/user/context/route';
 import { logger } from '@/lib/logger';
-import { canCreateGame } from '@/lib/utils/feature-access';
+import { canCreateGame, canAccessCustomQuestionBanks, canAccessCustomTeamNames } from '@/lib/utils/feature-access';
 
 type QuestionBank = Tables<'question_banks'>;
 type Profile = Tables<'profiles'>;
@@ -53,8 +53,8 @@ export default function NewGamePage() {
   const router = useRouter();
   const supabase = createClient();
 
-  // Check if user has premium access
-  const isPremium = profile?.subscription_status === 'active' || profile?.subscription_status === 'trial';
+  // Check if user has an active paid subscription (BASIC or PREMIUM, ACTIVE or TRIAL)
+  const isPremium = canAccessCustomTeamNames(profile);
 
   useEffect(() => {
     const initializePage = async () => {
@@ -153,11 +153,11 @@ export default function NewGamePage() {
           setGameLimit(null); // Unlimited
         }
 
-        // Fetch question banks (public + user's custom if premium)
-        const isPremiumUser = profileData?.subscription_status === 'active' || profileData?.subscription_status === 'trial';
+        // Fetch question banks (public + user's custom if BASIC/PREMIUM with active subscription)
+        const canAccessCustomBanks = canAccessCustomQuestionBanks(profileData as Profile);
 
-        // If premium, fetch both public banks and user's own banks
-        if (isPremiumUser) {
+        // If eligible, fetch both public banks and user's own banks
+        if (canAccessCustomBanks) {
           // Use OR filter to get public banks OR banks owned by user
           // This leverages RLS policy: "is_public = true OR owner_id = auth.uid()"
           const { data: banks, error: banksError } = await supabase
