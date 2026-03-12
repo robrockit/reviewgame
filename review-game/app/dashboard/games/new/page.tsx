@@ -137,6 +137,16 @@ export default function NewGamePage() {
           profileData = fetchedProfile;
         }
 
+        // profileData is always non-null here: the contextProfile branch sets it
+        // directly; the else branch either returns early on error (line ~134) or
+        // assigns fetchedProfile. The guard makes this invariant explicit and
+        // removes the need for `as Profile` casts on downstream calls.
+        if (!profileData) {
+          setError('Failed to load user profile. Please try again.');
+          setLoading(false);
+          return;
+        }
+
         setProfile(profileData as Profile);
 
         // Check game creation limits
@@ -144,9 +154,9 @@ export default function NewGamePage() {
         setCanCreate(userCanCreate);
 
         // Set game count for FREE tier users
-        const tier = profileData?.subscription_tier?.toUpperCase() || 'FREE';
+        const tier = profileData.subscription_tier?.toUpperCase() || 'FREE';
         if (tier === 'FREE') {
-          setGamesCreated(profileData?.games_created_count ?? 0);
+          setGamesCreated(profileData.games_created_count ?? 0);
           setGameLimit(3);
         } else {
           setGamesCreated(0);
