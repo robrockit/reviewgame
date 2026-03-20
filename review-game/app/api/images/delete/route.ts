@@ -49,8 +49,20 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
       const { data: objects } = await serviceSupabase.storage
         .from('question-images').list(dir, { search: filename });
       fileSizeMb = (objects?.[0]?.metadata?.size ?? 0) / (1024 * 1024);
+      if (fileSizeMb === 0) {
+        logger.warn('File size is zero before delete; storage counter will not be decremented', {
+          operation: 'deleteImage',
+          userId: user.id,
+          storagePath,
+        });
+      }
     } catch {
       // Non-fatal — proceed with delete, storage counter may drift slightly
+      logger.warn('Failed to get file size before delete; storage counter may drift', {
+        operation: 'deleteImage',
+        userId: user.id,
+        storagePath,
+      });
     }
 
     // 6. Delete from storage

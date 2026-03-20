@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { QUESTION_VALIDATION, URL_REGEX } from '@/lib/constants/question-banks';
+import { QUESTION_VALIDATION } from '@/lib/constants/question-banks';
 import type { QuestionFormData } from '@/types/question-bank.types';
 
 export interface QuestionFormInit {
@@ -35,14 +35,12 @@ export function useQuestionForm() {
   const [categoryError, setCategoryError] = useState('');
   const [questionTextError, setQuestionTextError] = useState('');
   const [answerTextError, setAnswerTextError] = useState('');
-  const [imageUrlError, setImageUrlError] = useState('');
   const [imageAltTextError, setImageAltTextError] = useState('');
 
   const clearErrors = useCallback(() => {
     setCategoryError('');
     setQuestionTextError('');
     setAnswerTextError('');
-    setImageUrlError('');
     setImageAltTextError('');
   }, []);
 
@@ -110,21 +108,6 @@ export function useQuestionForm() {
       setAnswerTextError('');
     }
 
-    const trimmedUrl = imageUrl.trim();
-    if (trimmedUrl) {
-      if (trimmedUrl.startsWith('http://')) {
-        setImageUrlError('Images must use HTTPS — http:// is blocked by browsers on secure pages.');
-        isValid = false;
-      } else if (!URL_REGEX.test(trimmedUrl)) {
-        setImageUrlError('Please enter a valid HTTPS URL');
-        isValid = false;
-      } else {
-        setImageUrlError('');
-      }
-    } else {
-      setImageUrlError('');
-    }
-
     if (imageAltText.trim().length > QUESTION_VALIDATION.IMAGE_ALT_TEXT_MAX_LENGTH) {
       setImageAltTextError(`Alt text must not exceed ${QUESTION_VALIDATION.IMAGE_ALT_TEXT_MAX_LENGTH} characters`);
       isValid = false;
@@ -168,7 +151,6 @@ export function useQuestionForm() {
     categoryError,
     questionTextError,
     answerTextError,
-    imageUrlError,
     imageAltTextError,
     // Methods
     initForm,

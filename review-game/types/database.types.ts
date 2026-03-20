@@ -567,8 +567,8 @@ export type Database = {
     }
     Functions: {
       add_storage_mb: {
-        Args: { p_user_id: string; p_add_mb: number }
-        Returns: undefined
+        Args: { p_user_id: string; p_add_mb: number; p_limit_mb: number }
+        Returns: boolean
       }
       subtract_storage_mb: {
         Args: { p_user_id: string; p_subtract_mb: number }
