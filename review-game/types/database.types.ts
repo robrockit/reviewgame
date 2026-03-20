@@ -404,6 +404,7 @@ export type Database = {
           created_at: string | null
           id: string
           image_alt_text: string | null
+          image_size_mb: number | null
           image_url: string | null
           point_value: number
           position: number
@@ -418,6 +419,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           image_alt_text?: string | null
+          image_size_mb?: number | null
           image_url?: string | null
           point_value: number
           position: number
@@ -432,6 +434,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           image_alt_text?: string | null
+          image_size_mb?: number | null
           image_url?: string | null
           point_value?: number
           position?: number

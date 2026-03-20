@@ -103,7 +103,7 @@ export async function PATCH(
 
     // 5. Get and validate request body
     const body = await req.json();
-    const { category, point_value, question_text, answer_text, teacher_notes, image_url, image_alt_text } = body;
+    const { category, point_value, question_text, answer_text, teacher_notes, image_url, image_alt_text, image_size_mb } = body;
 
     // Build update object with only provided fields
     const updateData: TablesUpdate<'questions'> = {};
@@ -213,6 +213,11 @@ export async function PATCH(
       updateData.image_alt_text = image_alt_text ? image_alt_text.trim() : null;
     }
 
+    // Add image_size_mb if provided (number or null)
+    if (image_size_mb !== undefined) {
+      updateData.image_size_mb = typeof image_size_mb === 'number' ? image_size_mb : null;
+    }
+
     // Validate and add image_url if provided
     if (image_url !== undefined) {
       if (image_url !== null && image_url !== '') {
@@ -258,13 +263,14 @@ export async function PATCH(
       );
     }
 
-    // Guard: never persist alt text without an image.
-    // If the resulting image_url after this PATCH is null, force alt text to null.
+    // Guard: never persist alt text or size without an image.
+    // If the resulting image_url after this PATCH is null, force both to null.
     const effectiveImageUrl = 'image_url' in updateData
       ? updateData.image_url
       : existingQuestion.image_url;
     if (!effectiveImageUrl) {
       updateData.image_alt_text = null;
+      updateData.image_size_mb = null;
     }
 
     // 6. Add updated_at timestamp (database unique constraint will enforce uniqueness)

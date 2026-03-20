@@ -191,7 +191,7 @@ export async function POST(
 
     // 5. Get and validate request body
     const body = await req.json();
-    const { category, point_value, question_text, answer_text, teacher_notes, image_url, image_alt_text } = body;
+    const { category, point_value, question_text, answer_text, teacher_notes, image_url, image_alt_text, image_size_mb } = body;
 
     // Validate category
     if (!category || typeof category !== 'string') {
@@ -344,8 +344,9 @@ export async function POST(
       answer_text: answer_text.trim(),
       teacher_notes: teacher_notes?.trim() || null,
       image_url: trimmedImageUrl,
-      // Never persist alt text without an image
+      // Never persist alt text / size without an image
       image_alt_text: trimmedImageUrl ? (image_alt_text?.trim() || null) : null,
+      image_size_mb: trimmedImageUrl ? (typeof image_size_mb === 'number' ? image_size_mb : null) : null,
     };
 
     const { data: newQuestion, error: createError } = await supabase

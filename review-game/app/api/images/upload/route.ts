@@ -41,11 +41,19 @@ function isPrivateIpv4(ip: string): boolean {
 
 function isPrivateIpv6(ip: string): boolean {
   const lower = ip.toLowerCase();
+
+  // IPv4-mapped IPv6 (::ffff:x.x.x.x): extract the embedded IPv4 and test it.
+  if (lower.startsWith('::ffff:')) {
+    return isPrivateIpv4(lower.slice('::ffff:'.length));
+  }
+
   return (
-    lower === '::1' ||           // loopback
-    lower.startsWith('fe80:') || // link-local
-    lower.startsWith('fc') ||    // ULA
-    lower.startsWith('fd')       // ULA
+    lower === '::1' ||            // loopback
+    lower.startsWith('fe80:') ||  // link-local
+    lower.startsWith('fc') ||     // ULA
+    lower.startsWith('fd') ||     // ULA
+    lower.startsWith('2002:') ||  // 6to4 (RFC 3056) — block entire /16
+    lower.startsWith('64:ff9b:')  // NAT64 well-known prefix (RFC 6052)
   );
 }
 
@@ -124,6 +132,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (!bankId || typeof bankId !== 'string') {
       return NextResponse.json({ error: 'bankId is required' }, { status: 400 });
+    }
+
+    // Verify the caller owns the bank before writing files into its storage path.
+    const { data: bank, error: bankError } = await supabase
+      .from('question_banks')
+      .select('owner_id')
+      .eq('id', bankId)
+      .single();
+
+    if (bankError || !bank) {
+      return NextResponse.json({ error: 'Question bank not found' }, { status: 404 });
+    }
+    if (bank.owner_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const file = formData.get('file');
@@ -288,7 +310,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       storagePath,
     });
 
-    return NextResponse.json({ url: publicUrl });
+    return NextResponse.json({ url: publicUrl, fileSizeMb: addedMb });
   } catch (error) {
     logger.error('Image upload failed', error, { operation: 'uploadImage' });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

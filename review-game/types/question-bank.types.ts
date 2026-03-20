@@ -53,6 +53,7 @@ export interface QuestionFormData {
   teacher_notes?: string | null;
   image_url?: string | null;
   image_alt_text?: string | null;
+  image_size_mb?: number | null;
 }
 
 /**

@@ -43,6 +43,7 @@ export default function EditQuestionModal({
     teacherNotes, setTeacherNotes,
     imageUrl, setImageUrl,
     imageAltText, setImageAltText,
+    setImageSizeMb,
     categoryError,
     questionTextError,
     answerTextError,
@@ -64,6 +65,7 @@ export default function EditQuestionModal({
         teacherNotes: question.teacher_notes ?? '',
         imageUrl: question.image_url ?? '',
         imageAltText: question.image_alt_text ?? '',
+        imageSizeMb: question.image_size_mb ?? null,
       });
       setError(null);
     }
@@ -310,7 +312,7 @@ export default function EditQuestionModal({
                   {/* Image Upload */}
                   <ImageUpload
                     value={imageUrl}
-                    onChange={setImageUrl}
+                    onChange={(url, sizeMb) => { setImageUrl(url); setImageSizeMb(sizeMb ?? null); }}
                     disabled={isSubmitting}
                     canAddImages={canAddImages}
                     bankId={bankId}

@@ -40,29 +40,42 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // 5. Get file size before deleting (for storage decrement)
+    // 5. Determine file size for storage decrement.
+    //    Primary: look up image_size_mb from the questions row (written at save time).
+    //    Fallback: Storage list() metadata, which can return size=0 due to eventual consistency.
     const serviceSupabase = createAdminServiceClient();
     let fileSizeMb = 0;
-    try {
-      const dir = storagePath.split('/').slice(0, -1).join('/');
-      const filename = storagePath.split('/').pop()!;
-      const { data: objects } = await serviceSupabase.storage
-        .from('question-images').list(dir, { search: filename });
-      fileSizeMb = (objects?.[0]?.metadata?.size ?? 0) / (1024 * 1024);
-      if (fileSizeMb === 0) {
-        logger.warn('File size is zero before delete; storage counter will not be decremented', {
+
+    const { data: questionRow } = await supabase
+      .from('questions')
+      .select('image_size_mb')
+      .eq('image_url', url)
+      .maybeSingle();
+
+    if (questionRow?.image_size_mb != null) {
+      fileSizeMb = questionRow.image_size_mb;
+    } else {
+      // Fallback path: question row not found (image uploaded but not yet saved)
+      try {
+        const dir = storagePath.split('/').slice(0, -1).join('/');
+        const filename = storagePath.split('/').pop()!;
+        const { data: objects } = await serviceSupabase.storage
+          .from('question-images').list(dir, { search: filename });
+        fileSizeMb = (objects?.[0]?.metadata?.size ?? 0) / (1024 * 1024);
+        if (fileSizeMb === 0) {
+          logger.warn('File size is zero (storage fallback); storage counter will not be decremented', {
+            operation: 'deleteImage',
+            userId: user.id,
+            storagePath,
+          });
+        }
+      } catch {
+        logger.warn('Failed to get file size (storage fallback); storage counter may drift', {
           operation: 'deleteImage',
           userId: user.id,
           storagePath,
         });
       }
-    } catch {
-      // Non-fatal — proceed with delete, storage counter may drift slightly
-      logger.warn('Failed to get file size before delete; storage counter may drift', {
-        operation: 'deleteImage',
-        userId: user.id,
-        storagePath,
-      });
     }
 
     // 6. Delete from storage
