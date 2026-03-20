@@ -84,7 +84,8 @@ describe('canCreateGame', () => {
 
     it('should handle null games_created_count as 0', () => {
       const profile = createProfile('FREE', 'ACTIVE');
-      profile.games_created_count = null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (profile as any).games_created_count = null;
       expect(canCreateGame(profile)).toBe(true);
     });
 

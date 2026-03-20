@@ -10,6 +10,7 @@ export interface QuestionFormInit {
   answerText?: string;
   teacherNotes?: string;
   imageUrl?: string;
+  imageAltText?: string;
 }
 
 /**
@@ -28,18 +29,21 @@ export function useQuestionForm() {
   const [answerText, setAnswerText] = useState('');
   const [teacherNotes, setTeacherNotes] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [imageAltText, setImageAltText] = useState('');
 
   // Validation error state
   const [categoryError, setCategoryError] = useState('');
   const [questionTextError, setQuestionTextError] = useState('');
   const [answerTextError, setAnswerTextError] = useState('');
   const [imageUrlError, setImageUrlError] = useState('');
+  const [imageAltTextError, setImageAltTextError] = useState('');
 
   const clearErrors = useCallback(() => {
     setCategoryError('');
     setQuestionTextError('');
     setAnswerTextError('');
     setImageUrlError('');
+    setImageAltTextError('');
   }, []);
 
   /** Resets all fields and validation errors to their blank defaults. */
@@ -51,6 +55,7 @@ export function useQuestionForm() {
     setAnswerText('');
     setTeacherNotes('');
     setImageUrl('');
+    setImageAltText('');
     clearErrors();
   }, [clearErrors]);
 
@@ -67,6 +72,7 @@ export function useQuestionForm() {
     if (values.answerText !== undefined) setAnswerText(values.answerText);
     if (values.teacherNotes !== undefined) setTeacherNotes(values.teacherNotes);
     if (values.imageUrl !== undefined) setImageUrl(values.imageUrl);
+    if (values.imageAltText !== undefined) setImageAltText(values.imageAltText);
     clearErrors();
   }, [clearErrors]);
 
@@ -119,6 +125,13 @@ export function useQuestionForm() {
       setImageUrlError('');
     }
 
+    if (imageAltText.trim().length > QUESTION_VALIDATION.IMAGE_ALT_TEXT_MAX_LENGTH) {
+      setImageAltTextError(`Alt text must not exceed ${QUESTION_VALIDATION.IMAGE_ALT_TEXT_MAX_LENGTH} characters`);
+      isValid = false;
+    } else {
+      setImageAltTextError('');
+    }
+
     return isValid;
   };
 
@@ -127,14 +140,19 @@ export function useQuestionForm() {
    * Optional fields are set to null (not undefined) so a PATCH request
    * can explicitly clear them in the database.
    */
-  const buildPayload = (): QuestionFormData => ({
-    category: category.trim(),
-    point_value: pointValue,
-    question_text: questionText.trim(),
-    answer_text: answerText.trim(),
-    teacher_notes: teacherNotes.trim() || null,
-    image_url: imageUrl.trim() || null,
-  });
+  const buildPayload = (): QuestionFormData => {
+    const trimmedImageUrl = imageUrl.trim() || null;
+    return {
+      category: category.trim(),
+      point_value: pointValue,
+      question_text: questionText.trim(),
+      answer_text: answerText.trim(),
+      teacher_notes: teacherNotes.trim() || null,
+      image_url: trimmedImageUrl,
+      // Only save alt text when an image is actually present — prevents orphaned alt text
+      image_alt_text: trimmedImageUrl ? imageAltText.trim() || null : null,
+    };
+  };
 
   return {
     // Field state
@@ -145,11 +163,13 @@ export function useQuestionForm() {
     answerText, setAnswerText,
     teacherNotes, setTeacherNotes,
     imageUrl, setImageUrl,
+    imageAltText, setImageAltText,
     // Validation errors
     categoryError,
     questionTextError,
     answerTextError,
     imageUrlError,
+    imageAltTextError,
     // Methods
     initForm,
     resetForm,

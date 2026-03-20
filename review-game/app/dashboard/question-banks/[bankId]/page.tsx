@@ -370,6 +370,7 @@ export default function QuestionBankDetailPage({
         initialCategory={selectedCategory}
         initialPointValue={selectedPointValue}
         canAddImages={canAddImages}
+        bankId={bankId}
       />
 
       <DeleteQuestionModal
@@ -393,6 +394,7 @@ export default function QuestionBankDetailPage({
           question={questionToEdit}
           categories={categories}
           canAddImages={canAddImages}
+          bankId={bankId}
         />
       )}
     </div>

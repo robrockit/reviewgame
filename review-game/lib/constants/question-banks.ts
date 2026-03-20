@@ -43,6 +43,8 @@ export const QUESTION_VALIDATION = {
   ANSWER_TEXT_MAX_LENGTH: 300,
   /** Maximum length for teacher notes */
   TEACHER_NOTES_MAX_LENGTH: 1000,
+  /** Maximum length for image alt text */
+  IMAGE_ALT_TEXT_MAX_LENGTH: 200,
   /** Valid point values for questions (100-500 in increments of 100) */
   POINT_VALUES: [100, 200, 300, 400, 500] as const,
 } as const;

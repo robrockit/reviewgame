@@ -6,6 +6,7 @@ import { PencilSquareIcon } from '@heroicons/react/24/outline';
 import { QUESTION_VALIDATION } from '@/lib/constants/question-banks';
 import type { Question, QuestionFormData } from '@/types/question-bank.types';
 import { useQuestionForm } from '../hooks/useQuestionForm';
+import ImageUpload from '@/components/questions/ImageUpload';
 
 interface EditQuestionModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ interface EditQuestionModalProps {
   question: Question;
   categories: string[];
   canAddImages: boolean;
+  bankId: string;
 }
 
 export default function EditQuestionModal({
@@ -27,6 +29,7 @@ export default function EditQuestionModal({
   question,
   categories,
   canAddImages,
+  bankId,
 }: EditQuestionModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,10 +42,11 @@ export default function EditQuestionModal({
     answerText, setAnswerText,
     teacherNotes, setTeacherNotes,
     imageUrl, setImageUrl,
+    imageAltText, setImageAltText,
     categoryError,
     questionTextError,
     answerTextError,
-    imageUrlError,
+    imageAltTextError,
     initForm,
     validateForm,
     buildPayload,
@@ -59,6 +63,7 @@ export default function EditQuestionModal({
         answerText: question.answer_text,
         teacherNotes: question.teacher_notes ?? '',
         imageUrl: question.image_url ?? '',
+        imageAltText: question.image_alt_text ?? '',
       });
       setError(null);
     }
@@ -302,38 +307,34 @@ export default function EditQuestionModal({
                     </p>
                   </div>
 
-                  {/* Image URL */}
-                  <div>
-                    <label htmlFor="edit-imageUrl" className="flex items-center text-sm font-medium text-gray-700">
-                      Image URL (optional)
-                      {!canAddImages && (
-                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                          BASIC/PREMIUM Only
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      type="url"
-                      id="edit-imageUrl"
-                      value={imageUrl}
-                      onChange={(e) => setImageUrl(e.target.value)}
-                      className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
-                        imageUrlError
-                          ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                          : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'
-                      }`}
-                      placeholder="https://example.com/image.jpg"
-                      disabled={isSubmitting || !canAddImages}
-                    />
-                    {imageUrlError && (
-                      <p className="mt-1 text-sm text-red-600">{imageUrlError}</p>
-                    )}
-                    {!canAddImages && (
-                      <p className="mt-1 text-xs text-yellow-700">
-                        Upgrade to BASIC or PREMIUM to add images to questions
-                      </p>
-                    )}
-                  </div>
+                  {/* Image Upload */}
+                  <ImageUpload
+                    value={imageUrl}
+                    onChange={setImageUrl}
+                    disabled={isSubmitting}
+                    canAddImages={canAddImages}
+                    bankId={bankId}
+                  />
+
+                  {/* Image Alt Text — shown only when an image is present */}
+                  {imageUrl && (
+                    <div>
+                      <label htmlFor="edit-imageAltText" className="block text-sm font-medium text-gray-700">
+                        Image Alt Text (optional)
+                      </label>
+                      <input
+                        id="edit-imageAltText"
+                        type="text"
+                        value={imageAltText}
+                        onChange={(e) => setImageAltText(e.target.value)}
+                        maxLength={QUESTION_VALIDATION.IMAGE_ALT_TEXT_MAX_LENGTH}
+                        placeholder="Describe this image for accessibility"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        disabled={isSubmitting}
+                      />
+                      {imageAltTextError && <p className="mt-1 text-sm text-red-600">{imageAltTextError}</p>}
+                    </div>
+                  )}
                 </div>
 
                 {/* Error Display */}

@@ -271,6 +271,7 @@ export type Database = {
           full_name: string | null
           games_created_count: number
           id: string
+          image_storage_used_mb: number
           is_active: boolean | null
           last_login_at: string | null
           plan_override_limits: Json | null
@@ -301,6 +302,7 @@ export type Database = {
           full_name?: string | null
           games_created_count?: number
           id: string
+          image_storage_used_mb?: number
           is_active?: boolean | null
           last_login_at?: string | null
           plan_override_limits?: Json | null
@@ -331,6 +333,7 @@ export type Database = {
           full_name?: string | null
           games_created_count?: number
           id?: string
+          image_storage_used_mb?: number
           is_active?: boolean | null
           last_login_at?: string | null
           plan_override_limits?: Json | null
@@ -400,6 +403,7 @@ export type Database = {
           category: string
           created_at: string | null
           id: string
+          image_alt_text: string | null
           image_url: string | null
           point_value: number
           position: number
@@ -413,6 +417,7 @@ export type Database = {
           category: string
           created_at?: string | null
           id?: string
+          image_alt_text?: string | null
           image_url?: string | null
           point_value: number
           position: number
@@ -426,6 +431,7 @@ export type Database = {
           category?: string
           created_at?: string | null
           id?: string
+          image_alt_text?: string | null
           image_url?: string | null
           point_value?: number
           position?: number
@@ -560,6 +566,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_storage_mb: {
+        Args: { p_user_id: string; p_add_mb: number }
+        Returns: undefined
+      }
+      subtract_storage_mb: {
+        Args: { p_user_id: string; p_subtract_mb: number }
+        Returns: undefined
+      }
       activate_user_with_audit: {
         Args: {
           p_admin_id: string
