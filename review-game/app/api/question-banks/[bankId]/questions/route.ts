@@ -334,6 +334,7 @@ export async function POST(
     }
 
     // 7. Create the question (database unique constraint will enforce uniqueness)
+    const trimmedImageUrl = image_url?.trim() || null;
     const questionData: TablesInsert<'questions'> = {
       bank_id: bankId,
       category: category.trim(),
@@ -342,8 +343,9 @@ export async function POST(
       question_text: question_text.trim(),
       answer_text: answer_text.trim(),
       teacher_notes: teacher_notes?.trim() || null,
-      image_url: image_url?.trim() || null,
-      image_alt_text: image_alt_text?.trim() || null,
+      image_url: trimmedImageUrl,
+      // Never persist alt text without an image
+      image_alt_text: trimmedImageUrl ? (image_alt_text?.trim() || null) : null,
     };
 
     const { data: newQuestion, error: createError } = await supabase

@@ -7,6 +7,7 @@ import { BackButton } from '@/components/navigation/BackButton';
 import ChangeBanksModal from '@/components/settings/ChangeBanksModal';
 import type { User } from '@supabase/supabase-js';
 import type { PrebuiltBank } from '@/types/question-banks';
+import { IMAGE_STORAGE } from '@/lib/constants/question-banks';
 
 interface Profile {
   id: string;
@@ -116,7 +117,7 @@ export default function AccountPage() {
   // Storage display helpers
   const tierUpper = profile?.subscription_tier?.toUpperCase() ?? '';
   const showStorage = tierUpper === 'BASIC' || tierUpper === 'PREMIUM';
-  const storageLimitMb = tierUpper === 'PREMIUM' ? 500 : 100;
+  const storageLimitMb = tierUpper === 'PREMIUM' ? IMAGE_STORAGE.PREMIUM_LIMIT_MB : IMAGE_STORAGE.BASIC_LIMIT_MB;
   const storageUsedMb = profile?.image_storage_used_mb ?? 0;
   const storagePercent = Math.min(100, (storageUsedMb / storageLimitMb) * 100);
   const storageBarColor =

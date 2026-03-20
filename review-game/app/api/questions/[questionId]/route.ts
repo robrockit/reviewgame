@@ -258,6 +258,15 @@ export async function PATCH(
       );
     }
 
+    // Guard: never persist alt text without an image.
+    // If the resulting image_url after this PATCH is null, force alt text to null.
+    const effectiveImageUrl = 'image_url' in updateData
+      ? updateData.image_url
+      : existingQuestion.image_url;
+    if (!effectiveImageUrl) {
+      updateData.image_alt_text = null;
+    }
+
     // 6. Add updated_at timestamp (database unique constraint will enforce uniqueness)
     updateData.updated_at = new Date().toISOString();
 

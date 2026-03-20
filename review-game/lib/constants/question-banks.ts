@@ -63,6 +63,16 @@ export const JEOPARDY_GRID = {
 } as const;
 
 /**
+ * Image storage limits by subscription tier (in megabytes)
+ */
+export const IMAGE_STORAGE = {
+  /** Storage limit in MB for BASIC tier */
+  BASIC_LIMIT_MB: 100,
+  /** Storage limit in MB for PREMIUM tier */
+  PREMIUM_LIMIT_MB: 500,
+} as const;
+
+/**
  * URL validation regex for client-side form feedback.
  * Requires https:// followed by a non-whitespace host segment and a dot
  * (e.g. https://example.com), which rejects bare paths like https://x or

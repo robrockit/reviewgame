@@ -6,6 +6,7 @@ import { isSafeImageUrl } from '@/lib/utils/url';
 import { processImage } from '@/lib/utils/imageProcessing';
 import { logger } from '@/lib/logger';
 import type { Tables } from '@/types/database.types';
+import { IMAGE_STORAGE } from '@/lib/constants/question-banks';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png'];
 const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
@@ -41,7 +42,7 @@ function isPrivateIpv4(ip: string): boolean {
 function isPrivateIpv6(ip: string): boolean {
   const lower = ip.toLowerCase();
   return (
-    lower === '::1' ||         // loopback
+    lower === '::1' ||           // loopback
     lower.startsWith('fe80:') || // link-local
     lower.startsWith('fc') ||    // ULA
     lower.startsWith('fd')       // ULA
@@ -91,8 +92,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // 2. Feature gate — select only the columns we need for feature check + storage tracking.
-    // Type assertion to Tables<'profiles'> is safe: canAccessVideoImages only reads
-    // id, subscription_tier, and subscription_status, all of which are included here.
+    // Safe assertion: canAccessVideoImages only reads id, subscription_tier, subscription_status.
     const { data: rawProfile, error: profileError } = await supabase
       .from('profiles')
       .select('id, subscription_tier, subscription_status, image_storage_used_mb')
@@ -103,8 +103,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Failed to verify user profile' }, { status: 500 });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const profile = rawProfile as any as Tables<'profiles'>;
+    const profile = rawProfile as unknown as Tables<'profiles'>;
 
     if (!canAccessVideoImages(profile)) {
       return NextResponse.json(
@@ -113,9 +112,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Derive storage limit once — passed to atomic RPC below
+    // Derive storage limit from shared constant
     const tier = (rawProfile.subscription_tier ?? '').toUpperCase();
-    const storageLimitMb = tier === 'PREMIUM' ? 500 : 100; // BASIC = 100 MB, PREMIUM = 500 MB
+    const storageLimitMb = tier === 'PREMIUM'
+      ? IMAGE_STORAGE.PREMIUM_LIMIT_MB
+      : IMAGE_STORAGE.BASIC_LIMIT_MB;
 
     // 3. Parse form data
     const formData = await req.formData();
@@ -162,9 +163,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       let fetchResponse: Response;
       try {
-        fetchResponse = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+        // redirect: 'manual' prevents follow-through to redirect targets that
+        // haven't been SSRF-validated (e.g., a 302 to 169.254.169.254).
+        fetchResponse = await fetch(url, {
+          signal: AbortSignal.timeout(10_000),
+          redirect: 'manual',
+        });
       } catch {
         return NextResponse.json({ error: 'Failed to fetch image from URL' }, { status: 400 });
+      }
+
+      // Reject any redirect — the redirect target has not been SSRF-validated
+      if (fetchResponse.type === 'opaqueredirect') {
+        return NextResponse.json({ error: 'URL redirects are not permitted' }, { status: 400 });
       }
 
       if (!fetchResponse.ok) {
@@ -192,8 +203,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Either file or url is required' }, { status: 400 });
     }
 
-    // 4. Process image → WebP
-    const processedBuffer = await processImage(inputBuffer);
+    // 4. Process image → WebP. Return a clear 400 for corrupt or unsupported images.
+    let processedBuffer: Buffer;
+    try {
+      processedBuffer = await processImage(inputBuffer);
+    } catch {
+      return NextResponse.json(
+        { error: 'Image could not be processed — ensure it is a valid JPEG or PNG' },
+        { status: 400 }
+      );
+    }
     const addedMb = processedBuffer.length / (1024 * 1024);
 
     // 4b. Fast-path pre-check (advisory only — stale read, but avoids pointless uploads)
@@ -223,14 +242,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Failed to upload image' }, { status: 500 });
     }
 
-    // 6. Return public URL
+    // 6. Get public URL
     const { data: { publicUrl } } = serviceSupabase.storage
       .from('question-images')
       .getPublicUrl(storagePath);
 
     // 7. Atomically increment storage and enforce limit with a FOR UPDATE row lock.
     //    Returns false if the increment would push the user over their tier limit.
+    //    On RPC error, fail closed: roll back the uploaded file and return 500.
     let withinLimit = true;
+    let rpcFailed = false;
     try {
       const { data } = await supabase.rpc('add_storage_mb', {
         p_user_id: user.id,
@@ -239,16 +260,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
       withinLimit = data === true;
     } catch (storageUpdateErr) {
-      logger.error('Failed to update storage usage after upload', storageUpdateErr, {
+      logger.error('Failed to update storage usage; rolling back upload', storageUpdateErr, {
         operation: 'uploadImage',
         userId: user.id,
       });
-      // Non-fatal for the counter; file was already uploaded — let it through
+      rpcFailed = true;
+      withinLimit = false;
     }
 
     if (!withinLimit) {
-      // Concurrent upload pushed the user over the limit — roll back the file
+      // Roll back the just-uploaded file before returning an error
       await serviceSupabase.storage.from('question-images').remove([storagePath]);
+
+      if (rpcFailed) {
+        return NextResponse.json({ error: 'Failed to process upload' }, { status: 500 });
+      }
       return NextResponse.json(
         { error: 'This upload would exceed your storage limit', upgradeRequired: true },
         { status: 403 }
