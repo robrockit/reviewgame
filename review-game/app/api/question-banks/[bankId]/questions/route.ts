@@ -191,7 +191,7 @@ export async function POST(
 
     // 5. Get and validate request body
     const body = await req.json();
-    const { category, point_value, question_text, answer_text, teacher_notes, image_url } = body;
+    const { category, point_value, question_text, answer_text, teacher_notes, image_url, image_alt_text } = body;
 
     // Validate category
     if (!category || typeof category !== 'string') {
@@ -268,8 +268,38 @@ export async function POST(
       }
     }
 
+    // Validate image_alt_text (optional, max IMAGE_ALT_TEXT_MAX_LENGTH chars)
+    if (image_alt_text !== undefined && image_alt_text !== null) {
+      if (typeof image_alt_text !== 'string') {
+        return NextResponse.json(
+          { error: 'Image alt text must be a string' },
+          { status: 400 }
+        );
+      }
+      if (image_alt_text.length > QUESTION_VALIDATION.IMAGE_ALT_TEXT_MAX_LENGTH) {
+        return NextResponse.json(
+          { error: `Image alt text must not exceed ${QUESTION_VALIDATION.IMAGE_ALT_TEXT_MAX_LENGTH} characters` },
+          { status: 400 }
+        );
+      }
+    }
+
     // Validate image_url (optional, requires feature access)
     if (image_url !== undefined && image_url !== null && image_url !== '') {
+      // Validate type before checking feature access to return accurate status codes
+      if (typeof image_url !== 'string') {
+        return NextResponse.json(
+          { error: 'Image URL must be a string' },
+          { status: 400 }
+        );
+      }
+      if (!isSafeImageUrl(image_url)) {
+        return NextResponse.json(
+          { error: 'Image URL must be a valid HTTPS URL' },
+          { status: 400 }
+        );
+      }
+
       // Check feature access for images
       if (!canAccessVideoImages(profile)) {
         logger.info('Image URL denied - insufficient tier', {
@@ -281,20 +311,6 @@ export async function POST(
         return NextResponse.json(
           { error: 'Image URLs require BASIC or PREMIUM subscription' },
           { status: 403 }
-        );
-      }
-
-      // Validate URL format
-      if (typeof image_url !== 'string') {
-        return NextResponse.json(
-          { error: 'Image URL must be a string' },
-          { status: 400 }
-        );
-      }
-      if (!isSafeImageUrl(image_url)) {
-        return NextResponse.json(
-          { error: 'Image URL must be a valid HTTPS URL' },
-          { status: 400 }
         );
       }
     }
@@ -318,6 +334,7 @@ export async function POST(
     }
 
     // 7. Create the question (database unique constraint will enforce uniqueness)
+    const trimmedImageUrl = image_url?.trim() || null;
     const questionData: TablesInsert<'questions'> = {
       bank_id: bankId,
       category: category.trim(),
@@ -326,7 +343,9 @@ export async function POST(
       question_text: question_text.trim(),
       answer_text: answer_text.trim(),
       teacher_notes: teacher_notes?.trim() || null,
-      image_url: image_url?.trim() || null,
+      image_url: trimmedImageUrl,
+      // Never persist alt text without an image
+      image_alt_text: trimmedImageUrl ? (image_alt_text?.trim() || null) : null,
     };
 
     const { data: newQuestion, error: createError } = await supabase

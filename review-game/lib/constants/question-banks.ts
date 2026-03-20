@@ -43,6 +43,8 @@ export const QUESTION_VALIDATION = {
   ANSWER_TEXT_MAX_LENGTH: 300,
   /** Maximum length for teacher notes */
   TEACHER_NOTES_MAX_LENGTH: 1000,
+  /** Maximum length for image alt text */
+  IMAGE_ALT_TEXT_MAX_LENGTH: 200,
   /** Valid point values for questions (100-500 in increments of 100) */
   POINT_VALUES: [100, 200, 300, 400, 500] as const,
 } as const;
@@ -58,6 +60,16 @@ export const JEOPARDY_GRID = {
   QUESTIONS_PER_CATEGORY: 5,
   /** Point values for each row (100, 200, 300, 400, 500) */
   POINT_VALUES: [100, 200, 300, 400, 500] as const,
+} as const;
+
+/**
+ * Image storage limits by subscription tier (in megabytes)
+ */
+export const IMAGE_STORAGE = {
+  /** Storage limit in MB for BASIC tier */
+  BASIC_LIMIT_MB: 100,
+  /** Storage limit in MB for PREMIUM tier */
+  PREMIUM_LIMIT_MB: 500,
 } as const;
 
 /**
