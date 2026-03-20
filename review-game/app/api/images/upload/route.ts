@@ -39,12 +39,31 @@ function isPrivateIpv4(ip: string): boolean {
   );
 }
 
+/**
+ * Converts the "x:x" hex-group suffix of an IPv4-mapped IPv6 address into
+ * dotted-decimal notation so it can be tested by isPrivateIpv4.
+ * e.g. "c0a8:0001" → "192.168.0.1"
+ * Returns null if the input doesn't match the expected two-group format.
+ */
+function hexGroupsToIpv4(hexPart: string): string | null {
+  const match = hexPart.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (!match) return null;
+  const hi = parseInt(match[1], 16);
+  const lo = parseInt(match[2], 16);
+  return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+}
+
 function isPrivateIpv6(ip: string): boolean {
   const lower = ip.toLowerCase();
 
-  // IPv4-mapped IPv6 (::ffff:x.x.x.x): extract the embedded IPv4 and test it.
+  // IPv4-mapped IPv6 (::ffff:...) — handle both forms:
+  //   dotted-decimal: ::ffff:192.168.1.1
+  //   hex groups:     ::ffff:c0a8:0001
   if (lower.startsWith('::ffff:')) {
-    return isPrivateIpv4(lower.slice('::ffff:'.length));
+    const embedded = lower.slice('::ffff:'.length);
+    const ipv4 = embedded.includes('.') ? embedded : hexGroupsToIpv4(embedded);
+    // If the embedded part can't be parsed, block it to be safe.
+    return ipv4 === null || isPrivateIpv4(ipv4);
   }
 
   return (

@@ -11,7 +11,6 @@ export interface QuestionFormInit {
   teacherNotes?: string;
   imageUrl?: string;
   imageAltText?: string;
-  imageSizeMb?: number | null;
 }
 
 /**
@@ -31,7 +30,6 @@ export function useQuestionForm() {
   const [teacherNotes, setTeacherNotes] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imageAltText, setImageAltText] = useState('');
-  const [imageSizeMb, setImageSizeMb] = useState<number | null>(null);
 
   // Validation error state
   const [categoryError, setCategoryError] = useState('');
@@ -56,7 +54,6 @@ export function useQuestionForm() {
     setTeacherNotes('');
     setImageUrl('');
     setImageAltText('');
-    setImageSizeMb(null);
     clearErrors();
   }, [clearErrors]);
 
@@ -74,7 +71,6 @@ export function useQuestionForm() {
     if (values.teacherNotes !== undefined) setTeacherNotes(values.teacherNotes);
     if (values.imageUrl !== undefined) setImageUrl(values.imageUrl);
     if (values.imageAltText !== undefined) setImageAltText(values.imageAltText);
-    if (values.imageSizeMb !== undefined) setImageSizeMb(values.imageSizeMb);
     clearErrors();
   }, [clearErrors]);
 
@@ -136,9 +132,8 @@ export function useQuestionForm() {
       answer_text: answerText.trim(),
       teacher_notes: teacherNotes.trim() || null,
       image_url: trimmedImageUrl,
-      // Only save alt text / size when an image is actually present
+      // Only save alt text when an image is actually present
       image_alt_text: trimmedImageUrl ? imageAltText.trim() || null : null,
-      image_size_mb: trimmedImageUrl ? imageSizeMb : null,
     };
   };
 
@@ -152,7 +147,6 @@ export function useQuestionForm() {
     teacherNotes, setTeacherNotes,
     imageUrl, setImageUrl,
     imageAltText, setImageAltText,
-    imageSizeMb, setImageSizeMb,
     // Validation errors
     categoryError,
     questionTextError,

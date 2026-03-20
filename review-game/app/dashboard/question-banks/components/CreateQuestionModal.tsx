@@ -41,7 +41,6 @@ export default function CreateQuestionModal({
     teacherNotes, setTeacherNotes,
     imageUrl, setImageUrl,
     imageAltText, setImageAltText,
-    setImageSizeMb,
     categoryError,
     questionTextError,
     answerTextError,
@@ -306,7 +305,7 @@ export default function CreateQuestionModal({
                   {/* Image Upload */}
                   <ImageUpload
                     value={imageUrl}
-                    onChange={(url, sizeMb) => { setImageUrl(url); setImageSizeMb(sizeMb ?? null); }}
+                    onChange={setImageUrl}
                     disabled={isSubmitting}
                     canAddImages={canAddImages}
                     bankId={bankId}

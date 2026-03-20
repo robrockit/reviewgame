@@ -40,42 +40,31 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // 5. Determine file size for storage decrement.
-    //    Primary: look up image_size_mb from the questions row (written at save time).
-    //    Fallback: Storage list() metadata, which can return size=0 due to eventual consistency.
+    // 5. Get file size before deleting (for storage decrement).
+    //    Storage list() can return size=0 due to metadata eventual consistency;
+    //    when that happens we log and skip the decrement rather than calling
+    //    subtract_storage_mb(0), which would be a no-op round-trip.
     const serviceSupabase = createAdminServiceClient();
     let fileSizeMb = 0;
-
-    const { data: questionRow } = await supabase
-      .from('questions')
-      .select('image_size_mb')
-      .eq('image_url', url)
-      .maybeSingle();
-
-    if (questionRow?.image_size_mb != null) {
-      fileSizeMb = questionRow.image_size_mb;
-    } else {
-      // Fallback path: question row not found (image uploaded but not yet saved)
-      try {
-        const dir = storagePath.split('/').slice(0, -1).join('/');
-        const filename = storagePath.split('/').pop()!;
-        const { data: objects } = await serviceSupabase.storage
-          .from('question-images').list(dir, { search: filename });
-        fileSizeMb = (objects?.[0]?.metadata?.size ?? 0) / (1024 * 1024);
-        if (fileSizeMb === 0) {
-          logger.warn('File size is zero (storage fallback); storage counter will not be decremented', {
-            operation: 'deleteImage',
-            userId: user.id,
-            storagePath,
-          });
-        }
-      } catch {
-        logger.warn('Failed to get file size (storage fallback); storage counter may drift', {
+    try {
+      const dir = storagePath.split('/').slice(0, -1).join('/');
+      const filename = storagePath.split('/').pop()!;
+      const { data: objects } = await serviceSupabase.storage
+        .from('question-images').list(dir, { search: filename });
+      fileSizeMb = (objects?.[0]?.metadata?.size ?? 0) / (1024 * 1024);
+      if (fileSizeMb === 0) {
+        logger.warn('File size unavailable before delete; storage counter will not be decremented', {
           operation: 'deleteImage',
           userId: user.id,
           storagePath,
         });
       }
+    } catch {
+      logger.warn('Failed to get file size before delete; storage counter may drift', {
+        operation: 'deleteImage',
+        userId: user.id,
+        storagePath,
+      });
     }
 
     // 6. Delete from storage
@@ -92,14 +81,16 @@ export async function DELETE(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Failed to delete image' }, { status: 500 });
     }
 
-    // 7. Atomically decrement storage usage via RPC (non-fatal)
-    try {
-      await supabase.rpc('subtract_storage_mb', { p_user_id: user.id, p_subtract_mb: fileSizeMb });
-    } catch (storageUpdateErr) {
-      logger.error('Failed to update storage usage after delete', storageUpdateErr, {
-        operation: 'deleteImage',
-        userId: user.id,
-      });
+    // 7. Atomically decrement storage usage via RPC (non-fatal, skipped when size unknown)
+    if (fileSizeMb > 0) {
+      try {
+        await supabase.rpc('subtract_storage_mb', { p_user_id: user.id, p_subtract_mb: fileSizeMb });
+      } catch (storageUpdateErr) {
+        logger.error('Failed to update storage usage after delete', storageUpdateErr, {
+          operation: 'deleteImage',
+          userId: user.id,
+        });
+      }
     }
 
     logger.info('Image deleted successfully', {
