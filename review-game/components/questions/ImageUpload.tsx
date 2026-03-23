@@ -14,6 +14,13 @@ interface ImageUploadProps {
 const ALLOWED_TYPES = ['image/jpeg', 'image/png'];
 const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
+// Computed once from the build-time env var. Empty string when absent;
+// delete/change guards check for non-empty to avoid silent skips.
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_STORAGE_PREFIX = SUPABASE_URL
+  ? `${SUPABASE_URL}/storage/v1/object/public/question-images/`
+  : '';
+
 export default function ImageUpload({
   value,
   onChange,
@@ -34,8 +41,6 @@ export default function ImageUpload({
   const isUploadingRef = useRef(false);
   isUploadingRef.current = isUploading;
 
-  const supabaseStoragePrefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/question-images/`;
-
   const handleFileUpload = useCallback(async (file: File) => {
     if (!ALLOWED_TYPES.includes(file.type)) {
       setUploadError('Only JPEG and PNG images are allowed');
@@ -48,6 +53,20 @@ export default function ImageUpload({
 
     setIsUploading(true);
     setUploadError(null);
+
+    // If a Supabase-hosted image is already present, delete it before uploading
+    // the replacement so we don't leak storage or inflate the counter.
+    if (SUPABASE_STORAGE_PREFIX && value.startsWith(SUPABASE_STORAGE_PREFIX)) {
+      try {
+        await fetch('/api/images/delete', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: value }),
+        });
+      } catch {
+        // Non-fatal — proceed with new upload even if old file deletion fails
+      }
+    }
 
     try {
       const form = new FormData();
@@ -74,17 +93,30 @@ export default function ImageUpload({
     } finally {
       setIsUploading(false);
     }
-  }, [bankId, onChange]);
+  }, [bankId, onChange, value]);
 
   // Keep ref current
   handleFileUploadRef.current = handleFileUpload;
 
-  // Clipboard paste handler
+  // Clipboard paste handler — scoped to avoid intercepting pastes
+  // while the user is editing a text field elsewhere on the page.
   useEffect(() => {
     if (!canAddImages || disabled) return;
 
     const handlePaste = (e: ClipboardEvent) => {
       if (isUploadingRef.current) return;
+      // Skip if focus is inside a text-editable element
+      const active = document.activeElement;
+      if (
+        active &&
+        active !== document.body &&
+        (active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.tagName === 'SELECT' ||
+          (active as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
       const items = Array.from(e.clipboardData?.items ?? []);
       const imageItem = items.find((item) => item.type.startsWith('image/'));
       if (!imageItem) return;
@@ -171,19 +203,29 @@ export default function ImageUpload({
   };
 
   const handleRemove = async () => {
-    if (value.startsWith(supabaseStoragePrefix)) {
+    let deleteFailed = false;
+    if (SUPABASE_STORAGE_PREFIX && value.startsWith(SUPABASE_STORAGE_PREFIX)) {
       try {
-        await fetch('/api/images/delete', {
+        const res = await fetch('/api/images/delete', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: value }),
         });
+        if (!res.ok) {
+          deleteFailed = true;
+          console.warn('[ImageUpload] Failed to delete image from storage — file may be orphaned');
+        }
       } catch {
-        // Non-fatal — proceed to clear the field even if delete fails
+        deleteFailed = true;
+        console.warn('[ImageUpload] Failed to delete image from storage — file may be orphaned');
       }
     }
     onChange('');
-    setUploadError(null);
+    if (deleteFailed) {
+      setUploadError('Image removed from this question, but could not be deleted from storage.');
+    } else {
+      setUploadError(null);
+    }
   };
 
   // ── Locked state ──────────────────────────────────────────────────────────

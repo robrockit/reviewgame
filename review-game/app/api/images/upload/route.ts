@@ -322,7 +322,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (!withinLimit) {
       // Roll back the just-uploaded file before returning an error
-      await serviceSupabase.storage.from('question-images').remove([storagePath]);
+      const { error: rollbackError } = await serviceSupabase.storage
+        .from('question-images')
+        .remove([storagePath]);
+      if (rollbackError) {
+        logger.error('Failed to roll back orphaned file after storage limit/RPC failure', rollbackError, {
+          operation: 'uploadImage',
+          userId: user.id,
+          storagePath,
+        });
+      }
 
       if (rpcFailed) {
         return NextResponse.json({ error: 'Failed to process upload' }, { status: 500 });
