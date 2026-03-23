@@ -32,7 +32,7 @@ export default function MarketingNav() {
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-6">
+          <nav aria-label="Main" className="hidden md:flex items-center gap-6">
             <Link
               href="/pricing"
               className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
@@ -112,7 +112,7 @@ export default function MarketingNav() {
               </div>
 
               {/* Drawer links */}
-              <nav className="px-4 py-4 flex flex-col gap-2">
+              <nav aria-label="Mobile menu" className="px-4 py-4 flex flex-col gap-2">
                 <Link
                   href="/pricing"
                   onClick={() => setMobileMenuOpen(false)}

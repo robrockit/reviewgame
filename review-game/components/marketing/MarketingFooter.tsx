@@ -1,8 +1,6 @@
 import Link from 'next/link';
 
 export default function MarketingFooter() {
-  const year = new Date().getFullYear();
-
   return (
     <footer className="bg-gray-900 text-white">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
@@ -16,7 +14,7 @@ export default function MarketingFooter() {
           </div>
 
           {/* Right: nav links */}
-          <nav className="flex flex-col sm:flex-row gap-4 sm:gap-8 text-sm">
+          <nav aria-label="Footer" className="flex flex-col sm:flex-row gap-4 sm:gap-8 text-sm">
             <Link
               href="/pricing"
               className="text-gray-400 hover:text-white transition-colors"
@@ -40,7 +38,7 @@ export default function MarketingFooter() {
 
         {/* Bottom bar */}
         <div className="mt-10 border-t border-gray-800 pt-6 text-sm text-gray-500 text-center">
-          &copy; {year} Review Game. All rights reserved.
+          &copy; 2024 Review Game. All rights reserved.
         </div>
       </div>
     </footer>

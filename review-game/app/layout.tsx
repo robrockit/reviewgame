@@ -12,22 +12,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteTitle = "Review Game | Jeopardy-Style Review for Teachers";
+const siteDescription =
+  "Create interactive Jeopardy-style review games for your classroom. Free to start — no setup required.";
+
 export const metadata: Metadata = {
-  title: "Review Game | Jeopardy-Style Review for Teachers",
-  description:
-    "Create interactive Jeopardy-style review games for your classroom. Free to start — no setup required.",
-  openGraph: {
-    title: "Review Game | Jeopardy-Style Review for Teachers",
-    description:
-      "Create interactive Jeopardy-style review games for your classroom. Free to start — no setup required.",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Review Game | Jeopardy-Style Review for Teachers",
-    description:
-      "Create interactive Jeopardy-style review games for your classroom. Free to start — no setup required.",
-  },
+  title: siteTitle,
+  description: siteDescription,
+  openGraph: { title: siteTitle, description: siteDescription, type: "website" },
+  twitter: { card: "summary_large_image", title: siteTitle, description: siteDescription },
 };
 
 export default function RootLayout({
