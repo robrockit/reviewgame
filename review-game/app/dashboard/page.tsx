@@ -141,6 +141,17 @@ export default function DashboardPage() {
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
+            <h2 className="text-xl font-semibold mb-2">Question Banks</h2>
+            <p className="text-gray-600 mb-4">Create and manage reusable question banks</p>
+            <button
+              onClick={() => router.push('/dashboard/question-banks')}
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Manage Question Banks
+            </button>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
             <h2 className="text-xl font-semibold mb-2">Account Settings</h2>
             <p className="text-gray-600 mb-4">Update your profile and preferences</p>
             <button
