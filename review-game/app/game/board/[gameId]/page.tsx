@@ -254,6 +254,7 @@ export default function GameBoardPage() {
             isDailyDouble,
             categoryName, // Include category name for modal display
             imageUrl: q.image_url,
+            imageAltText: q.image_alt_text,
           };
         });
 

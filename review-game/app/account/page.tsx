@@ -7,6 +7,7 @@ import { BackButton } from '@/components/navigation/BackButton';
 import ChangeBanksModal from '@/components/settings/ChangeBanksModal';
 import type { User } from '@supabase/supabase-js';
 import type { PrebuiltBank } from '@/types/question-banks';
+import { IMAGE_STORAGE } from '@/lib/constants/question-banks';
 
 interface Profile {
   id: string;
@@ -18,6 +19,7 @@ interface Profile {
   current_period_end: string | null;
   subscription_tier: string | null;
   accessible_prebuilt_bank_ids: string[] | null;
+  image_storage_used_mb: number;
 }
 
 export default function AccountPage() {
@@ -61,7 +63,7 @@ export default function AccountPage() {
     try {
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('id, email, stripe_customer_id, subscription_status, stripe_subscription_id, trial_end_date, current_period_end, subscription_tier, accessible_prebuilt_bank_ids')
+        .select('id, email, stripe_customer_id, subscription_status, stripe_subscription_id, trial_end_date, current_period_end, subscription_tier, accessible_prebuilt_bank_ids, image_storage_used_mb')
         .eq('id', authUser.id)
         .single();
 
@@ -74,6 +76,7 @@ export default function AccountPage() {
         const typedProfile: Profile = {
           ...profileData,
           accessible_prebuilt_bank_ids: bankIds,
+          image_storage_used_mb: profileData.image_storage_used_mb ?? 0,
         };
         setProfile(typedProfile);
 
@@ -110,6 +113,17 @@ export default function AccountPage() {
 
   const isFreeUser = profile?.subscription_tier?.toUpperCase() === 'FREE';
   const currentBankIds = profile?.accessible_prebuilt_bank_ids ?? [];
+
+  // Storage display helpers
+  const tierUpper = profile?.subscription_tier?.toUpperCase() ?? '';
+  const showStorage = tierUpper === 'BASIC' || tierUpper === 'PREMIUM';
+  const storageLimitMb = tierUpper === 'PREMIUM' ? IMAGE_STORAGE.PREMIUM_LIMIT_MB : IMAGE_STORAGE.BASIC_LIMIT_MB;
+  const storageUsedMb = profile?.image_storage_used_mb ?? 0;
+  const storagePercent = Math.min(100, (storageUsedMb / storageLimitMb) * 100);
+  const storageBarColor =
+    storagePercent >= 100 ? 'bg-red-500' :
+    storagePercent >= 80  ? 'bg-yellow-500' :
+    'bg-green-500';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -242,6 +256,31 @@ export default function AccountPage() {
             </div>
           )}
         </div>
+
+        {/* Image Storage Usage — BASIC/PREMIUM only */}
+        {showStorage && (
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Image Storage</h2>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm text-gray-700">
+                <span>Image Storage</span>
+                <span>{storageUsedMb.toFixed(1)} MB / {storageLimitMb} MB</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3">
+                <div
+                  className={`h-3 rounded-full transition-all ${storageBarColor}`}
+                  style={{ width: `${storagePercent}%` }}
+                />
+              </div>
+              {storagePercent >= 100 && (
+                <p className="text-sm text-red-600">Storage limit reached. Delete images or upgrade to continue uploading.</p>
+              )}
+              {storagePercent >= 80 && storagePercent < 100 && (
+                <p className="text-sm text-yellow-700">You&apos;re approaching your storage limit.</p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="bg-white rounded-lg shadow-sm p-6">

@@ -62,4 +62,4 @@ question_data_export.sql
 
 # Environment backup files created by environment switcher
 .env.local.*.backup
-questions
+/questions

@@ -754,7 +754,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
                     {/* eslint-disable-next-line @next/next/no-img-element -- external user-supplied URLs */}
                     <img
                       src={currentQuestion.imageUrl}
-                      alt="Question image"
+                      alt={currentQuestion.imageAltText || 'Question image'}
                       loading="lazy"
                       onError={() => setImgError(true)}
                       className="max-w-[600px] w-full h-auto rounded-lg hover:opacity-90 transition-opacity"
@@ -891,7 +891,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       {isImageModalOpen && isSafeImageUrl(currentQuestion.imageUrl) && (
         <ImageModal
           src={currentQuestion.imageUrl}
-          alt="Question image enlarged"
+          alt={currentQuestion.imageAltText ? `${currentQuestion.imageAltText} (enlarged)` : 'Question image enlarged'}
           onClose={() => setIsImageModalOpen(false)}
         />
       )}

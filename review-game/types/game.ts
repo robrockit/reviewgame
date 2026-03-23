@@ -8,6 +8,7 @@ export interface Question {
   isDailyDouble?: boolean;
   categoryName?: string; // Category context for display in modal
   imageUrl?: string | null;
+  imageAltText?: string | null;
 }
 
 export interface Category {

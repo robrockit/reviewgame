@@ -103,7 +103,7 @@ export async function PATCH(
 
     // 5. Get and validate request body
     const body = await req.json();
-    const { category, point_value, question_text, answer_text, teacher_notes, image_url } = body;
+    const { category, point_value, question_text, answer_text, teacher_notes, image_url, image_alt_text } = body;
 
     // Build update object with only provided fields
     const updateData: TablesUpdate<'questions'> = {};
@@ -196,9 +196,40 @@ export async function PATCH(
       updateData.teacher_notes = teacher_notes ? teacher_notes.trim() : null;
     }
 
+    // Validate and add image_alt_text if provided
+    if (image_alt_text !== undefined) {
+      if (image_alt_text !== null && typeof image_alt_text !== 'string') {
+        return NextResponse.json(
+          { error: 'Image alt text must be a string or null' },
+          { status: 400 }
+        );
+      }
+      if (image_alt_text && image_alt_text.length > QUESTION_VALIDATION.IMAGE_ALT_TEXT_MAX_LENGTH) {
+        return NextResponse.json(
+          { error: `Image alt text must not exceed ${QUESTION_VALIDATION.IMAGE_ALT_TEXT_MAX_LENGTH} characters` },
+          { status: 400 }
+        );
+      }
+      updateData.image_alt_text = image_alt_text ? image_alt_text.trim() : null;
+    }
+
     // Validate and add image_url if provided
     if (image_url !== undefined) {
       if (image_url !== null && image_url !== '') {
+        // Validate type before checking feature access to return accurate status codes
+        if (typeof image_url !== 'string') {
+          return NextResponse.json(
+            { error: 'Image URL must be a string' },
+            { status: 400 }
+          );
+        }
+        if (!isSafeImageUrl(image_url)) {
+          return NextResponse.json(
+            { error: 'Image URL must be a valid HTTPS URL' },
+            { status: 400 }
+          );
+        }
+
         // Check feature access for images
         if (!canAccessVideoImages(profile)) {
           logger.info('Image URL denied - insufficient tier', {
@@ -213,19 +244,6 @@ export async function PATCH(
           );
         }
 
-        // Validate URL format
-        if (typeof image_url !== 'string') {
-          return NextResponse.json(
-            { error: 'Image URL must be a string' },
-            { status: 400 }
-          );
-        }
-        if (!isSafeImageUrl(image_url)) {
-          return NextResponse.json(
-            { error: 'Image URL must be a valid HTTPS URL' },
-            { status: 400 }
-          );
-        }
         updateData.image_url = image_url.trim();
       } else {
         updateData.image_url = null;
@@ -238,6 +256,15 @@ export async function PATCH(
         { error: 'No fields to update' },
         { status: 400 }
       );
+    }
+
+    // Guard: never persist alt text without an image.
+    // If the resulting image_url after this PATCH is null, force alt text to null.
+    const effectiveImageUrl = 'image_url' in updateData
+      ? updateData.image_url
+      : existingQuestion.image_url;
+    if (!effectiveImageUrl) {
+      updateData.image_alt_text = null;
     }
 
     // 6. Add updated_at timestamp (database unique constraint will enforce uniqueness)
