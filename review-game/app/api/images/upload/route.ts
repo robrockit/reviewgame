@@ -294,14 +294,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let withinLimit = true;
     let rpcFailed = false;
     try {
-      const { data } = await supabase.rpc('add_storage_mb', {
+      const { data, error: rpcError } = await supabase.rpc('add_storage_mb', {
         p_user_id: user.id,
         p_add_mb: addedMb,
         p_limit_mb: storageLimitMb,
       });
-      withinLimit = data === true;
+      // supabase.rpc() returns { data, error } — DB errors do NOT throw
+      if (rpcError) {
+        logger.error('Failed to update storage usage; rolling back upload', rpcError, {
+          operation: 'uploadImage',
+          userId: user.id,
+        });
+        rpcFailed = true;
+        withinLimit = false;
+      } else {
+        withinLimit = data === true;
+      }
     } catch (storageUpdateErr) {
-      logger.error('Failed to update storage usage; rolling back upload', storageUpdateErr, {
+      // Network-level failures still throw
+      logger.error('Failed to update storage usage (network); rolling back upload', storageUpdateErr, {
         operation: 'uploadImage',
         userId: user.id,
       });
