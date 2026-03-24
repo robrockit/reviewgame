@@ -44,6 +44,8 @@ export default function GameBoardPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGameCompleteModal, setShowGameCompleteModal] = useState(false);
   const [showFinalJeopardyModal, setShowFinalJeopardyModal] = useState(false);
+  const [isFjStarting, setIsFjStarting] = useState(false);
+  const [fjError, setFjError] = useState<string | null>(null);
 
   const {
     setGame: setStoreGame,
@@ -572,6 +574,14 @@ export default function GameBoardPage() {
     }
   }, [selectedQuestions, currentGameData, gameId, showGameCompleteModal]);
 
+  // Auto-dismiss Final Jeopardy error toast after 5 seconds
+  useEffect(() => {
+    if (fjError) {
+      const timer = setTimeout(() => setFjError(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [fjError]);
+
   // Function to handle navigation with fullscreen exit
   const handleNavigateToControlPanel = async () => {
     try {
@@ -703,15 +713,18 @@ export default function GameBoardPage() {
 
   // Handle starting Final Jeopardy from the game complete modal or board header
   const handleStartFinalJeopardy = async () => {
+    setIsFjStarting(true);
     try {
       const response = await fetch(`/api/games/${gameId}/final-jeopardy/start`, { method: 'POST' });
       const data = await response.json();
 
       if (!response.ok) {
-        logger.error('Failed to start Final Jeopardy', new Error(data.error), {
+        const msg = data.error || 'Failed to start Final Jeopardy';
+        logger.error('Failed to start Final Jeopardy', new Error(msg), {
           operation: 'handleStartFinalJeopardy',
           gameId,
         });
+        setFjError(msg);
         return;
       }
 
@@ -720,20 +733,28 @@ export default function GameBoardPage() {
       setShowGameCompleteModal(false);
       setShowFinalJeopardyModal(true);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to start Final Jeopardy';
       logger.error('Failed to start Final Jeopardy', err, {
         operation: 'handleStartFinalJeopardy',
         gameId,
       });
+      setFjError(msg);
+    } finally {
+      setIsFjStarting(false);
     }
   };
 
-  // Advance Final Jeopardy to next phase (wager→answer, answer→reveal)
+  // Advance Final Jeopardy to next phase (wager→answer, answer→reveal).
+  // Sets fjError so the teacher sees the failure, then re-throws so
+  // FinalJeopardyModal's wrapper resets its isProcessing spinner.
   const handleAdvancePhase = async () => {
     const response = await fetch(`/api/games/${gameId}/final-jeopardy/advance`, { method: 'POST' });
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to advance phase');
+      const msg = data.error || 'Failed to advance phase';
+      setFjError(msg);
+      throw new Error(msg);
     }
 
     setCurrentPhase(data.currentPhase);
@@ -749,7 +770,9 @@ export default function GameBoardPage() {
 
     if (!response.ok) {
       const data = await response.json();
-      throw new Error(data.error || 'Failed to reveal team answer');
+      const msg = data.error || 'Failed to reveal team answer';
+      setFjError(msg);
+      throw new Error(msg);
     }
   };
 
@@ -759,7 +782,9 @@ export default function GameBoardPage() {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to finish game');
+      const msg = data.error || 'Failed to finish game';
+      setFjError(msg);
+      throw new Error(msg);
     }
 
     setCurrentPhase(data.currentPhase);
@@ -773,7 +798,9 @@ export default function GameBoardPage() {
 
     if (!response.ok) {
       const data = await response.json();
-      throw new Error(data.error || 'Failed to skip Final Jeopardy');
+      const msg = data.error || 'Failed to skip Final Jeopardy';
+      setFjError(msg);
+      throw new Error(msg);
     }
 
     setCurrentPhase('regular');
@@ -854,9 +881,10 @@ export default function GameBoardPage() {
             {game.final_jeopardy_question !== null && currentPhase === 'regular' && (
               <button
                 onClick={handleStartFinalJeopardy}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-colors font-medium"
+                disabled={isFjStarting}
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Start Final Jeopardy
+                {isFjStarting ? 'Starting...' : 'Start Final Jeopardy'}
               </button>
             )}
             <button
@@ -928,6 +956,27 @@ export default function GameBoardPage() {
         onFinishGame={handleFinishGame}
         onSkip={handleSkipFinalJeopardy}
       />
+
+      {/* Final Jeopardy Error Toast */}
+      {fjError && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="fixed bottom-4 right-4 z-50 max-w-sm rounded-lg border border-red-400 bg-red-900/90 px-4 py-3 shadow-lg backdrop-blur-sm"
+        >
+          <div className="flex items-start gap-3">
+            <p className="text-sm font-medium text-red-200">{fjError}</p>
+            <button
+              type="button"
+              onClick={() => setFjError(null)}
+              className="ml-auto flex-shrink-0 text-red-300 hover:text-red-100"
+              aria-label="Dismiss error"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
