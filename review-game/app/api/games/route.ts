@@ -265,6 +265,7 @@ export async function POST(req: NextRequest) {
       timer_seconds,
       daily_double_positions,
       effective_user_id, // Optional: for admin impersonation
+      final_jeopardy_question, // Optional: Final Jeopardy question data
     } = body;
 
     // Validate required fields
@@ -330,6 +331,56 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
+      }
+    }
+
+    // Validate final_jeopardy_question if provided
+    if (final_jeopardy_question !== undefined && final_jeopardy_question !== null) {
+      if (typeof final_jeopardy_question !== 'object') {
+        return NextResponse.json(
+          { error: 'final_jeopardy_question must be an object' },
+          { status: 400 }
+        );
+      }
+      const { category, question, answer } = final_jeopardy_question as Record<string, unknown>;
+      const allowedCharsPattern = /^[\w\s\-'.,!?@()\[\]]+$/;
+
+      if (typeof category !== 'string' || category.length === 0 || category.length > 100) {
+        return NextResponse.json(
+          { error: 'final_jeopardy_question.category must be a string (1-100 chars)' },
+          { status: 400 }
+        );
+      }
+      if (!allowedCharsPattern.test(category)) {
+        return NextResponse.json(
+          { error: 'final_jeopardy_question.category contains invalid characters' },
+          { status: 400 }
+        );
+      }
+      if (typeof question !== 'string' || question.length === 0 || question.length > 500) {
+        return NextResponse.json(
+          { error: 'final_jeopardy_question.question must be a string (1-500 chars)' },
+          { status: 400 }
+        );
+      }
+      const questionAllowedChars = /^[\w\s\-'.,!?@()\[\]:;"\/]+$/;
+      if (!questionAllowedChars.test(question)) {
+        return NextResponse.json(
+          { error: 'final_jeopardy_question.question contains invalid characters' },
+          { status: 400 }
+        );
+      }
+      if (typeof answer !== 'string' || answer.length === 0 || answer.length > 200) {
+        return NextResponse.json(
+          { error: 'final_jeopardy_question.answer must be a string (1-200 chars)' },
+          { status: 400 }
+        );
+      }
+      if (!allowedCharsPattern.test(answer)) {
+        return NextResponse.json(
+          { error: 'final_jeopardy_question.answer contains invalid characters' },
+          { status: 400 }
+        );
       }
     }
 
@@ -408,6 +459,7 @@ export async function POST(req: NextRequest) {
       timer_enabled: timer_enabled ?? true,
       timer_seconds: timer_enabled ? timer_seconds : null,
       daily_double_positions,
+      final_jeopardy_question: final_jeopardy_question ?? null,
       status: 'setup',
       selected_questions: [],
     };
