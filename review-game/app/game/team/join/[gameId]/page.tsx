@@ -190,7 +190,12 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         throw new Error('Failed to join game. Please try again.');
       }
 
-      const result = rpcResult as { success: boolean; team_id?: string; error_code?: string };
+      type JoinResult =
+        | { success: true; team_id: string; rejoined: true; connection_status: string }
+        | { success: true; team_id: string; team_number: number }
+        | { success: false; error_code: string };
+
+      const result = rpcResult as JoinResult;
 
       if (!result.success) {
         if (result.error_code === 'game_not_found') {
@@ -205,11 +210,18 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         throw new Error('Failed to join game. Please try again.');
       }
 
-      if (!result.team_id) {
-        throw new Error('Failed to join game. Please try again.');
+      // Rejoining device: route based on current approval status so an
+      // already-approved team goes directly to the game, not back to waiting.
+      if ('rejoined' in result) {
+        if (result.connection_status === 'approved') {
+          router.push(`/game/team/${result.team_id}`);
+        } else {
+          router.push(`/game/team/waiting/${result.team_id}`);
+        }
+        return;
       }
 
-      // Redirect to waiting room
+      // New join: always start in the waiting room pending teacher approval
       router.push(`/game/team/waiting/${result.team_id}`);
     } catch (err) {
       logger.error('Error joining game', {
