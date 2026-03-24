@@ -186,6 +186,9 @@ export default function JoinGamePage({ params }: JoinPageProps) {
       const result = rpcResult as { success: boolean; team_id?: string; error_code?: string };
 
       if (!result.success) {
+        if (result.error_code === 'game_not_found') {
+          throw new Error('Game not found. The link may be invalid or the game was deleted.');
+        }
         if (result.error_code === 'game_full') {
           throw new Error('This game is now full. Please ask your teacher for help.');
         }
