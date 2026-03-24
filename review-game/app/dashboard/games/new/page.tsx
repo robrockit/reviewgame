@@ -63,7 +63,7 @@ export default function NewGamePage() {
         const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
 
         if (userError || !currentUser) {
-          router.push('/login');
+          router.push(`/login?redirectTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
           return;
         }
 

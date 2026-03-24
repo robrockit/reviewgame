@@ -68,7 +68,7 @@ export default function GameBoardPage() {
         const { data: { user }, error: authError } = await supabase.auth.getUser();
 
         if (authError || !user) {
-          router.push('/login');
+          router.push(`/login?redirectTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
           return;
         }
 
