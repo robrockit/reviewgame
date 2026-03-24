@@ -11,10 +11,16 @@
 
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
 
 interface LoginFormProps {
   isSuspended?: boolean;
+  /**
+   * Safe root-relative path to redirect to after login.
+   * Guaranteed by the caller to start with '/' and not with '//' (no scheme-relative URLs).
+   * Both teacher (role='user') and admin users fall back to '/dashboard' when absent —
+   * admin users are intentionally not given a separate default per RG-126 AC.
+   */
+  redirectTo?: string;
 }
 
 /**
@@ -40,12 +46,11 @@ interface LoginFormProps {
  * <LoginForm isSuspended={false} />
  * ```
  */
-export default function LoginForm({ isSuspended = false }: LoginFormProps) {
+export default function LoginForm({ isSuspended = false, redirectTo }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
 
   /**
    * Handles the login form submission.
@@ -71,10 +76,14 @@ export default function LoginForm({ isSuspended = false }: LoginFormProps) {
       setError(loginError.message);
       setIsLoading(false);
     } else {
-      // Refresh the router to ensure session cookies are recognized
-      router.refresh();
-      // Redirect to dashboard on success
-      router.push('/dashboard');
+      setIsLoading(false);
+      // Use a full-page navigation so the session cookie is guaranteed to be
+      // present before the destination route's middleware runs.
+      // router.push() can race with the Supabase cookie being written, causing
+      // a redirect loop back to /login on protected routes.
+      // Honour deep-link redirects (e.g. from middleware protecting /admin routes).
+      // Fall back to /dashboard — the primary destination for teacher users.
+      window.location.href = redirectTo ?? '/dashboard';
     }
   };
 
