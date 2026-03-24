@@ -404,6 +404,7 @@ export type Database = {
           created_at: string | null
           id: string
           image_alt_text: string | null
+          image_size_mb: number | null
           image_url: string | null
           point_value: number
           position: number
@@ -418,6 +419,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           image_alt_text?: string | null
+          image_size_mb?: number | null
           image_url?: string | null
           point_value: number
           position: number
@@ -432,6 +434,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           image_alt_text?: string | null
+          image_size_mb?: number | null
           image_url?: string | null
           point_value?: number
           position?: number
@@ -511,8 +514,7 @@ export type Database = {
           final_jeopardy_answer: string | null
           final_jeopardy_submitted_at: string | null
           final_jeopardy_wager: number | null
-          /** NOT NULL confirmed via pg_attribute.attnotnull — type generator bug */
-          game_id: string
+          game_id: string | null
           id: string
           last_seen: string | null
           score: number | null
@@ -527,8 +529,7 @@ export type Database = {
           final_jeopardy_answer?: string | null
           final_jeopardy_submitted_at?: string | null
           final_jeopardy_wager?: number | null
-          /** NOT NULL, no default — required on insert */
-          game_id: string
+          game_id?: string | null
           id?: string
           last_seen?: string | null
           score?: number | null
@@ -543,7 +544,7 @@ export type Database = {
           final_jeopardy_answer?: string | null
           final_jeopardy_submitted_at?: string | null
           final_jeopardy_wager?: number | null
-          game_id?: string
+          game_id?: string | null
           id?: string
           last_seen?: string | null
           score?: number | null
@@ -566,14 +567,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      add_storage_mb: {
-        Args: { p_user_id: string; p_add_mb: number; p_limit_mb: number }
-        Returns: boolean
-      }
-      subtract_storage_mb: {
-        Args: { p_user_id: string; p_subtract_mb: number }
-        Returns: undefined
-      }
       activate_user_with_audit: {
         Args: {
           p_admin_id: string
@@ -585,6 +578,12 @@ export type Database = {
         }
         Returns: Json
       }
+      add_storage_mb:
+        | { Args: { p_add_mb: number; p_user_id: string }; Returns: undefined }
+        | {
+            Args: { p_add_mb: number; p_limit_mb: number; p_user_id: string }
+            Returns: boolean
+          }
       cleanup_old_audit_logs: { Args: never; Returns: number }
       cleanup_old_stripe_events: { Args: never; Returns: undefined }
       create_custom_bank_with_limit_check: {
@@ -610,6 +609,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      join_game_atomic: {
+        Args: { p_device_id: string; p_game_id: string }
+        Returns: Json
+      }
       log_admin_action: {
         Args: {
           p_action_type: string
@@ -676,6 +679,10 @@ export type Database = {
           submitted_at: string
           success: boolean
         }[]
+      }
+      subtract_storage_mb: {
+        Args: { p_subtract_mb: number; p_user_id: string }
+        Returns: undefined
       }
       suspend_user_with_audit: {
         Args: {

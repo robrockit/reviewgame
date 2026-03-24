@@ -40,6 +40,7 @@ ALTER TABLE processed_stripe_events ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Service role can read/write (for webhook handler)
 -- This is the primary access pattern - webhooks use service role
+DROP POLICY IF EXISTS "Service role can manage webhook events" ON processed_stripe_events;
 CREATE POLICY "Service role can manage webhook events"
 ON processed_stripe_events
 FOR ALL
@@ -49,6 +50,7 @@ WITH CHECK (true);
 
 -- Policy: Admins can read for debugging and monitoring
 -- Allows admin users to query webhook processing history
+DROP POLICY IF EXISTS "Admins can read webhook events" ON processed_stripe_events;
 CREATE POLICY "Admins can read webhook events"
 ON processed_stripe_events
 FOR SELECT

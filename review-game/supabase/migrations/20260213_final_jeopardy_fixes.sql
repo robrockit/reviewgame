@@ -7,11 +7,11 @@
 -- =====================================================
 
 -- Partial indexes for checking submission status (much faster than filtering in app)
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_teams_game_fj_wager_submitted
+CREATE INDEX IF NOT EXISTS idx_teams_game_fj_wager_submitted
 ON teams(game_id)
 WHERE final_jeopardy_wager IS NOT NULL;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_teams_game_fj_answer_submitted
+CREATE INDEX IF NOT EXISTS idx_teams_game_fj_answer_submitted
 ON teams(game_id)
 WHERE final_jeopardy_answer IS NOT NULL;
 

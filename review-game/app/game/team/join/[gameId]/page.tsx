@@ -29,6 +29,7 @@ interface JoinPageProps {
 export default function JoinGamePage({ params }: JoinPageProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isValidating, setIsValidating] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gameInfo, setGameInfo] = useState<{ title: string } | null>(null);
   const { gameId } = params;
@@ -53,12 +54,14 @@ export default function JoinGamePage({ params }: JoinPageProps) {
 
         if (gameError || !game) {
           setError('Game not found. Please check the link and try again.');
+          setIsValidating(false);
           return;
         }
 
         // Check if game is already completed
         if (game.status === 'completed') {
           setError('This game has already ended.');
+          setIsValidating(false);
           return;
         }
 
@@ -76,11 +79,13 @@ export default function JoinGamePage({ params }: JoinPageProps) {
             page: 'JoinGamePage'
           });
           setError('Unable to check game availability. Please try again.');
+          setIsValidating(false);
           return;
         }
 
         if (count !== null && count >= game.num_teams) {
           setError(`This game is full (${game.num_teams} teams maximum).`);
+          setIsValidating(false);
           return;
         }
 
@@ -89,6 +94,7 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         setGameInfo({
           title: questionBank?.title || 'Review Game',
         });
+        setIsValidating(false);
       } catch (err) {
         logger.error('Unexpected error validating game', {
           error: err instanceof Error ? err.message : String(err),
@@ -97,6 +103,7 @@ export default function JoinGamePage({ params }: JoinPageProps) {
           page: 'JoinGamePage'
         });
         setError('An unexpected error occurred. Please try again.');
+        setIsValidating(false);
       }
     };
 
@@ -164,59 +171,58 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         localStorage.setItem('deviceId', deviceId);
       }
 
-      // Get the next team number using MAX to reduce race condition risk
-      // Query for the highest team_number and increment it
-      const { data: maxTeamData, error: maxError } = await supabase
-        .from('teams')
-        .select('team_number')
-        .eq('game_id', gameId)
-        .order('team_number', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // Atomically assign a team slot and insert the record.
+      // The database function locks the game row, enforces capacity, assigns the
+      // next sequential team_number, resolves the configured team name, and inserts
+      // — all within one transaction, eliminating the TOCTOU race condition.
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('join_game_atomic', {
+        p_game_id: gameId,
+        p_device_id: deviceId,
+      });
 
-      if (maxError) {
-        logger.error('Error determining team number', {
-          error: maxError.message,
+      if (rpcError) {
+        logger.error('RPC error joining game', {
+          error: rpcError.message,
           gameId,
           operation: 'joinGame',
           page: 'JoinGamePage'
         });
-        throw new Error('Failed to determine team number');
-      }
-
-      const teamNumber = (maxTeamData?.team_number || 0) + 1;
-
-      // Create team record with pending status
-      // Note: In a high-concurrency scenario, consider adding a unique constraint
-      // on (game_id, team_number) and implementing retry logic
-      const { data: team, error: createError } = await supabase
-        .from('teams')
-        .insert({
-          game_id: gameId,
-          team_number: teamNumber,
-          device_id: deviceId,
-          connection_status: 'pending',
-          score: 0,
-          last_seen: new Date().toISOString(),
-        })
-        .select('id')
-        .single();
-
-      if (createError || !team) {
-        logger.error('Error creating team', {
-          error: createError?.message,
-          gameId,
-          teamNumber,
-          operation: 'joinGame',
-          page: 'JoinGamePage'
-        });
-        // If error is a unique constraint violation, it might be a race condition
-        // User can retry by clicking the button again
         throw new Error('Failed to join game. Please try again.');
       }
 
-      // Redirect to waiting room
-      router.push(`/game/team/waiting/${team.id}`);
+      type JoinResult =
+        | { success: true; team_id: string; rejoined: true; connection_status: string }
+        | { success: true; team_id: string; team_number: number }
+        | { success: false; error_code: string };
+
+      const result = rpcResult as JoinResult;
+
+      if (!result.success) {
+        if (result.error_code === 'game_not_found') {
+          throw new Error('Game not found. The link may be invalid or the game was deleted.');
+        }
+        if (result.error_code === 'game_full') {
+          throw new Error('This game is now full. Please ask your teacher for help.');
+        }
+        if (result.error_code === 'game_completed') {
+          throw new Error('This game has already ended.');
+        }
+        throw new Error('Failed to join game. Please try again.');
+      }
+
+      // Rejoining device: route based on current approval status so an
+      // already-approved team goes directly to the game, not back to waiting.
+      if ('rejoined' in result) {
+        if (result.connection_status === 'approved') {
+          router.push(`/game/team/${result.team_id}`);
+        } else {
+          router.push(`/game/team/waiting/${result.team_id}`);
+        }
+        return;
+      }
+
+      // New join: always start in the waiting room pending teacher approval
+      router.push(`/game/team/waiting/${result.team_id}`);
     } catch (err) {
       logger.error('Error joining game', {
         error: err instanceof Error ? err.message : String(err),
@@ -292,12 +298,12 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         {/* Join Button */}
         <button
           onClick={handleJoinGame}
-          disabled={isLoading || !!error}
+          disabled={isLoading || isValidating || !!error}
           className={`
             w-full py-4 px-6 rounded-xl text-lg font-bold text-white
             transition-all duration-200 transform
             ${
-              isLoading || error
+              isLoading || isValidating || error
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-700 active:scale-95 shadow-lg hover:shadow-xl'
             }
@@ -325,6 +331,29 @@ export default function JoinGamePage({ params }: JoinPageProps) {
                 />
               </svg>
               Joining...
+            </div>
+          ) : isValidating ? (
+            <div className="flex items-center justify-center">
+              <svg
+                className="animate-spin h-6 w-6 mr-3"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              Checking...
             </div>
           ) : (
             '🎮 Join Game'
