@@ -1,35 +1,9 @@
--- Migration: Atomic join_game function
--- Description: Replaces client-side read-max-then-insert with a single atomic transaction
---   that locks the game row, enforces capacity, assigns team number, and inserts the team.
---   Eliminates the TOCTOU race condition where concurrent students could claim the same slot.
--- Created: 2026-03-23
+-- Migration: Idempotent join_game_atomic
+-- Description: Adds device_id deduplication check so a device that already joined
+--   returns its existing team rather than inserting a duplicate. Handles two-tab
+--   and network-retry scenarios without relying solely on the client-side check.
+-- Created: 2026-03-25
 -- Related: RG-125
-
--- Atomically joins a student device to a game as a new team.
--- Acquires a row-level lock on the game record so concurrent invocations are serialized.
--- Within the same transaction it:
---   1. Validates p_device_id length (max 255 chars)
---   2. Validates the game exists and is joinable
---   3. Counts existing teams and enforces the num_teams capacity
---   4. Assigns the next sequential team_number (MAX(team_number) + 1)
---   5. Resolves the team name from games.team_names[team_number - 1],
---      falling back to "Team N" when the array is absent or too short
---   6. Inserts the team record with connection_status = 'pending'
---
--- Known limitation: team_number uses MAX + 1, not COUNT + 1.
--- If a teacher deletes a pending team, a gap forms in team_numbers.
--- The next joiner receives MAX + 1 which may exceed the team_names array
--- length, causing the "Team N" fallback name. This is the safer failure
--- mode - COUNT + 1 risks a unique constraint violation when the
--- incremented value collides with an existing row after a deletion.
---
--- Returns JSONB:
---   Success: { "success": true, "team_id": "<uuid>", "team_number": <int> }
---   Failure: { "success": false, "error_code": "invalid_request" | "game_not_found" | "game_completed" | "game_full" }
---
--- Parameters:
---   p_game_id   - UUID of the game to join
---   p_device_id - Browser-generated device identifier for deduplication (max 255 chars)
 CREATE OR REPLACE FUNCTION join_game_atomic(
   p_game_id  UUID,
   p_device_id TEXT
@@ -65,6 +39,17 @@ BEGIN
 
   IF v_status = 'completed' THEN
     RETURN jsonb_build_object('success', false, 'error_code', 'game_completed');
+  END IF;
+
+  -- Idempotency: if this device already has a team in this game, return it.
+  -- Handles two-tab joins, network retries, and direct API calls that bypass
+  -- the client-side existingTeam check.
+  SELECT id INTO v_new_team_id
+  FROM   teams
+  WHERE  game_id = p_game_id AND device_id = p_device_id;
+
+  IF FOUND THEN
+    RETURN jsonb_build_object('success', true, 'team_id', v_new_team_id, 'rejoined', true);
   END IF;
 
   -- Count teams already in this game
@@ -104,4 +89,3 @@ BEGIN
   );
 END;
 $body$;
-

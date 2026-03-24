@@ -21,18 +21,34 @@ ALTER TABLE profiles
 ALTER COLUMN games_created_count SET NOT NULL;
 
 -- Add check constraint for non-negative values
-ALTER TABLE profiles
-ADD CONSTRAINT IF NOT EXISTS chk_games_created_count_non_negative
-CHECK (games_created_count >= 0);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_games_created_count_non_negative'
+  ) THEN
+    ALTER TABLE profiles
+    ADD CONSTRAINT chk_games_created_count_non_negative
+    CHECK (games_created_count >= 0);
+  END IF;
+END;
+$$;
 
 -- Add check constraint for FREE tier limit enforcement at database level
 -- This provides defense-in-depth even if application code has bugs
-ALTER TABLE profiles
-ADD CONSTRAINT IF NOT EXISTS chk_free_tier_game_limit
-CHECK (
-  subscription_tier != 'FREE' OR
-  games_created_count <= 3
-);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_free_tier_game_limit'
+  ) THEN
+    ALTER TABLE profiles
+    ADD CONSTRAINT chk_free_tier_game_limit
+    CHECK (
+      subscription_tier != 'FREE' OR
+      games_created_count <= 3
+    );
+  END IF;
+END;
+$$;
 
 -- Add index for efficient queries on free tier users near their limit
 CREATE INDEX IF NOT EXISTS idx_profiles_games_created_count_free

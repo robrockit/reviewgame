@@ -21,6 +21,8 @@ GRANT UPDATE (custom_bank_limit) ON profiles TO authenticated;
 
 -- Drop triggers first (must be done before dropping the functions)
 DROP TRIGGER IF EXISTS trigger_update_custom_bank_count ON question_banks;
+DROP TRIGGER IF EXISTS trg_update_custom_bank_count_insert ON question_banks;
+DROP TRIGGER IF EXISTS trg_update_custom_bank_count_delete ON question_banks;
 
 -- Drop the atomic limit enforcement function
 DROP FUNCTION IF EXISTS create_custom_bank_with_limit_check(UUID, TEXT, TEXT, TEXT, TEXT);
