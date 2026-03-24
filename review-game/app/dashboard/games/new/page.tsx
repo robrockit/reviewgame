@@ -49,6 +49,10 @@ export default function NewGamePage() {
   const [teamNames, setTeamNames] = useState<string[]>(['Team 1', 'Team 2', 'Team 3', 'Team 4']);
   const [timerEnabled, setTimerEnabled] = useState<boolean>(true);
   const [timerSeconds, setTimerSeconds] = useState<number>(10);
+  const [finalJeopardyEnabled, setFinalJeopardyEnabled] = useState<boolean>(false);
+  const [finalJeopardyCategory, setFinalJeopardyCategory] = useState<string>('');
+  const [finalJeopardyQuestion, setFinalJeopardyQuestion] = useState<string>('');
+  const [finalJeopardyAnswer, setFinalJeopardyAnswer] = useState<string>('');
 
   const router = useRouter();
   const supabase = createClient();
@@ -242,6 +246,21 @@ export default function NewGamePage() {
       return;
     }
 
+    if (finalJeopardyEnabled) {
+      if (!finalJeopardyCategory.trim()) {
+        setError('Final Jeopardy category is required');
+        return;
+      }
+      if (!finalJeopardyQuestion.trim()) {
+        setError('Final Jeopardy question is required');
+        return;
+      }
+      if (!finalJeopardyAnswer.trim()) {
+        setError('Final Jeopardy answer is required');
+        return;
+      }
+    }
+
     setIsCreating(true);
     setError(null);
 
@@ -263,6 +282,13 @@ export default function NewGamePage() {
           timer_seconds: timerEnabled ? timerSeconds : null,
           daily_double_positions: dailyDoublePositions,
           effective_user_id: effectiveUserId !== user.id ? effectiveUserId : undefined,
+          final_jeopardy_question: finalJeopardyEnabled
+            ? {
+                category: finalJeopardyCategory.trim(),
+                question: finalJeopardyQuestion.trim(),
+                answer: finalJeopardyAnswer.trim(),
+              }
+            : null,
         }),
       });
 
@@ -515,6 +541,73 @@ export default function NewGamePage() {
             </div>
           </div>
 
+          {/* Final Jeopardy Configuration */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Final Jeopardy
+            </label>
+            <div className="space-y-3">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="finalJeopardyEnabled"
+                  checked={finalJeopardyEnabled}
+                  onChange={(e) => setFinalJeopardyEnabled(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="finalJeopardyEnabled" className="ml-2 block text-sm text-gray-700">
+                  Include a Final Jeopardy round
+                </label>
+              </div>
+              {finalJeopardyEnabled && (
+                <div className="ml-6 space-y-3">
+                  <div>
+                    <label htmlFor="fjCategory" className="block text-sm text-gray-700 mb-1">
+                      Category <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="fjCategory"
+                      type="text"
+                      value={finalJeopardyCategory}
+                      onChange={(e) => setFinalJeopardyCategory(e.target.value)}
+                      placeholder="e.g. World History"
+                      maxLength={100}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="fjQuestion" className="block text-sm text-gray-700 mb-1">
+                      Question <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      id="fjQuestion"
+                      value={finalJeopardyQuestion}
+                      onChange={(e) => setFinalJeopardyQuestion(e.target.value)}
+                      placeholder="e.g. This is the largest country by area"
+                      maxLength={500}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="fjAnswer" className="block text-sm text-gray-700 mb-1">
+                      Answer <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="fjAnswer"
+                      type="text"
+                      value={finalJeopardyAnswer}
+                      onChange={(e) => setFinalJeopardyAnswer(e.target.value)}
+                      placeholder="e.g. Russia"
+                      maxLength={200}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Summary */}
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Game Summary</h3>
@@ -522,6 +615,7 @@ export default function NewGamePage() {
               <li>• {numTeams} teams will join</li>
               <li>• Timer: {timerEnabled ? `${timerSeconds} seconds` : 'Disabled'}</li>
               <li>• 2 Daily Doubles will be randomly placed</li>
+              <li>• Final Jeopardy: {finalJeopardyEnabled ? `Yes (${finalJeopardyCategory || 'category TBD'})` : 'Not included'}</li>
               <li>• Teams will need approval to join</li>
             </ul>
           </div>

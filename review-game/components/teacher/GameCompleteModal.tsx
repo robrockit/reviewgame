@@ -43,6 +43,10 @@ interface GameCompleteModalProps {
    * Callback to reset game and play again.
    */
   onPlayAgain: () => void;
+  /**
+   * Optional callback to start Final Jeopardy. Only rendered when provided.
+   */
+  onStartFinalJeopardy?: () => void;
 }
 
 /**
@@ -65,6 +69,7 @@ export default function GameCompleteModal({
   finalScores,
   onReturnToDashboard,
   onPlayAgain,
+  onStartFinalJeopardy,
 }: GameCompleteModalProps) {
   // Ref for focus management
   const returnButtonRef = useRef<HTMLButtonElement>(null);
@@ -270,6 +275,16 @@ export default function GameCompleteModal({
 
                 {/* Action Buttons */}
                 <div className="bg-gray-50 px-6 py-4 flex flex-col sm:flex-row justify-center gap-3">
+                  {onStartFinalJeopardy && (
+                    <button
+                      type="button"
+                      onClick={onStartFinalJeopardy}
+                      className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      aria-label="Start Final Jeopardy round"
+                    >
+                      Start Final Jeopardy
+                    </button>
+                  )}
                   <button
                     ref={returnButtonRef}
                     type="button"

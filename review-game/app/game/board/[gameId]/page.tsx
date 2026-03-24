@@ -9,6 +9,7 @@ import { QuestionModal } from '@/components/game/QuestionModal';
 import { DailyDoubleModal } from '@/components/game/DailyDoubleModal';
 import { BackButton } from '@/components/navigation/BackButton';
 import GameCompleteModal from '@/components/teacher/GameCompleteModal';
+import FinalJeopardyModal from '@/components/teacher/FinalJeopardyModal';
 import { useGameStore } from '@/lib/stores/gameStore';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import type { Tables } from '@/types/database.types';
@@ -42,8 +43,19 @@ export default function GameBoardPage() {
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGameCompleteModal, setShowGameCompleteModal] = useState(false);
+  const [showFinalJeopardyModal, setShowFinalJeopardyModal] = useState(false);
 
-  const { setGame: setStoreGame, setTeams, currentGameData, allTeams, selectedQuestions, reset: resetGameStore } = useGameStore();
+  const {
+    setGame: setStoreGame,
+    setTeams,
+    currentGameData,
+    allTeams,
+    selectedQuestions,
+    reset: resetGameStore,
+    setCurrentPhase,
+    setFinalJeopardyQuestion,
+    currentPhase,
+  } = useGameStore();
 
   // Subscribe to buzz events from students
   // This hook automatically adds buzzes to the game store's buzz queue
@@ -689,6 +701,85 @@ export default function GameBoardPage() {
     }
   };
 
+  // Handle starting Final Jeopardy from the game complete modal or board header
+  const handleStartFinalJeopardy = async () => {
+    try {
+      const response = await fetch(`/api/games/${gameId}/final-jeopardy/start`, { method: 'POST' });
+      const data = await response.json();
+
+      if (!response.ok) {
+        logger.error('Failed to start Final Jeopardy', new Error(data.error), {
+          operation: 'handleStartFinalJeopardy',
+          gameId,
+        });
+        return;
+      }
+
+      setFinalJeopardyQuestion(data.question as { category: string; question: string; answer: string });
+      setCurrentPhase('final_jeopardy_wager');
+      setShowGameCompleteModal(false);
+      setShowFinalJeopardyModal(true);
+    } catch (err) {
+      logger.error('Failed to start Final Jeopardy', err, {
+        operation: 'handleStartFinalJeopardy',
+        gameId,
+      });
+    }
+  };
+
+  // Advance Final Jeopardy to next phase (wager→answer, answer→reveal)
+  const handleAdvancePhase = async () => {
+    const response = await fetch(`/api/games/${gameId}/final-jeopardy/advance`, { method: 'POST' });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to advance phase');
+    }
+
+    setCurrentPhase(data.currentPhase);
+  };
+
+  // Reveal a team's Final Jeopardy answer and grade it
+  const handleRevealTeam = async (teamId: string, isCorrect: boolean) => {
+    const response = await fetch(`/api/games/${gameId}/final-jeopardy/reveal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teamId, isCorrect }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to reveal team answer');
+    }
+  };
+
+  // Finish the game after all Final Jeopardy reveals (advances reveal→complete)
+  const handleFinishGame = async () => {
+    const response = await fetch(`/api/games/${gameId}/final-jeopardy/advance`, { method: 'POST' });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to finish game');
+    }
+
+    setCurrentPhase(data.currentPhase);
+    setShowFinalJeopardyModal(false);
+    router.push('/dashboard');
+  };
+
+  // Skip Final Jeopardy and return to regular game view
+  const handleSkipFinalJeopardy = async () => {
+    const response = await fetch(`/api/games/${gameId}/final-jeopardy/skip`, { method: 'POST' });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to skip Final Jeopardy');
+    }
+
+    setCurrentPhase('regular');
+    setShowFinalJeopardyModal(false);
+  };
+
   // Prepare final scores for the game complete modal
   // Memoized to prevent unnecessary recalculations
   // Must be before early returns to comply with Rules of Hooks
@@ -760,6 +851,14 @@ export default function GameBoardPage() {
                 </button>
               </div>
             )}
+            {game.final_jeopardy_question !== null && currentPhase === 'regular' && (
+              <button
+                onClick={handleStartFinalJeopardy}
+                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-colors font-medium"
+              >
+                Start Final Jeopardy
+              </button>
+            )}
             <button
               onClick={handleNavigateToControlPanel}
               className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors"
@@ -817,6 +916,17 @@ export default function GameBoardPage() {
         finalScores={finalScores}
         onReturnToDashboard={handleReturnToDashboard}
         onPlayAgain={handlePlayAgain}
+        onStartFinalJeopardy={game.final_jeopardy_question !== null ? handleStartFinalJeopardy : undefined}
+      />
+
+      {/* Final Jeopardy Modal */}
+      <FinalJeopardyModal
+        isOpen={showFinalJeopardyModal}
+        gameId={gameId}
+        onAdvancePhase={handleAdvancePhase}
+        onRevealTeam={handleRevealTeam}
+        onFinishGame={handleFinishGame}
+        onSkip={handleSkipFinalJeopardy}
       />
     </div>
   );
