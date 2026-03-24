@@ -397,7 +397,7 @@ export async function POST(req: NextRequest) {
     }
 
     // At this point, counter is already incremented (for FREE tier)
-    // We need to rollback if game/team creation fails
+    // We need to rollback if game creation fails
 
     // Create game data
     const gameData: TablesInsert<'games'> = {
@@ -431,36 +431,6 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json(
         { error: 'Failed to create game' },
-        { status: 500 }
-      );
-    }
-
-    // Create team records
-    const teamRecords = Array.from({ length: num_teams }, (_, i) => ({
-      game_id: newGame.id,
-      team_number: i + 1,
-      team_name: team_names?.[i] || `Team ${i + 1}`,
-      score: 0,
-      connection_status: 'pending' as const,
-    }));
-
-    const { error: teamsError } = await supabase
-      .from('teams')
-      .insert(teamRecords);
-
-    if (teamsError) {
-      logger.error('Failed to create team records', teamsError, {
-        operation: 'createGame',
-        userId: targetUserId,
-        gameId: newGame.id,
-      });
-
-      // Rollback: Delete game and decrement counter
-      await supabase.from('games').delete().eq('id', newGame.id);
-      await supabase.rpc('decrement_game_count', { p_user_id: targetUserId });
-
-      return NextResponse.json(
-        { error: 'Failed to create team records' },
         { status: 500 }
       );
     }

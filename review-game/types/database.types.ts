@@ -609,6 +609,10 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: boolean
       }
+      join_game_atomic: {
+        Args: { p_game_id: string; p_device_id: string }
+        Returns: Json
+      }
       is_admin: { Args: never; Returns: boolean }
       log_admin_action: {
         Args: {

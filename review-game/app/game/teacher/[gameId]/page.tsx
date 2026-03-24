@@ -42,7 +42,7 @@ export default function TeacherControlPage() {
 
   // Join URL for students
   const joinUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/game/team/${gameId}`
+    ? `${window.location.origin}/game/team/join/${gameId}`
     : '';
 
   // Derived state for header (must be before useEffects that use them)

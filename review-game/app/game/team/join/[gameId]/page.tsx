@@ -164,59 +164,43 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         localStorage.setItem('deviceId', deviceId);
       }
 
-      // Get the next team number using MAX to reduce race condition risk
-      // Query for the highest team_number and increment it
-      const { data: maxTeamData, error: maxError } = await supabase
-        .from('teams')
-        .select('team_number')
-        .eq('game_id', gameId)
-        .order('team_number', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // Atomically assign a team slot and insert the record.
+      // The database function locks the game row, enforces capacity, assigns the
+      // next sequential team_number, resolves the configured team name, and inserts
+      // — all within one transaction, eliminating the TOCTOU race condition.
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('join_game_atomic', {
+        p_game_id: gameId,
+        p_device_id: deviceId,
+      });
 
-      if (maxError) {
-        logger.error('Error determining team number', {
-          error: maxError.message,
+      if (rpcError) {
+        logger.error('RPC error joining game', {
+          error: rpcError.message,
           gameId,
           operation: 'joinGame',
           page: 'JoinGamePage'
         });
-        throw new Error('Failed to determine team number');
+        throw new Error('Failed to join game. Please try again.');
       }
 
-      const teamNumber = (maxTeamData?.team_number || 0) + 1;
+      const result = rpcResult as { success: boolean; team_id?: string; error_code?: string };
 
-      // Create team record with pending status
-      // Note: In a high-concurrency scenario, consider adding a unique constraint
-      // on (game_id, team_number) and implementing retry logic
-      const { data: team, error: createError } = await supabase
-        .from('teams')
-        .insert({
-          game_id: gameId,
-          team_number: teamNumber,
-          device_id: deviceId,
-          connection_status: 'pending',
-          score: 0,
-          last_seen: new Date().toISOString(),
-        })
-        .select('id')
-        .single();
+      if (!result.success) {
+        if (result.error_code === 'game_full') {
+          throw new Error('This game is now full. Please ask your teacher for help.');
+        }
+        if (result.error_code === 'game_completed') {
+          throw new Error('This game has already ended.');
+        }
+        throw new Error('Failed to join game. Please try again.');
+      }
 
-      if (createError || !team) {
-        logger.error('Error creating team', {
-          error: createError?.message,
-          gameId,
-          teamNumber,
-          operation: 'joinGame',
-          page: 'JoinGamePage'
-        });
-        // If error is a unique constraint violation, it might be a race condition
-        // User can retry by clicking the button again
+      if (!result.team_id) {
         throw new Error('Failed to join game. Please try again.');
       }
 
       // Redirect to waiting room
-      router.push(`/game/team/waiting/${team.id}`);
+      router.push(`/game/team/waiting/${result.team_id}`);
     } catch (err) {
       logger.error('Error joining game', {
         error: err instanceof Error ? err.message : String(err),
@@ -292,12 +276,12 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         {/* Join Button */}
         <button
           onClick={handleJoinGame}
-          disabled={isLoading || !!error}
+          disabled={isLoading || !!error || !gameInfo}
           className={`
             w-full py-4 px-6 rounded-xl text-lg font-bold text-white
             transition-all duration-200 transform
             ${
-              isLoading || error
+              isLoading || error || !gameInfo
                 ? 'bg-gray-400 cursor-not-allowed'
                 : 'bg-blue-600 hover:bg-blue-700 active:scale-95 shadow-lg hover:shadow-xl'
             }
