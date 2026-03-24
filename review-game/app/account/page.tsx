@@ -54,7 +54,7 @@ export default function AccountPage() {
 
     if (!authUser) {
       setLoading(false);
-      router.push('/login');
+      router.push(`/login?redirectTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       return;
     }
 
