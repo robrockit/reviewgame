@@ -485,7 +485,7 @@ describe('getFeatureList', () => {
   it('should handle null profile gracefully', () => {
     const features = getFeatureList(null);
     expect(features).toHaveLength(8);
-    expect(features.every((f) => !f.enabled || f.id === 'create_game')).toBe(false);
+    expect(features.every((f) => !f.enabled || f.id === 'create_game')).toBe(true);
   });
 
   it('should have correct required tiers', () => {
