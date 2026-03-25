@@ -66,7 +66,7 @@ export default function UserProfileMenu() {
   const handleLogout = async () => {
     try {
       const supabase = createClient();
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
       router.push('/login');
     } catch (error) {
       logger.error('Failed to sign out user', error, {
