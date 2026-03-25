@@ -41,6 +41,8 @@ jobs:
           E2E_TEACHER_PASSWORD: ${{ secrets.E2E_TEACHER_PASSWORD }}
           E2E_FREE_TEACHER_EMAIL: ${{ secrets.E2E_FREE_TEACHER_EMAIL }}
           E2E_FREE_TEACHER_PASSWORD: ${{ secrets.E2E_FREE_TEACHER_PASSWORD }}
+          E2E_SIGNOUT_EMAIL: ${{ secrets.E2E_SIGNOUT_EMAIL }}
+          E2E_SIGNOUT_PASSWORD: ${{ secrets.E2E_SIGNOUT_PASSWORD }}
         run: npm run test:e2e:seed
 
       - name: Run Playwright tests
@@ -50,8 +52,12 @@ jobs:
           E2E_TEACHER_PASSWORD: ${{ secrets.E2E_TEACHER_PASSWORD }}
           E2E_FREE_TEACHER_EMAIL: ${{ secrets.E2E_FREE_TEACHER_EMAIL }}
           E2E_FREE_TEACHER_PASSWORD: ${{ secrets.E2E_FREE_TEACHER_PASSWORD }}
+          E2E_SIGNOUT_EMAIL: ${{ secrets.E2E_SIGNOUT_EMAIL }}
+          E2E_SIGNOUT_PASSWORD: ${{ secrets.E2E_SIGNOUT_PASSWORD }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+          # Needed by global teardown to delete test-account games after each run
+          E2E_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run test:e2e
 
       - name: Upload Playwright report on failure

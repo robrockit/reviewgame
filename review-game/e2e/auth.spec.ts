@@ -62,10 +62,12 @@ test.describe('authentication', () => {
   });
 
   test('sign out redirects away from dashboard', async ({ anonymousPage: page }) => {
-    // Log in with a fresh context so sign-out doesn't revoke the shared
-    // storageState used by teacherPage in all other tests.
+    // Use a dedicated throwaway account so that the global signOut() call
+    // (which revokes the server-side session) doesn't invalidate the shared
+    // storageState files used by teacherPage / freeTeacherPage across all
+    // other tests.
     await page.goto('/login');
-    await login(page, process.env.E2E_TEACHER_EMAIL!, process.env.E2E_TEACHER_PASSWORD!);
+    await login(page, process.env.E2E_SIGNOUT_EMAIL!, process.env.E2E_SIGNOUT_PASSWORD!);
     await page.waitForURL('**/dashboard**', { timeout: 15_000 });
 
     // The dashboard has a direct "Sign Out" button (no dropdown)

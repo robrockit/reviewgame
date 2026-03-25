@@ -50,10 +50,12 @@ const env = { ...stagingEnv, ...testEnv, ...process.env };
 
 const SUPABASE_URL        = env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY    = env.SUPABASE_SERVICE_ROLE_KEY;
-const TEACHER_EMAIL       = env.E2E_TEACHER_EMAIL;
-const TEACHER_PASSWORD    = env.E2E_TEACHER_PASSWORD;
-const FREE_TEACHER_EMAIL  = env.E2E_FREE_TEACHER_EMAIL;
+const TEACHER_EMAIL         = env.E2E_TEACHER_EMAIL;
+const TEACHER_PASSWORD      = env.E2E_TEACHER_PASSWORD;
+const FREE_TEACHER_EMAIL    = env.E2E_FREE_TEACHER_EMAIL;
 const FREE_TEACHER_PASSWORD = env.E2E_FREE_TEACHER_PASSWORD;
+const SIGNOUT_EMAIL         = env.E2E_SIGNOUT_EMAIL;
+const SIGNOUT_PASSWORD      = env.E2E_SIGNOUT_PASSWORD;
 
 const missing = [
   ['NEXT_PUBLIC_SUPABASE_URL (from .env.staging)',   SUPABASE_URL],
@@ -62,6 +64,8 @@ const missing = [
   ['E2E_TEACHER_PASSWORD (from .env.test)',          TEACHER_PASSWORD],
   ['E2E_FREE_TEACHER_EMAIL (from .env.test)',        FREE_TEACHER_EMAIL],
   ['E2E_FREE_TEACHER_PASSWORD (from .env.test)',     FREE_TEACHER_PASSWORD],
+  ['E2E_SIGNOUT_EMAIL (from .env.test)',             SIGNOUT_EMAIL],
+  ['E2E_SIGNOUT_PASSWORD (from .env.test)',          SIGNOUT_PASSWORD],
 ].filter(([, v]) => !v).map(([k]) => k);
 
 if (missing.length > 0) {
@@ -91,6 +95,16 @@ const accounts = [
     label:              'Free-tier teacher',
     email:              FREE_TEACHER_EMAIL,
     password:           FREE_TEACHER_PASSWORD,
+    subscription_tier:   'free',
+    subscription_status: 'INACTIVE',
+  },
+  {
+    // Dedicated account for the sign-out E2E test. This account's session is
+    // intentionally revoked during the test (global signOut). Using a throwaway
+    // account keeps the premium and free-tier storageState files unaffected.
+    label:              'Sign-out test account',
+    email:              SIGNOUT_EMAIL,
+    password:           SIGNOUT_PASSWORD,
     subscription_tier:   'free',
     subscription_status: 'INACTIVE',
   },

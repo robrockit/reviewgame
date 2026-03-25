@@ -295,7 +295,7 @@ export default function AccountPage() {
             <button
               onClick={async () => {
                 if (confirm('Are you sure you want to sign out?')) {
-                  await supabase.auth.signOut({ scope: 'local' });
+                  await supabase.auth.signOut();
                   router.push('/');
                 }
               }}
