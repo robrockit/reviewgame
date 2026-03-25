@@ -22,6 +22,7 @@ import {
   canAccessAnalytics,
   getFeatureList,
 } from './feature-access';
+import { describe, it, expect } from 'vitest';
 import type { Tables } from '@/types/database.types';
 
 type Profile = Tables<'profiles'>;
@@ -485,7 +486,12 @@ describe('getFeatureList', () => {
   it('should handle null profile gracefully', () => {
     const features = getFeatureList(null);
     expect(features).toHaveLength(8);
-    expect(features.every((f) => !f.enabled || f.id === 'create_game')).toBe(false);
+    // All features are disabled for a null profile. create_game is the only FREE-tier
+    // feature, but canCreateGame(null) also returns false (explicit null guard in the
+    // implementation). The allowlist here documents intentional design: create_game is
+    // the one feature whose null behavior we reserve the right to relax (e.g. to allow
+    // unauthenticated previews) without rewriting this test.
+    expect(features.every((f) => !f.enabled || f.id === 'create_game')).toBe(true);
   });
 
   it('should have correct required tiers', () => {

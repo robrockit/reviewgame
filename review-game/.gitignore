@@ -63,3 +63,8 @@ question_data_export.sql
 # Environment backup files created by environment switcher
 .env.local.*.backup
 /questions
+
+# Playwright
+/playwright-report
+/test-results
+/e2e/.auth
