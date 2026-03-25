@@ -92,7 +92,7 @@ const accounts = [
     email:              FREE_TEACHER_EMAIL,
     password:           FREE_TEACHER_PASSWORD,
     subscription_tier:   'free',
-    subscription_status: 'free',
+    subscription_status: 'INACTIVE',
   },
 ];
 
@@ -101,18 +101,22 @@ const accounts = [
 async function upsertAccount({ label, email, password, subscription_tier, subscription_status }) {
   console.log(`\n[${label}] ${email}`);
 
-  // Check if user already exists
-  const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
-  if (listError) throw listError;
+  // Query the profiles table directly by email to avoid fetching all users via listUsers()
+  const { data: profile, error: profileLookupError } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle();
 
-  const existing = users.find(u => u.email === email);
+  if (profileLookupError) throw profileLookupError;
+
   let userId;
 
-  if (existing) {
-    console.log(`  ↳ User exists (${existing.id}) — updating password`);
-    const { error } = await supabase.auth.admin.updateUserById(existing.id, { password });
+  if (profile) {
+    console.log(`  ↳ User exists (${profile.id}) — updating password`);
+    const { error } = await supabase.auth.admin.updateUserById(profile.id, { password });
     if (error) throw error;
-    userId = existing.id;
+    userId = profile.id;
   } else {
     console.log('  ↳ Creating new user...');
     const { data, error } = await supabase.auth.admin.createUser({

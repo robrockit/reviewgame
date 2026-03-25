@@ -24,57 +24,7 @@
  */
 
 import { test, expect } from './fixtures';
-import type { Page } from '@playwright/test';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Creates a new game as the teacher with the given team count.
- * Returns the game ID extracted from the redirect URL.
- */
-async function createGame(page: Page, numTeams = 2): Promise<string> {
-  await page.goto('/dashboard/games/new');
-
-  await page.selectOption('#questionBank', { index: 1 });
-  await page.selectOption('#numTeams', String(numTeams));
-  await page.click('button[type="submit"]');
-
-  await page.waitForURL('**/game/teacher/**', { timeout: 15_000 });
-
-  const match = page.url().match(/\/game\/teacher\/([^/?#]+)/);
-  if (!match) throw new Error(`Unexpected redirect URL: ${page.url()}`);
-  return match[1];
-}
-
-/**
- * Joins a game from the given page (anonymous context).
- * Waits for the waiting room redirect and returns the team ID.
- */
-async function joinGame(page: Page, gameId: string): Promise<string> {
-  await page.goto(`/game/team/join/${gameId}`);
-
-  const joinButton = page.locator('button', { hasText: '🎮 Join Game' });
-  await expect(joinButton).toBeEnabled({ timeout: 10_000 });
-  await joinButton.click();
-
-  await page.waitForURL('**/game/team/waiting/**', { timeout: 15_000 });
-
-  const match = page.url().match(/\/game\/team\/waiting\/([^/?#]+)/);
-  if (!match) throw new Error(`Unexpected redirect URL: ${page.url()}`);
-  return match[1];
-}
-
-/**
- * Clicks "Start Game" and dismisses the TeamCountMismatchModal if it appears
- * (shown when fewer teams joined than the game's expected count).
- */
-async function clickStartGame(page: Page): Promise<void> {
-  await page.locator('button', { hasText: 'Start Game' }).click();
-  const mismatchButton = page.locator('button', { hasText: 'Start Game Anyway' });
-  if (await mismatchButton.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await mismatchButton.click();
-  }
-}
+import { createGame, joinGame, clickStartGame } from './helpers';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 

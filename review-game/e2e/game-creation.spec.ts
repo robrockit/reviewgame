@@ -10,50 +10,20 @@
  */
 
 import { test, expect } from './fixtures';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Fills out the minimum required game creation fields and submits.
- * Selects the first available question bank from the dropdown.
- * Returns the game ID from the redirect URL.
- */
-async function createBasicGame(
-  page: import('@playwright/test').Page,
-  teamCount = 2
-): Promise<string> {
-  await page.goto('/dashboard/games/new');
-
-  // Select the first available question bank (index 0 is the placeholder "Select a question bank")
-  await page.selectOption('#questionBank', { index: 1 });
-
-  // Set number of teams (#numTeams is a <select>, min value 2)
-  await page.selectOption('#numTeams', String(teamCount));
-
-  // Submit the form
-  await page.click('button[type="submit"]');
-
-  // Wait for redirect to the teacher lobby
-  await page.waitForURL('**/game/teacher/**', { timeout: 15_000 });
-
-  // Extract game ID from the URL path: /game/teacher/[gameId]
-  const match = page.url().match(/\/game\/teacher\/([^/?#]+)/);
-  if (!match) throw new Error(`Unexpected redirect URL: ${page.url()}`);
-  return match[1];
-}
+import { createGame } from './helpers';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 test.describe('game creation', () => {
   test('basic game creation redirects to teacher lobby', async ({ teacherPage: page }) => {
-    const gameId = await createBasicGame(page);
+    const gameId = await createGame(page);
 
     expect(gameId).toBeTruthy();
     expect(page.url()).toContain(`/game/teacher/${gameId}`);
   });
 
   test('created game appears in dashboard games list', async ({ teacherPage: page }) => {
-    await createBasicGame(page);
+    await createGame(page);
 
     // Navigate back to the dashboard
     await page.goto('/dashboard');
@@ -110,10 +80,8 @@ test.describe('game creation', () => {
     // Do not select a question bank — submit immediately
     await page.click('button[type="submit"]');
 
-    // Browser native validation or app-level error should appear
-    // Check that we're still on the creation page (no redirect occurred)
-    await page.waitForTimeout(2_000);
-    expect(page.url()).toContain('/dashboard/games/new');
+    // Browser native validation blocks submission — assert we're still on the creation page
+    await expect(page).toHaveURL(/\/dashboard\/games\/new/, { timeout: 5_000 });
   });
 
   test('submitting FJ with missing fields shows validation errors', async ({ teacherPage: page }) => {
@@ -128,8 +96,7 @@ test.describe('game creation', () => {
     await page.click('button[type="submit"]');
 
     // Should stay on the creation page — FJ validation blocks submission
-    await page.waitForTimeout(2_000);
-    expect(page.url()).toContain('/dashboard/games/new');
+    await expect(page).toHaveURL(/\/dashboard\/games\/new/, { timeout: 5_000 });
   });
 
   test('free-tier teacher sees team name inputs as disabled', async ({ freeTeacherPage: page }) => {

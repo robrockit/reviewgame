@@ -26,6 +26,9 @@ export default defineConfig({
   // Global setup: authenticates users once and saves session files
   globalSetup: './e2e/global.setup.ts',
 
+  // Global teardown: removes test-account games from staging after each run
+  globalTeardown: './e2e/global.teardown.ts',
+
   timeout: 30_000,
   expect: { timeout: 5_000 },
 

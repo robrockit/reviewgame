@@ -23,10 +23,11 @@
 
 import { test, expect } from './fixtures';
 import type { Page } from '@playwright/test';
+import { joinGame } from './helpers';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Creates a 1-team game with Final Jeopardy enabled. Returns the game ID. */
+/** Creates a game with Final Jeopardy enabled. Returns the game ID. */
 async function createFJGame(page: Page): Promise<string> {
   await page.goto('/dashboard/games/new');
 
@@ -46,17 +47,6 @@ async function createFJGame(page: Page): Promise<string> {
   const match = page.url().match(/\/game\/teacher\/([^/?#]+)/);
   if (!match) throw new Error(`Unexpected redirect URL: ${page.url()}`);
   return match[1];
-}
-
-/**
- * Joins a game anonymously and returns the waiting-room team ID.
- */
-async function joinGame(page: Page, gameId: string): Promise<void> {
-  await page.goto(`/game/team/join/${gameId}`);
-  const joinButton = page.locator('button', { hasText: '🎮 Join Game' });
-  await expect(joinButton).toBeEnabled({ timeout: 10_000 });
-  await joinButton.click();
-  await page.waitForURL('**/game/team/waiting/**', { timeout: 15_000 });
 }
 
 /**

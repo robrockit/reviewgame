@@ -15,55 +15,8 @@
  */
 
 import { test, expect } from './fixtures';
-import type { Page, BrowserContext } from '@playwright/test';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Creates a basic game as the teacher and returns the game ID.
- * Navigates the teacher page to /dashboard/games/new and submits.
- */
-async function createGame(
-  page: Page,
-  numTeams = 2
-): Promise<string> {
-  await page.goto('/dashboard/games/new');
-
-  // Select first available question bank
-  await page.selectOption('#questionBank', { index: 1 });
-
-  await page.selectOption('#numTeams', String(numTeams));
-  await page.click('button[type="submit"]');
-
-  // Wait for redirect to teacher lobby: /game/teacher/[gameId]
-  await page.waitForURL('**/game/teacher/**', { timeout: 15_000 });
-
-  const match = page.url().match(/\/game\/teacher\/([^/?#]+)/);
-  if (!match) throw new Error(`Unexpected redirect URL: ${page.url()}`);
-  return match[1];
-}
-
-/**
- * Joins a game from the given page/context and returns the team ID
- * extracted from the waiting-room redirect URL.
- */
-async function joinGame(page: Page, gameId: string): Promise<string> {
-  await page.goto(`/game/team/join/${gameId}`);
-
-  // Wait for page validation to finish (button transitions from "Checking..." to "🎮 Join Game")
-  const joinButton = page.locator('button', { hasText: '🎮 Join Game' });
-  await expect(joinButton).toBeVisible({ timeout: 10_000 });
-  await expect(joinButton).toBeEnabled();
-
-  await joinButton.click();
-
-  // Wait for redirect to waiting room
-  await page.waitForURL('**/game/team/waiting/**', { timeout: 15_000 });
-
-  const match = page.url().match(/\/game\/team\/waiting\/([^/?#]+)/);
-  if (!match) throw new Error(`Unexpected redirect URL: ${page.url()}`);
-  return match[1];
-}
+import type { BrowserContext } from '@playwright/test';
+import { createGame, joinGame } from './helpers';
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
