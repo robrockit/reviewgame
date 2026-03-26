@@ -54,7 +54,7 @@ export default function WaitingRoomPage({ params }: WaitingRoomProps) {
 
       // If already approved (status set to 'connected' by the teacher lobby), redirect immediately
       if (data.connection_status === 'connected') {
-        router.push(`/game/team/${teamId}`);
+        router.push(`/game/student/${data.game_id}/${teamId}`);
         return;
       }
 
@@ -84,7 +84,7 @@ export default function WaitingRoomPage({ params }: WaitingRoomProps) {
 
           // Auto-redirect on approval ('connected' is the status set by the teacher lobby)
           if (updatedTeam.connection_status === 'connected') {
-            router.push(`/game/team/${teamId}`);
+            router.push(`/game/student/${updatedTeam.game_id}/${teamId}`);
           }
 
           // Show error on rejection
