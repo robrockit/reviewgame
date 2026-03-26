@@ -25,13 +25,11 @@ test.describe('game creation', () => {
   test('created game appears in dashboard games list', async ({ teacherPage: page }) => {
     await createGame(page);
 
-    // Navigate back to the dashboard
-    await page.goto('/dashboard');
+    // Navigate to the games list page
+    await page.goto('/dashboard/games');
 
-    // The dashboard should show at least one game card / list item
-    // The most recently created game should be visible
-    const gameList = page.locator('[data-testid="game-list"], .game-card, [href*="/game/teacher/"]');
-    await expect(gameList.first()).toBeVisible({ timeout: 10_000 });
+    // At least one game should be visible with a Launch Game button
+    await expect(page.locator('button', { hasText: 'Launch Game' }).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('creating a game with Final Jeopardy includes FJ question', async ({ teacherPage: page }) => {
@@ -77,11 +75,8 @@ test.describe('game creation', () => {
   test('submitting without a question bank shows a validation error', async ({ teacherPage: page }) => {
     await page.goto('/dashboard/games/new');
 
-    // Do not select a question bank — submit immediately
-    await page.click('button[type="submit"]');
-
-    // Browser native validation blocks submission — assert we're still on the creation page
-    await expect(page).toHaveURL(/\/dashboard\/games\/new/, { timeout: 5_000 });
+    // The create button is disabled until a question bank is selected — clicking is prevented entirely
+    await expect(page.locator('button[type="submit"]')).toBeDisabled();
   });
 
   test('submitting FJ with missing fields shows validation errors', async ({ teacherPage: page }) => {

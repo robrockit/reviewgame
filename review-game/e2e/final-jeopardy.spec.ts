@@ -171,21 +171,33 @@ test.describe('Final Jeopardy flow', () => {
     anonymousPage,
   }) => {
     const gameId = await createFJGame(teacherPage);
-    await joinGame(anonymousPage, gameId);
+    const teamId = await joinGame(anonymousPage, gameId);
     await startGame(teacherPage, gameId);
 
-    // Advance through all phases to reach reveal
+    // Start Final Jeopardy — enters wager phase
     await teacherPage.locator('button', { hasText: 'Start Final Jeopardy' }).click();
     await expect(
       teacherPage.locator('button', { hasText: 'Advance to Answering' })
     ).toBeVisible({ timeout: 10_000 });
-    await teacherPage.locator('button', { hasText: 'Advance to Answering' }).click();
 
+    // Student submits wager during wager phase (device cookie is carried by anonymousPage)
+    await anonymousPage.request.post(`/api/games/${gameId}/final-jeopardy/wager`, {
+      data: { teamId, wager: 0 },
+    });
+
+    // Advance to answering phase
+    await teacherPage.locator('button', { hasText: 'Advance to Answering' }).click();
     await expect(
       teacherPage.locator('button', { hasText: 'Begin Reveals' })
     ).toBeVisible({ timeout: 10_000 });
-    await teacherPage.locator('button', { hasText: 'Begin Reveals' }).click();
 
+    // Student submits answer during answering phase
+    await anonymousPage.request.post(`/api/games/${gameId}/final-jeopardy/answer`, {
+      data: { teamId, answer: 'Russia' },
+    });
+
+    // Advance to reveal phase
+    await teacherPage.locator('button', { hasText: 'Begin Reveals' }).click();
     await expect(teacherPage.locator('text=Correct Answer:')).toBeVisible({ timeout: 10_000 });
 
     // Grade the only team as correct — this reveals their card
