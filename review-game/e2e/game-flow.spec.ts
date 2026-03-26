@@ -134,11 +134,8 @@ test.describe('game flow', () => {
     await clickStartGame(teacherPage);
     await teacherPage.waitForURL(`**/game/board/${gameId}**`, { timeout: 15_000 });
 
-    // Question cards are divs with bg-blue-600 but NOT the category-header class.
-    // Click the first available (non-used) question card.
-    const questionCard = teacherPage.locator(
-      '.bg-blue-600:not(.category-header)'
-    );
+    // Click the first regular question card (Daily Double cards open a different modal).
+    const questionCard = teacherPage.locator('[data-testid="question-card"]');
     await expect(questionCard.first()).toBeVisible({ timeout: 10_000 });
     await questionCard.first().click();
 
@@ -164,7 +161,7 @@ test.describe('game flow', () => {
     await clickStartGame(teacherPage);
     await teacherPage.waitForURL(`**/game/board/${gameId}**`, { timeout: 15_000 });
 
-    const questionCard = teacherPage.locator('.bg-blue-600:not(.category-header)');
+    const questionCard = teacherPage.locator('[data-testid="question-card"]');
     await questionCard.first().click();
 
     // Wait for the modal to open, then close it

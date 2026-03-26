@@ -75,7 +75,11 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({ question, onSelect }
   };
 
   return (
-    <div className={`${getCardClasses()} relative`} onClick={handleClick}>
+    <div
+      className={`${getCardClasses()} relative`}
+      onClick={handleClick}
+      data-testid={question.isDailyDouble ? 'daily-double-card' : 'question-card'}
+    >
       <div className="card-content">
         <div className="question-value text-2xl">{question.value}</div>
         {/* Daily Double indicators removed - revealed only when question is selected */}
