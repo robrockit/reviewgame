@@ -174,15 +174,24 @@ test.describe('Final Jeopardy flow', () => {
     const teamId = await joinGame(anonymousPage, gameId);
     await startGame(teacherPage, gameId);
 
+    // Read the device_id the anonymous page uses to authenticate API calls.
+    // It is stored in localStorage by getDeviceId() during the join flow and
+    // must be sent as the X-Device-ID header (not a cookie).
+    const deviceId = await anonymousPage.evaluate(
+      () => localStorage.getItem('reviewgame_device_id')
+    );
+    if (!deviceId) throw new Error('device_id not found in anonymousPage localStorage');
+
     // Start Final Jeopardy — enters wager phase
     await teacherPage.locator('button', { hasText: 'Start Final Jeopardy' }).click();
     await expect(
       teacherPage.locator('button', { hasText: 'Advance to Answering' })
     ).toBeVisible({ timeout: 10_000 });
 
-    // Student submits wager during wager phase (device cookie is carried by anonymousPage)
+    // Student submits wager during wager phase
     await anonymousPage.request.post(`/api/games/${gameId}/final-jeopardy/wager`, {
       data: { teamId, wager: 0 },
+      headers: { 'X-Device-ID': deviceId },
     });
 
     // Advance to answering phase
@@ -194,6 +203,7 @@ test.describe('Final Jeopardy flow', () => {
     // Student submits answer during answering phase
     await anonymousPage.request.post(`/api/games/${gameId}/final-jeopardy/answer`, {
       data: { teamId, answer: 'Russia' },
+      headers: { 'X-Device-ID': deviceId },
     });
 
     // Advance to reveal phase
