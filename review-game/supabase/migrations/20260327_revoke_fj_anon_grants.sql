@@ -7,5 +7,5 @@
 --              REVOKE is a no-op if the grant was never applied.
 -- Created: 2026-03-27
 
-REVOKE EXECUTE ON FUNCTION submit_final_jeopardy_wager FROM anon;
-REVOKE EXECUTE ON FUNCTION submit_final_jeopardy_answer FROM anon;
+REVOKE EXECUTE ON FUNCTION public.submit_final_jeopardy_wager(uuid, uuid, integer) FROM anon;
+REVOKE EXECUTE ON FUNCTION public.submit_final_jeopardy_answer(uuid, uuid, text) FROM anon;

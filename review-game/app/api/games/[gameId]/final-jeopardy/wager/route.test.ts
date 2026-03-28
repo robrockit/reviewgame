@@ -97,12 +97,22 @@ describe('POST /api/games/[gameId]/final-jeopardy/wager — two-client invariant
 });
 
 // ─── Input validation ─────────────────────────────────────────────────────────
+//
+// Validation is split across two auth tiers:
+//   Pre-auth  — structural checks (UUID format, required fields) — run before verifyDeviceOwnsTeam
+//               so we don't waste a DB round-trip on obviously bad input
+//   Post-auth — range/type checks (negative, non-integer) — run after auth to avoid
+//               leaking constraint details to unauthenticated callers
+//
+// There is no upper-bound check in the route. The max wager (team's current score)
+// requires live team data and is enforced atomically inside submit_final_jeopardy_wager.
 
 describe('POST /api/games/[gameId]/final-jeopardy/wager — input validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateAdminServerClient.mockResolvedValue({});
     mockGetDeviceIdFromRequest.mockReturnValue('device-abc');
+    // Default to auth failing — pre-auth checks must reject before reaching verifyDeviceOwnsTeam
     mockVerifyDeviceOwnsTeam.mockResolvedValue(false);
   });
 
@@ -124,8 +134,8 @@ describe('POST /api/games/[gameId]/final-jeopardy/wager — input validation', (
     expect(res.status).toBe(400);
   });
 
+  // Range/type checks happen post-auth (auth must pass to reach them)
   it('returns 400 for a negative wager', async () => {
-    // Auth check happens before wager range validation, so let auth pass
     mockVerifyDeviceOwnsTeam.mockResolvedValue(true);
     const req = makeRequest({ teamId: VALID_TEAM_ID, wager: -1 });
     const res = await POST(req, makeContext());
@@ -137,6 +147,20 @@ describe('POST /api/games/[gameId]/final-jeopardy/wager — input validation', (
     const req = makeRequest({ teamId: VALID_TEAM_ID, wager: 50.5 });
     const res = await POST(req, makeContext());
     expect(res.status).toBe(400);
+  });
+
+  // Upper-bound (wager > team score) is enforced by the DB function which has access
+  // to live team data; the route propagates that as a 400 from the DB result
+  it('returns 400 when the DB function rejects an over-limit wager', async () => {
+    mockVerifyDeviceOwnsTeam.mockResolvedValue(true);
+    mockCreateAdminServiceClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue(makeRpcResult(false, { error_message: 'Wager cannot exceed 200' })),
+    });
+    const req = makeRequest({ teamId: VALID_TEAM_ID, wager: 99999 });
+    const res = await POST(req, makeContext());
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('Wager cannot exceed 200');
   });
 });
 

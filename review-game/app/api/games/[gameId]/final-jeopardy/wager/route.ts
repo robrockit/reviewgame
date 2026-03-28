@@ -88,7 +88,9 @@ export async function POST(
       );
     }
 
-    // Basic validation: wager must be non-negative (detailed validation in DB function)
+    // Basic validation: wager must be non-negative.
+    // No upper-bound check here — the max wager (team's current score) is enforced
+    // atomically inside submit_final_jeopardy_wager, which has access to live team data.
     if (wager < 0) {
       return NextResponse.json(
         { error: 'Wager cannot be negative' },

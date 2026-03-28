@@ -97,12 +97,19 @@ describe('POST /api/games/[gameId]/final-jeopardy/answer — two-client invarian
 });
 
 // ─── Input validation ─────────────────────────────────────────────────────────
+//
+// Validation is split across two auth tiers:
+//   Pre-auth  — structural checks (UUID format, required fields) — run before verifyDeviceOwnsTeam
+//               so we don't waste a DB round-trip on obviously bad input
+//   Post-auth — content checks (type, length) — run after auth to avoid leaking
+//               constraint details to unauthenticated callers
 
 describe('POST /api/games/[gameId]/final-jeopardy/answer — input validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateAdminServerClient.mockResolvedValue({});
     mockGetDeviceIdFromRequest.mockReturnValue('device-abc');
+    // Default to auth failing — pre-auth checks must reject before reaching verifyDeviceOwnsTeam
     mockVerifyDeviceOwnsTeam.mockResolvedValue(false);
   });
 
@@ -124,6 +131,7 @@ describe('POST /api/games/[gameId]/final-jeopardy/answer — input validation', 
     expect(res.status).toBe(400);
   });
 
+  // Content checks happen post-auth (auth must pass to reach them)
   it('returns 400 when answer exceeds 500 characters', async () => {
     mockVerifyDeviceOwnsTeam.mockResolvedValue(true);
     const longAnswer = 'a'.repeat(501);
