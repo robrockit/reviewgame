@@ -23,13 +23,13 @@ export async function POST(
   context: { params: Promise<{ gameId: string }> }
 ) {
   try {
-    // createAdminServerClient (anon key) for device ownership check — reads the caller's
-    // session context. createAdminServiceClient (service role) for the RPC call — students
-    // are anonymous so anon role lacks EXECUTE on submit_final_jeopardy_wager. Keeping the
-    // service role scoped to the RPC means we never grant anon execute (which would let
-    // anyone with the public anon key overwrite any team's wager by guessing a team UUID).
+    // createAdminServerClient (anon key) reads the caller's session context for
+    // device ownership verification. createAdminServiceClient (service role) is
+    // used only for the RPC call — students are anonymous so anon role lacks
+    // EXECUTE on submit_final_jeopardy_wager, but granting it would expose the
+    // function to direct Supabase REST calls (anon key is public). Service role
+    // is constructed after auth to avoid throwing on missing env var for early-exit paths.
     const supabase = await createAdminServerClient();
-    const serviceSupabase = createAdminServiceClient();
 
     // Get gameId from params
     const { gameId } = await context.params;
@@ -97,7 +97,8 @@ export async function POST(
     }
 
     // Use atomic database function to submit wager (prevents race conditions).
-    // Must use service role client — see comment at top of handler.
+    // Service role required — see comment at top of handler.
+    const serviceSupabase = createAdminServiceClient();
     const { data: result, error: submitError } = await serviceSupabase
       .rpc('submit_final_jeopardy_wager', {
         p_game_id: gameId,

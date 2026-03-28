@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh run:*)",
+      "Bash(find /c/Users/robro/GitHub/reviewgame/review-game/lib -name *.ts)",
+      "Bash(xargs grep:*)"
+    ]
+  }
+}
