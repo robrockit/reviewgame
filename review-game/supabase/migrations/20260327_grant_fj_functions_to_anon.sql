@@ -1,9 +1,11 @@
--- Migration: Grant FJ wager/answer functions to anon role
--- Description: Students are unauthenticated (anon role), so grant execute on
---              submit_final_jeopardy_wager and submit_final_jeopardy_answer to anon.
---              Previously only granted to authenticated, causing 403s from student browsers.
+-- Migration: Revoke anon execute on FJ wager/answer functions (security fix)
+-- Description: Reverts an earlier incorrect approach of granting anon execute.
+--              The wager/answer API routes now use the service role client for the RPC
+--              call, so no anon grant is needed. Granting anon execute would allow
+--              anyone with the public anon key to call these functions directly and
+--              overwrite any team's wager/answer by guessing a team UUID.
+--              REVOKE is a no-op if the grant was never applied.
 -- Created: 2026-03-27
--- Related: FJ E2E test fix
 
-GRANT EXECUTE ON FUNCTION submit_final_jeopardy_wager TO anon;
-GRANT EXECUTE ON FUNCTION submit_final_jeopardy_answer TO anon;
+REVOKE EXECUTE ON FUNCTION submit_final_jeopardy_wager FROM anon;
+REVOKE EXECUTE ON FUNCTION submit_final_jeopardy_answer FROM anon;
