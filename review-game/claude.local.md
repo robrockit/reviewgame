@@ -77,6 +77,18 @@ npm run lint
 
 # Type checking (Next.js build includes this)
 npx tsc --noEmit
+
+# Unit tests
+npm test
+
+# Unit tests in watch mode
+npm run test:watch
+
+# E2E tests against staging (requires .env.test)
+npm run test:e2e
+
+# Seed staging E2E test accounts
+npm run test:e2e:seed
 ```
 
 ## Database Schema
@@ -389,17 +401,70 @@ export const VALIDATION = {
 
 ## Testing & Quality
 
-### Pre-commit Checklist
+### Test stack
+
+| Layer | Tool | Command | Runs in CI |
+|-------|------|---------|-----------|
+| Unit | Vitest | `npm test` | Every PR |
+| E2E | Playwright | `npm run test:e2e` | PRs to `main` |
+
+Unit tests live alongside the code they test (`lib/utils/formatters.test.ts`,
+`lib/stores/gameStore.test.ts`, etc.). E2E specs live in `e2e/`.
+
+### Every new feature must include tests
+
+**Unit tests** — write for any new or changed:
+- Utility / helper functions (`lib/utils/`)
+- Zustand store actions (`lib/stores/`)
+- Subscription / feature-access logic (`lib/utils/feature-access.ts`)
+- API route handlers (pure logic, not the HTTP layer)
+
+**E2E tests** — write for any new or changed:
+- User-facing page or flow (add to the relevant `e2e/*.spec.ts` or create a new spec)
+- Feature-gating behaviour (free vs premium access)
+- Auth or redirect rules
+
+If a new feature touches the game join, game board, Final Jeopardy, or dashboard
+flows, update the existing spec in `e2e/` rather than creating a duplicate.
+
+### Pre-commit checklist
 
 Before committing changes:
 
-1. ✅ Run `npm run lint` - Must pass with exit code 0
-2. ✅ Test manually in browser
-3. ✅ Check console for errors
-4. ✅ Verify database changes with migrations
-5. ✅ Test admin actions create audit logs
+1. ✅ `npm run lint` — must exit 0
+2. ✅ `npm test` — all unit tests pass
+3. ✅ `npx tsc --noEmit` — no type errors
+4. ✅ New/changed logic has unit tests
+5. ✅ New/changed UI flows have E2E tests (or existing specs updated)
+6. ✅ Check console for errors in the browser
+7. ✅ Verify database changes with migrations
+8. ✅ Test admin actions create audit logs
 
-### Common Linting Issues
+### Running tests locally
+
+```bash
+# Unit tests (fast, no network)
+npm test
+
+# Unit tests in watch mode
+npm run test:watch
+
+# E2E tests against staging (requires .env.test)
+npm run test:e2e
+
+# Seed staging test accounts (run once after creating .env.test)
+npm run test:e2e:seed
+```
+
+E2E tests require `.env.test` — copy `.env.test.example` and fill in credentials.
+Required accounts: premium teacher, free-tier teacher, sign-out throwaway account.
+
+### Shared E2E helpers
+
+Common multi-step actions (`createGame`, `joinGame`, `clickStartGame`) live in
+`e2e/helpers.ts`. Import from there rather than duplicating them in new specs.
+
+### Common linting issues
 
 - **React Hook Dependencies:** Add eslint-disable with explanation
 - **Unused Variables:** Remove or prefix with `_` if required by signature

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { createAdminServerClient } from '@/lib/admin/auth';
+import { createAdminServerClient, createAdminServiceClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { verifyDeviceOwnsTeam, getDeviceIdFromRequest } from '@/lib/auth/device';
 
@@ -23,6 +23,12 @@ export async function POST(
   context: { params: Promise<{ gameId: string }> }
 ) {
   try {
+    // createAdminServerClient (anon key) reads the caller's session context for
+    // device ownership verification. createAdminServiceClient (service role) is
+    // used only for the RPC call — students are anonymous so anon role lacks
+    // EXECUTE on submit_final_jeopardy_wager, but granting it would expose the
+    // function to direct Supabase REST calls (anon key is public). Service role
+    // is constructed after auth to avoid throwing on missing env var for early-exit paths.
     const supabase = await createAdminServerClient();
 
     // Get gameId from params
@@ -82,7 +88,9 @@ export async function POST(
       );
     }
 
-    // Basic validation: wager must be non-negative (detailed validation in DB function)
+    // Basic validation: wager must be non-negative.
+    // No upper-bound check here — the max wager (team's current score) is enforced
+    // atomically inside submit_final_jeopardy_wager, which has access to live team data.
     if (wager < 0) {
       return NextResponse.json(
         { error: 'Wager cannot be negative' },
@@ -90,8 +98,10 @@ export async function POST(
       );
     }
 
-    // Use atomic database function to submit wager (prevents race conditions)
-    const { data: result, error: submitError } = await supabase
+    // Use atomic database function to submit wager (prevents race conditions).
+    // Service role required — see comment at top of handler.
+    const serviceSupabase = createAdminServiceClient();
+    const { data: result, error: submitError } = await serviceSupabase
       .rpc('submit_final_jeopardy_wager', {
         p_game_id: gameId,
         p_team_id: teamId,
