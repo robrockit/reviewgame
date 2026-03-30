@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { createAdminServerClient } from '@/lib/admin/auth';
+import { createAdminServerClient, createAdminServiceClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { verifyDeviceOwnsTeam, getDeviceIdFromRequest } from '@/lib/auth/device';
 
@@ -23,6 +23,12 @@ export async function POST(
   context: { params: Promise<{ gameId: string }> }
 ) {
   try {
+    // createAdminServerClient (anon key) reads the caller's session context for
+    // device ownership verification. createAdminServiceClient (service role) is
+    // used only for the RPC call — students are anonymous so anon role lacks
+    // EXECUTE on submit_final_jeopardy_answer, but granting it would expose the
+    // function to direct Supabase REST calls (anon key is public). Service role
+    // is constructed after auth to avoid throwing on missing env var for early-exit paths.
     const supabase = await createAdminServerClient();
 
     // Get gameId from params
@@ -90,8 +96,10 @@ export async function POST(
       );
     }
 
-    // Use atomic database function to submit answer (consistent timestamps)
-    const { data: result, error: submitError } = await supabase
+    // Use atomic database function to submit answer (consistent timestamps).
+    // Service role required — see comment at top of handler.
+    const serviceSupabase = createAdminServiceClient();
+    const { data: result, error: submitError } = await serviceSupabase
       .rpc('submit_final_jeopardy_answer', {
         p_game_id: gameId,
         p_team_id: teamId,

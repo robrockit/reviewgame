@@ -83,25 +83,29 @@ export async function createAdminServerClient() {
 }
 
 /**
- * Creates a Supabase service role client for admin operations that bypass RLS.
+ * Creates a Supabase service role client that bypasses Row Level Security.
  *
  * SECURITY WARNING: This client has elevated privileges and bypasses Row Level Security.
  * It should ONLY be used:
- * - After verifying admin authentication with verifyAdminUser()
- * - For operations that legitimately need to bypass RLS (e.g., viewing all users)
- * - In server-side code (never expose to client)
+ * - After a server-side authorization check (e.g., verifyAdminUser() for admin routes,
+ *   or verifyDeviceOwnsTeam() for student-facing routes that use device-based auth)
+ * - For operations that legitimately need to bypass RLS or call functions not granted
+ *   to the anon/authenticated roles
+ * - In server-side code only (never expose to client)
  *
  * @returns {SupabaseClient} Configured Supabase service role client
  *
  * @example
  * ```tsx
- * // CORRECT usage - verify admin first
+ * // Admin route — verify admin first
  * const adminUser = await verifyAdminUser();
- * if (!adminUser) {
- *   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
- * }
+ * if (!adminUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
  * const supabase = createAdminServiceClient();
- * const { data } = await supabase.from('profiles').select('*');
+ *
+ * // Student route — verify device ownership first
+ * const isAuthorized = await verifyDeviceOwnsTeam(anonClient, teamId, deviceId, gameId);
+ * if (!isAuthorized) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+ * const supabase = createAdminServiceClient();
  *
  * // INCORRECT usage - no auth check
  * const supabase = createAdminServiceClient(); // ❌ DANGEROUS
