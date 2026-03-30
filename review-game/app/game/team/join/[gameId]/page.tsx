@@ -157,7 +157,7 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         if (existingTeam) {
           // Device already joined this game - redirect to waiting room or game
           if (existingTeam.connection_status === 'approved') {
-            router.push(`/game/team/${existingTeam.id}`);
+            router.push(`/game/student/${gameId}/${existingTeam.id}`);
           } else {
             router.push(`/game/team/waiting/${existingTeam.id}`);
           }
@@ -214,7 +214,7 @@ export default function JoinGamePage({ params }: JoinPageProps) {
       // already-approved team goes directly to the game, not back to waiting.
       if ('rejoined' in result) {
         if (result.connection_status === 'approved') {
-          router.push(`/game/team/${result.team_id}`);
+          router.push(`/game/student/${gameId}/${result.team_id}`);
         } else {
           router.push(`/game/team/waiting/${result.team_id}`);
         }
