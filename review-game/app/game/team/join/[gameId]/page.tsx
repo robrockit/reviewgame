@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { getDeviceId } from '@/hooks/useDeviceId';
 import { logger } from '@/lib/logger';
 
 interface JoinPageProps {
@@ -111,27 +112,6 @@ export default function JoinGamePage({ params }: JoinPageProps) {
   }, [gameId]);
 
   /**
-   * Generates a unique device ID using crypto.randomUUID()
-   * Falls back to cryptographically secure random bytes if crypto.randomUUID is unavailable
-   */
-  const generateDeviceId = (): string => {
-    if (typeof window !== 'undefined' && window.crypto) {
-      // Prefer crypto.randomUUID() if available
-      if (window.crypto.randomUUID) {
-        return window.crypto.randomUUID();
-      }
-      // Fallback to crypto.getRandomValues() for better security
-      const array = new Uint8Array(16);
-      window.crypto.getRandomValues(array);
-      return `device_${Date.now()}_${Array.from(array)
-        .map((b) => b.toString(36).padStart(2, '0'))
-        .join('')}`;
-    }
-    // Last resort fallback (should rarely happen in modern browsers)
-    return `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  };
-
-  /**
    * Handles the join game process
    * Creates a team record and redirects to waiting room
    */
@@ -142,33 +122,34 @@ export default function JoinGamePage({ params }: JoinPageProps) {
     try {
       const supabase = createClient();
 
-      // Check for existing device ID in localStorage
-      let deviceId = localStorage.getItem('deviceId');
+      // Get or generate a stable device ID for this browser.
+      // Uses the shared reviewgame_device_id localStorage key so that
+      // the join page and the student game page (useDeviceId hook) always
+      // read the same UUID — mismatched keys were the root cause of
+      // claim_team returning TEAM_ALREADY_CLAIMED after teacher approval.
+      const deviceId = getDeviceId();
 
-      // Check if this device already has a team in this game
-      if (deviceId) {
-        const { data: existingTeam } = await supabase
-          .from('teams')
-          .select('id, team_number, connection_status')
-          .eq('game_id', gameId)
-          .eq('device_id', deviceId)
-          .single();
-
-        if (existingTeam) {
-          // Device already joined this game - redirect to waiting room or game
-          if (existingTeam.connection_status === 'approved') {
-            router.push(`/game/student/${gameId}/${existingTeam.id}`);
-          } else {
-            router.push(`/game/team/waiting/${existingTeam.id}`);
-          }
-          return;
-        }
+      if (!deviceId) {
+        throw new Error('Unable to generate a device ID. Please check your browser settings and try again.');
       }
 
-      // Generate new device ID if not exists
-      if (!deviceId) {
-        deviceId = generateDeviceId();
-        localStorage.setItem('deviceId', deviceId);
+      // Check if this device already has a team in this game
+      const { data: existingTeam } = await supabase
+        .from('teams')
+        .select('id, team_number, connection_status, game_id')
+        .eq('game_id', gameId)
+        .eq('device_id', deviceId)
+        .single();
+
+      if (existingTeam) {
+        // Device already joined this game - redirect to waiting room or active game.
+        // 'connected' is the status set by the teacher lobby on approval.
+        if (existingTeam.connection_status === 'connected') {
+          router.push(`/game/student/${gameId}/${existingTeam.id}`);
+        } else {
+          router.push(`/game/team/waiting/${existingTeam.id}`);
+        }
+        return;
       }
 
       // Atomically assign a team slot and insert the record.
@@ -213,7 +194,7 @@ export default function JoinGamePage({ params }: JoinPageProps) {
       // Rejoining device: route based on current approval status so an
       // already-approved team goes directly to the game, not back to waiting.
       if ('rejoined' in result) {
-        if (result.connection_status === 'approved') {
+        if (result.connection_status === 'connected') {
           router.push(`/game/student/${gameId}/${result.team_id}`);
         } else {
           router.push(`/game/team/waiting/${result.team_id}`);
