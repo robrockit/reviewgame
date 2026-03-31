@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server';
-import { createAdminServerClient } from '@/lib/admin/auth';
+import { createAdminServiceClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 
 /**
@@ -23,7 +23,7 @@ export async function POST(
   context: { params: Promise<{ gameId: string; teamId: string }> }
 ) {
   try {
-    const supabase = await createAdminServerClient();
+    const supabase = createAdminServiceClient();
     const { gameId, teamId } = await context.params;
 
     // Validate UUID formats

@@ -139,7 +139,7 @@ export default function JoinGamePage({ params }: JoinPageProps) {
         .select('id, team_number, connection_status, game_id')
         .eq('game_id', gameId)
         .eq('device_id', deviceId)
-        .single();
+        .maybeSingle();
 
       if (existingTeam) {
         // Device already joined this game - redirect to waiting room or active game.
