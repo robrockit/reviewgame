@@ -437,7 +437,7 @@ export default function StudentGamePage() {
 
           {/* Answer Reveal Banner */}
           {revealedAnswer && (
-            <div className="mt-6 w-full max-w-md bg-green-900/80 border border-green-400 rounded-lg p-4 text-center">
+            <div data-testid="answer-reveal-banner" className="mt-6 w-full max-w-md bg-green-900/80 border border-green-400 rounded-lg p-4 text-center">
               <p className="text-green-200 text-sm font-semibold uppercase tracking-wide">Answer</p>
               <p className="text-white text-2xl font-bold mt-1">{revealedAnswer}</p>
             </div>

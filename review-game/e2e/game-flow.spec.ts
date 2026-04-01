@@ -208,7 +208,7 @@ test.describe('game flow', () => {
     await expect(teacherPage.locator('button', { hasText: 'Hide Answer' })).toBeVisible({ timeout: 5_000 });
 
     // Student screen shows the answer banner
-    const studentAnswerBanner = anonymousPage.locator('text=Answer').first();
+    const studentAnswerBanner = anonymousPage.locator('[data-testid="answer-reveal-banner"]');
     await expect(studentAnswerBanner).toBeVisible({ timeout: 10_000 });
 
     // Teacher hides the answer

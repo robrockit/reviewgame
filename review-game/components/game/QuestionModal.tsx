@@ -845,6 +845,10 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
                 <button
                   onClick={() => {
                     const next = !isAnswerRevealed;
+                    // Optimistic update: toggle local state before the broadcast resolves.
+                    // If broadcastAnswerRevealed throws, the button stays toggled while
+                    // students see nothing — acceptable since broadcast failures are transient
+                    // and the teacher can click again to retry.
                     setIsAnswerRevealed(next);
                     onRevealAnswer(next ? (currentQuestion.answer ?? null) : null);
                     setSrAnnouncement(next ? `Answer revealed: ${currentQuestion.answer}` : 'Answer hidden');

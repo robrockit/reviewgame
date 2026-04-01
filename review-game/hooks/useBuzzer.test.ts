@@ -62,6 +62,12 @@ describe('useBuzzer — answer-revealed integration (store)', () => {
   });
 });
 
+// NOTE: The tests below define an inline closure that mirrors the real
+// broadcastAnswerRevealed guard rather than importing and calling it (the hook
+// requires Supabase + React to mount). They document the intended guard behaviour
+// and catch logic regressions in the pattern itself, but will not catch a source
+// change that restructures the guard differently. E2E tests provide the regression
+// safety net for the real implementation.
 describe('useBuzzer — broadcastAnswerRevealed channel guard', () => {
   it('does not throw when channel is null (guard condition)', () => {
     // The broadcast function checks channelRef.current before sending.
