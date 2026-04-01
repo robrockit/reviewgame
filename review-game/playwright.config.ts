@@ -51,6 +51,14 @@ export default defineConfig({
 
     // Screenshot on failure
     screenshot: 'only-on-failure',
+
+    // Bypass Vercel Deployment Protection on preview URLs.
+    // Has no effect on local runs where this env var is not set.
+    ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET && {
+      extraHTTPHeaders: {
+        'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+      },
+    }),
   },
 
   projects: [
