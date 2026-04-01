@@ -518,12 +518,18 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
       return;
     }
 
-    // Broadcast the question-selected event with error handling
+    // Broadcast the question-selected event with error handling.
+    // Strip `answer` before sending — students must not receive it via this
+    // channel. The answer is only pushed through the separate `answer-revealed`
+    // event when the teacher explicitly clicks "Reveal Answer".
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { answer: _answer, ...questionForStudents } = question;
+
     try {
       channelRef.current.send({
         type: 'broadcast',
         event: 'question-selected',
-        payload: { question },
+        payload: { question: questionForStudents },
       });
 
       logger.info('Broadcasted question selection', {
