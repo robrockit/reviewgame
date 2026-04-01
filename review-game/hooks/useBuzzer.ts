@@ -232,17 +232,16 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
         return;
       }
 
-      // The broadcast payload has `answer` stripped for security (students must not
-      // receive it). On the teacher side the self-loop would otherwise overwrite the
-      // store's question with the stripped copy, hiding the Reveal Answer button.
-      // Re-attach the answer from existing state when the same question is already set.
+      // If the same question is already in the store, skip the update entirely.
+      // This prevents the self-loop (broadcast.self=true) from firing a second
+      // setCurrentQuestion call on the teacher side, which would cause a React
+      // re-render mid-click and detach the Reveal Answer button from the DOM.
+      // Students never have currentQuestion set before receiving this event,
+      // so they always take the update path.
       const existing = useGameStore.getState().currentQuestion;
-      const question =
-        existing?.id === payload.question.id && existing.answer
-          ? { ...payload.question, answer: existing.answer }
-          : payload.question;
+      if (existing?.id === payload.question.id) return;
 
-      useGameStore.getState().setCurrentQuestion(question);
+      useGameStore.getState().setCurrentQuestion(payload.question);
     });
 
     // Subscribe to 'question-closed' events to clear question state
@@ -528,6 +527,16 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
       return;
     }
 
+    // A new question is being opened — clear any stale revealed answer from
+    // the previous question immediately (before the broadcast round-trip).
+    // This is defense-in-depth: `question-closed` also clears it, but doing
+    // it here ensures the store is clean even if the teacher skips closing.
+    // NOTE: GameBoard calls setCurrentQuestion(question) before calling this
+    // function (onQuestionSelect), so the store already holds the full question
+    // (with answer) by the time the self-loop fires — the ID-guard in the
+    // `question-selected` handler preserves it.
+    useGameStore.getState().setRevealedAnswer(null);
+
     // Broadcast the question-selected event with error handling.
     // Strip `answer` before sending — students must not receive it via this
     // channel. The answer is only pushed through the separate `answer-revealed`
@@ -577,6 +586,11 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
       });
       return;
     }
+
+    // Clear revealed answer locally before the broadcast fires — defense-in-depth
+    // so that cleanup does not depend on the self-loop receiving 'question-closed'.
+    // The broadcast handler also calls setRevealedAnswer(null) for remote clients.
+    useGameStore.getState().setRevealedAnswer(null);
 
     // Broadcast the question-closed event with error handling
     try {
