@@ -13,7 +13,7 @@ import FinalJeopardyModal from '@/components/teacher/FinalJeopardyModal';
 import { useGameStore } from '@/lib/stores/gameStore';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import type { Tables } from '@/types/database.types';
-import type { Category, Question, Team } from '@/types/game';
+import type { Category, Question, Team, FinalJeopardyQuestion } from '@/types/game';
 import { logger } from '@/lib/logger';
 
 type Game = Tables<'games'>;
@@ -61,7 +61,14 @@ export default function GameBoardPage() {
 
   // Subscribe to buzz events from students
   // This hook automatically adds buzzes to the game store's buzz queue
-  const { clearBuzzes, broadcastQuestionSelected, broadcastQuestionClosed, broadcastAnswerRevealed } = useBuzzer(gameId);
+  const {
+    clearBuzzes,
+    broadcastQuestionSelected,
+    broadcastQuestionClosed,
+    broadcastAnswerRevealed,
+    broadcastFinalJeopardyStarted,
+    broadcastFinalJeopardyPhaseChanged,
+  } = useBuzzer(gameId);
 
   // Fetch game data and questions
   useEffect(() => {
@@ -729,10 +736,11 @@ export default function GameBoardPage() {
         return;
       }
 
-      setFinalJeopardyQuestion(data.question as { category: string; question: string; answer: string });
+      setFinalJeopardyQuestion(data.question as FinalJeopardyQuestion);
       setCurrentPhase('final_jeopardy_wager');
       setShowGameCompleteModal(false);
       setShowFinalJeopardyModal(true);
+      broadcastFinalJeopardyStarted('final_jeopardy_wager', data.question as FinalJeopardyQuestion);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to start Final Jeopardy';
       logger.error('Failed to start Final Jeopardy', err, {
@@ -759,6 +767,7 @@ export default function GameBoardPage() {
     }
 
     setCurrentPhase(data.currentPhase);
+    broadcastFinalJeopardyPhaseChanged(data.currentPhase);
   };
 
   // Reveal a team's Final Jeopardy answer and grade it
