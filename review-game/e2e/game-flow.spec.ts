@@ -174,4 +174,55 @@ test.describe('game flow', () => {
     await expect(scoringControls).not.toBeVisible({ timeout: 5_000 });
     await expect(teacherPage.locator('.category-header').first()).toBeVisible();
   });
+
+  test('teacher reveals answer; student screen shows it then hides it', async ({
+    teacherPage,
+    anonymousPage,
+  }) => {
+    const gameId = await createGame(teacherPage);
+    const teamId = await joinGame(anonymousPage, gameId);
+
+    await teacherPage.reload();
+    await teacherPage.locator('button', { hasText: 'Approve' }).first().click();
+    await clickStartGame(teacherPage);
+    await teacherPage.waitForURL(`**/game/board/${gameId}**`, { timeout: 15_000 });
+
+    // Navigate student to their game page (device ID already in localStorage from join)
+    await anonymousPage.goto(`/game/student/${gameId}/${teamId}`);
+    await expect(anonymousPage.locator('text=Ready to play!')).toBeVisible({ timeout: 15_000 });
+
+    // Teacher opens a question
+    const questionCard = teacherPage.locator('[data-testid="question-card"]');
+    await expect(questionCard.first()).toBeVisible({ timeout: 10_000 });
+    await questionCard.first().click();
+
+    const scoringControls = teacherPage.locator('[aria-label="Question scoring controls"]');
+    await expect(scoringControls).toBeVisible({ timeout: 10_000 });
+
+    // Teacher reveals the answer
+    const revealButton = teacherPage.locator('button', { hasText: 'Reveal Answer' });
+    await expect(revealButton).toBeVisible({ timeout: 5_000 });
+    await revealButton.click();
+
+    // Teacher sees "Hide Answer" toggle confirming the state changed
+    await expect(teacherPage.locator('button', { hasText: 'Hide Answer' })).toBeVisible({ timeout: 5_000 });
+
+    // Student screen shows the answer banner
+    const studentAnswerBanner = anonymousPage.locator('[data-testid="answer-reveal-banner"]');
+    await expect(studentAnswerBanner).toBeVisible({ timeout: 10_000 });
+
+    // Teacher hides the answer
+    await teacherPage.locator('button', { hasText: 'Hide Answer' }).click();
+    await expect(teacherPage.locator('button', { hasText: 'Reveal Answer' })).toBeVisible({ timeout: 5_000 });
+
+    // Student screen no longer shows the answer banner
+    await expect(studentAnswerBanner).not.toBeVisible({ timeout: 10_000 });
+
+    // Teacher reveals again, then closes modal — answer should auto-clear
+    await teacherPage.locator('button', { hasText: 'Reveal Answer' }).click();
+    await expect(studentAnswerBanner).toBeVisible({ timeout: 10_000 });
+
+    await teacherPage.locator('button', { hasText: 'Close' }).click();
+    await expect(studentAnswerBanner).not.toBeVisible({ timeout: 10_000 });
+  });
 });

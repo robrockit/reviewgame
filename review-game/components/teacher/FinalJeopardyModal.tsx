@@ -45,6 +45,13 @@ export default function FinalJeopardyModal({
   const [revealedTeams, setRevealedTeams] = useState<Set<string>>(new Set());
   const buttonRef = useRef<HTMLButtonElement>(null);
   const prevPhaseRef = useRef<GamePhase | null>(null);
+  // Frozen at the moment we enter reveal phase so late-arriving team subscriptions
+  // can't silently raise the denominator and prevent "Finish Game" from enabling.
+  // Known residual race: if a Supabase team event lands in the window between the
+  // advance RPC returning and the phase state updating, the freeze will capture the
+  // inflated count. This is extremely unlikely in practice (sub-100ms window) and
+  // cannot be fully eliminated without a server-side team-count snapshot.
+  const frozenRevealTotalRef = useRef<number | null>(null);
 
   // Reset revealed teams only when entering wager phase (not on every phase change)
   useEffect(() => {
@@ -53,12 +60,22 @@ export default function FinalJeopardyModal({
       currentPhase === 'final_jeopardy_wager' &&
       prevPhaseRef.current !== 'final_jeopardy_wager';
 
+    const isEnteringRevealPhase =
+      isOpen &&
+      currentPhase === 'final_jeopardy_reveal' &&
+      prevPhaseRef.current !== 'final_jeopardy_reveal';
+
     if (isEnteringWagerPhase) {
       setRevealedTeams(new Set());
+      frozenRevealTotalRef.current = null;
+    }
+
+    if (isEnteringRevealPhase) {
+      frozenRevealTotalRef.current = allTeams.length;
     }
 
     prevPhaseRef.current = currentPhase;
-  }, [isOpen, currentPhase]);
+  }, [isOpen, currentPhase, allTeams.length]);
 
   // Get teams with Final Jeopardy data
   const teamsWithData = allTeams.map(team => ({
@@ -72,8 +89,11 @@ export default function FinalJeopardyModal({
   const submittedCount = teamsWithData.filter(t => t.hasSubmitted).length;
   const totalTeams = allTeams.length;
 
-  // Check if all teams have been revealed
-  const allRevealed = currentPhase === 'final_jeopardy_reveal' && revealedTeams.size === totalTeams;
+  // Check if all teams have been revealed.
+  // Use the frozen count (captured at reveal-phase entry) so that late-arriving
+  // team subscriptions cannot raise the denominator mid-reveal.
+  const revealDenominator = frozenRevealTotalRef.current ?? totalTeams;
+  const allRevealed = currentPhase === 'final_jeopardy_reveal' && revealedTeams.size === revealDenominator;
 
   const handleAdvance = async () => {
     setIsProcessing(true);

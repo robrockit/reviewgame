@@ -30,7 +30,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: review-game/package-lock.json
 
@@ -76,7 +76,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: review-game/package-lock.json
 
@@ -101,6 +101,7 @@ jobs:
       - name: Run Playwright tests
         env:
           E2E_BASE_URL: ${{ needs.deploy-preview.outputs.preview_url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           E2E_TEACHER_EMAIL: ${{ secrets.E2E_TEACHER_EMAIL }}
           E2E_TEACHER_PASSWORD: ${{ secrets.E2E_TEACHER_PASSWORD }}
           E2E_FREE_TEACHER_EMAIL: ${{ secrets.E2E_FREE_TEACHER_EMAIL }}

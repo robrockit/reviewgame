@@ -7,6 +7,7 @@ export interface Question {
   isUsed: boolean;
   isDailyDouble?: boolean;
   categoryName?: string; // Category context for display in modal
+  answer?: string | null; // Correct answer — only used teacher-side for reveal
   imageUrl?: string | null;
   imageAltText?: string | null;
 }

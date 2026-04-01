@@ -7,6 +7,7 @@ import { BuzzButton, BuzzButtonState } from '@/components/student/BuzzButton';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import { useGameStore } from '@/lib/stores/gameStore';
 import type { Tables } from '@/types/database.types';
+import type { FinalJeopardyQuestion } from '@/types/game';
 import { logger } from '@/lib/logger';
 import { useDeviceId } from '@/hooks/useDeviceId';
 
@@ -36,8 +37,16 @@ export default function StudentGamePage() {
   // Use buzzer hook for real-time buzz events
   const { sendBuzz } = useBuzzer(gameId);
 
-  // Get buzz queue and current question from game store
-  const { buzzQueue, currentQuestion } = useGameStore();
+  // Get buzz queue, current question, revealed answer, and FJ state from game store
+  const { buzzQueue, currentQuestion, revealedAnswer, currentPhase, finalJeopardyQuestion } = useGameStore();
+
+  // Final Jeopardy local state
+  const [fjWager, setFjWager] = useState<string>('0');
+  const [fjWagerSubmitted, setFjWagerSubmitted] = useState(false);
+  const [fjAnswer, setFjAnswer] = useState('');
+  const [fjAnswerSubmitted, setFjAnswerSubmitted] = useState(false);
+  const [fjSubmitting, setFjSubmitting] = useState(false);
+  const [fjError, setFjError] = useState<string | null>(null);
 
   // Reset claim attempted flag when deviceId changes (e.g., localStorage cleared)
   useEffect(() => {
@@ -289,6 +298,82 @@ export default function StudentGamePage() {
     }
   }, [buzzQueue, teamId, game?.status, currentQuestion]);
 
+  // Reset FJ submission state when returning to regular play
+  useEffect(() => {
+    if (currentPhase === 'regular') {
+      setFjWager('0');
+      setFjWagerSubmitted(false);
+      setFjAnswer('');
+      setFjAnswerSubmitted(false);
+      setFjError(null);
+    }
+  }, [currentPhase]);
+
+  // Submit Final Jeopardy wager
+  const handleSubmitWager = async () => {
+    const wagerNum = parseInt(fjWager, 10);
+    const maxWager = Math.max(team?.score ?? 0, 0);
+
+    if (isNaN(wagerNum) || wagerNum < 0 || wagerNum > maxWager) {
+      setFjError(`Wager must be between 0 and ${maxWager}`);
+      return;
+    }
+
+    setFjSubmitting(true);
+    setFjError(null);
+    try {
+      const response = await fetch(`/api/games/${gameId}/final-jeopardy/wager`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(deviceId ? { 'X-Device-ID': deviceId } : {}),
+        },
+        body: JSON.stringify({ teamId, wager: wagerNum }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setFjError(data.error || 'Failed to submit wager');
+        return;
+      }
+      setFjWagerSubmitted(true);
+    } catch {
+      setFjError('Failed to submit wager. Please try again.');
+    } finally {
+      setFjSubmitting(false);
+    }
+  };
+
+  // Submit Final Jeopardy answer
+  const handleSubmitAnswer = async () => {
+    if (!fjAnswer.trim()) {
+      setFjError('Please enter an answer');
+      return;
+    }
+
+    setFjSubmitting(true);
+    setFjError(null);
+    try {
+      const response = await fetch(`/api/games/${gameId}/final-jeopardy/answer`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(deviceId ? { 'X-Device-ID': deviceId } : {}),
+        },
+        body: JSON.stringify({ teamId, answer: fjAnswer.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setFjError(data.error || 'Failed to submit answer');
+        return;
+      }
+      setFjAnswerSubmitted(true);
+    } catch {
+      setFjError('Failed to submit answer. Please try again.');
+    } finally {
+      setFjSubmitting(false);
+    }
+  };
+
   // Handle buzz button press
   const handleBuzz = async () => {
     logger.info('Buzz button pressed', {
@@ -411,52 +496,161 @@ export default function StudentGamePage() {
 
         {/* Main Game Area */}
         <div className="flex flex-col items-center justify-center py-12">
-          {/* Status Message */}
-          <div className="mb-8 text-center">
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
-              {buzzButtonState === 'waiting' && 'Waiting for question...'}
-              {buzzButtonState === 'active' && 'Ready to buzz in!'}
-              {buzzButtonState === 'buzzed' && 'You buzzed in!'}
-              {buzzButtonState === 'answering' && 'Your turn to answer!'}
-            </h2>
-            <p className="text-gray-600">
-              {buzzButtonState === 'waiting' && 'The teacher will present the next question soon.'}
-              {buzzButtonState === 'active' && 'Press the button when you know the answer!'}
-              {buzzButtonState === 'buzzed' && 'Waiting for teacher to acknowledge...'}
-              {buzzButtonState === 'answering' && 'Give your answer out loud to the teacher.'}
-            </p>
-          </div>
 
-          {/* Buzz Button */}
-          <BuzzButton
-            state={buzzButtonState}
-            onBuzz={handleBuzz}
-            size={300}
-            queuePosition={queuePosition}
-          />
+          {/* ── Final Jeopardy: Wager Phase ── */}
+          {currentPhase === 'final_jeopardy_wager' && (
+            <div className="w-full max-w-md">
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-6 text-center mb-6">
+                <p className="text-blue-100 text-sm font-semibold uppercase tracking-wide mb-1">Final Jeopardy</p>
+                <h2 className="text-3xl font-bold text-white">
+                  {(finalJeopardyQuestion as FinalJeopardyQuestion | null)?.category ?? 'Final Jeopardy'}
+                </h2>
+              </div>
 
-          {/* Instructions */}
-          <div className="mt-12 bg-white rounded-lg shadow p-6 max-w-md">
-            <h3 className="font-bold text-gray-900 mb-3">How to Play</h3>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li className="flex items-start">
-                <span className="text-blue-600 mr-2">•</span>
-                <span>Listen carefully to each question</span>
-              </li>
-              <li className="flex items-start">
-                <span className="text-blue-600 mr-2">•</span>
-                <span>Press the buzz button when you know the answer</span>
-              </li>
-              <li className="flex items-start">
-                <span className="text-blue-600 mr-2">•</span>
-                <span>First team to buzz gets to answer</span>
-              </li>
-              <li className="flex items-start">
-                <span className="text-blue-600 mr-2">•</span>
-                <span>Give your answer out loud to the teacher</span>
-              </li>
-            </ul>
-          </div>
+              {fjWagerSubmitted ? (
+                <div className="bg-green-50 border border-green-300 rounded-lg p-6 text-center">
+                  <p className="text-green-700 text-lg font-semibold">Wager submitted!</p>
+                  <p className="text-green-600 mt-1">Waiting for the teacher to reveal the question…</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg shadow p-6">
+                  <p className="text-gray-700 font-medium mb-4">
+                    Enter your wager (0 – {Math.max(team?.score ?? 0, 0)} points)
+                  </p>
+                  <input
+                    type="number"
+                    min={0}
+                    max={Math.max(team?.score ?? 0, 0)}
+                    value={fjWager}
+                    onChange={e => setFjWager(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-2xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                  />
+                  {fjError && <p className="text-red-600 text-sm mb-3">{fjError}</p>}
+                  <button
+                    onClick={handleSubmitWager}
+                    disabled={fjSubmitting}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors"
+                  >
+                    {fjSubmitting ? 'Submitting…' : 'Lock In Wager'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Final Jeopardy: Answer Phase ── */}
+          {currentPhase === 'final_jeopardy_answer' && (
+            <div className="w-full max-w-md">
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-6 text-center mb-6">
+                <p className="text-blue-100 text-sm font-semibold uppercase tracking-wide mb-2">Final Jeopardy</p>
+                <p className="text-white text-xl font-bold">
+                  {(finalJeopardyQuestion as FinalJeopardyQuestion | null)?.question ?? ''}
+                </p>
+              </div>
+
+              {fjAnswerSubmitted ? (
+                <div className="bg-green-50 border border-green-300 rounded-lg p-6 text-center">
+                  <p className="text-green-700 text-lg font-semibold">Answer submitted!</p>
+                  <p className="text-green-600 mt-1">Waiting for the teacher to reveal results…</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg shadow p-6">
+                  <p className="text-gray-700 font-medium mb-4">Write your answer</p>
+                  <textarea
+                    value={fjAnswer}
+                    onChange={e => setFjAnswer(e.target.value)}
+                    rows={3}
+                    placeholder="Your answer…"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 resize-none"
+                  />
+                  {fjError && <p className="text-red-600 text-sm mb-3">{fjError}</p>}
+                  <button
+                    onClick={handleSubmitAnswer}
+                    disabled={fjSubmitting}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors"
+                  >
+                    {fjSubmitting ? 'Submitting…' : 'Submit Answer'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Final Jeopardy: Reveal Phase ── */}
+          {currentPhase === 'final_jeopardy_reveal' && (
+            <div className="w-full max-w-md text-center">
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-8 mb-4">
+                <p className="text-blue-100 text-sm font-semibold uppercase tracking-wide mb-2">Final Jeopardy</p>
+                <p className="text-white text-2xl font-bold">Results are being revealed…</p>
+              </div>
+              {revealedAnswer && (
+                <div data-testid="answer-reveal-banner" className="mt-4 bg-green-900/80 border border-green-400 rounded-lg p-4 text-center">
+                  <p className="text-green-200 text-sm font-semibold uppercase tracking-wide">Correct Answer</p>
+                  <p className="text-white text-2xl font-bold mt-1">{revealedAnswer}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Regular Game ── */}
+          {currentPhase === 'regular' && (
+            <>
+              {/* Status Message */}
+              <div className="mb-8 text-center">
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                  {buzzButtonState === 'waiting' && 'Waiting for question...'}
+                  {buzzButtonState === 'active' && 'Ready to buzz in!'}
+                  {buzzButtonState === 'buzzed' && 'You buzzed in!'}
+                  {buzzButtonState === 'answering' && 'Your turn to answer!'}
+                </h2>
+                <p className="text-gray-600">
+                  {buzzButtonState === 'waiting' && 'The teacher will present the next question soon.'}
+                  {buzzButtonState === 'active' && 'Press the button when you know the answer!'}
+                  {buzzButtonState === 'buzzed' && 'Waiting for teacher to acknowledge...'}
+                  {buzzButtonState === 'answering' && 'Give your answer out loud to the teacher.'}
+                </p>
+              </div>
+
+              {/* Buzz Button */}
+              <BuzzButton
+                state={buzzButtonState}
+                onBuzz={handleBuzz}
+                size={300}
+                queuePosition={queuePosition}
+              />
+
+              {/* Answer Reveal Banner */}
+              {revealedAnswer && (
+                <div data-testid="answer-reveal-banner" className="mt-6 w-full max-w-md bg-green-900/80 border border-green-400 rounded-lg p-4 text-center">
+                  <p className="text-green-200 text-sm font-semibold uppercase tracking-wide">Answer</p>
+                  <p className="text-white text-2xl font-bold mt-1">{revealedAnswer}</p>
+                </div>
+              )}
+
+              {/* Instructions */}
+              <div className="mt-12 bg-white rounded-lg shadow p-6 max-w-md">
+                <h3 className="font-bold text-gray-900 mb-3">How to Play</h3>
+                <ul className="space-y-2 text-sm text-gray-600">
+                  <li className="flex items-start">
+                    <span className="text-blue-600 mr-2">•</span>
+                    <span>Listen carefully to each question</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-blue-600 mr-2">•</span>
+                    <span>Press the buzz button when you know the answer</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-blue-600 mr-2">•</span>
+                    <span>First team to buzz gets to answer</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-blue-600 mr-2">•</span>
+                    <span>Give your answer out loud to the teacher</span>
+                  </li>
+                </ul>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

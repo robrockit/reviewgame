@@ -70,6 +70,16 @@ interface FinalJeopardySubmissionPayload {
 }
 
 /**
+ * Payload structure for answer reveal broadcast events.
+ *
+ * @interface AnswerRevealedPayload
+ * @property {string | null} answer - The answer text to show, or null to hide
+ */
+interface AnswerRevealedPayload {
+  answer: string | null;
+}
+
+/**
  * Payload structure for Final Jeopardy reveal events.
  *
  * @interface FinalJeopardyTeamRevealedPayload
@@ -96,6 +106,7 @@ interface FinalJeopardyTeamRevealedPayload {
  * @property {function} broadcastFinalJeopardyWagerSubmitted - Function to broadcast wager submission
  * @property {function} broadcastFinalJeopardyAnswerSubmitted - Function to broadcast answer submission
  * @property {function} broadcastFinalJeopardyTeamRevealed - Function to broadcast team reveal
+ * @property {function} broadcastAnswerRevealed - Function to broadcast/clear the revealed answer
  */
 interface BuzzerHook {
   sendBuzz: (teamId: string) => void;
@@ -107,6 +118,7 @@ interface BuzzerHook {
   broadcastFinalJeopardyWagerSubmitted: (teamId: string) => void;
   broadcastFinalJeopardyAnswerSubmitted: (teamId: string) => void;
   broadcastFinalJeopardyTeamRevealed: (teamId: string, isCorrect: boolean, newScore: number) => void;
+  broadcastAnswerRevealed: (answer: string | null) => void;
 }
 
 /**
@@ -220,6 +232,15 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
         return;
       }
 
+      // If the same question is already in the store, skip the update entirely.
+      // This prevents the self-loop (broadcast.self=true) from firing a second
+      // setCurrentQuestion call on the teacher side, which would cause a React
+      // re-render mid-click and detach the Reveal Answer button from the DOM.
+      // Students never have currentQuestion set before receiving this event,
+      // so they always take the update path.
+      const existing = useGameStore.getState().currentQuestion;
+      if (existing?.id === payload.question.id) return;
+
       useGameStore.getState().setCurrentQuestion(payload.question);
     });
 
@@ -228,7 +249,16 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
       // Prevent state updates if component has unmounted
       if (!isMountedRef.current) return;
 
-      useGameStore.getState().setCurrentQuestion(null);
+      const store = useGameStore.getState();
+      store.setCurrentQuestion(null);
+      store.setRevealedAnswer(null);
+    });
+
+    // Subscribe to 'answer-revealed' events to sync revealed answer on student screens
+    channel.on('broadcast', { event: 'answer-revealed' }, ({ payload }: { payload: AnswerRevealedPayload }) => {
+      if (!isMountedRef.current) return;
+
+      useGameStore.getState().setRevealedAnswer(payload.answer);
     });
 
     // Subscribe to Final Jeopardy events
@@ -497,12 +527,28 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
       return;
     }
 
-    // Broadcast the question-selected event with error handling
+    // A new question is being opened — clear any stale revealed answer from
+    // the previous question immediately (before the broadcast round-trip).
+    // This is defense-in-depth: `question-closed` also clears it, but doing
+    // it here ensures the store is clean even if the teacher skips closing.
+    // NOTE: GameBoard calls setCurrentQuestion(question) before calling this
+    // function (onQuestionSelect), so the store already holds the full question
+    // (with answer) by the time the self-loop fires — the ID-guard in the
+    // `question-selected` handler preserves it.
+    useGameStore.getState().setRevealedAnswer(null);
+
+    // Broadcast the question-selected event with error handling.
+    // Strip `answer` before sending — students must not receive it via this
+    // channel. The answer is only pushed through the separate `answer-revealed`
+    // event when the teacher explicitly clicks "Reveal Answer".
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { answer: _answer, ...questionForStudents } = question;
+
     try {
       channelRef.current.send({
         type: 'broadcast',
         event: 'question-selected',
-        payload: { question },
+        payload: { question: questionForStudents },
       });
 
       logger.info('Broadcasted question selection', {
@@ -540,6 +586,11 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
       });
       return;
     }
+
+    // Clear revealed answer locally before the broadcast fires — defense-in-depth
+    // so that cleanup does not depend on the self-loop receiving 'question-closed'.
+    // The broadcast handler also calls setRevealedAnswer(null) for remote clients.
+    useGameStore.getState().setRevealedAnswer(null);
 
     // Broadcast the question-closed event with error handling
     try {
@@ -741,6 +792,41 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     }
   };
 
+  /**
+   * Broadcasts the revealed answer to all connected students, or null to hide it.
+   *
+   * @param {string | null} answer - The answer text to reveal, or null to hide
+   */
+  const broadcastAnswerRevealed = (answer: string | null) => {
+    if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {
+      logger.warn('Cannot broadcast answer revealed: invalid gameId or channel not initialized', {
+        gameId,
+        channelInitialized: !!channelRef.current,
+        operation: 'broadcastAnswerRevealed',
+      });
+      return;
+    }
+
+    try {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'answer-revealed',
+        payload: { answer },
+      });
+
+      logger.info('Broadcasted answer revealed', {
+        gameId,
+        hasAnswer: answer !== null,
+        operation: 'broadcastAnswerRevealed',
+      });
+    } catch (error) {
+      logger.error('Exception while broadcasting answer revealed', error, {
+        gameId,
+        operation: 'broadcastAnswerRevealed',
+      });
+    }
+  };
+
   return {
     sendBuzz,
     clearBuzzes,
@@ -751,5 +837,6 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     broadcastFinalJeopardyWagerSubmitted,
     broadcastFinalJeopardyAnswerSubmitted,
     broadcastFinalJeopardyTeamRevealed,
+    broadcastAnswerRevealed,
   };
 };

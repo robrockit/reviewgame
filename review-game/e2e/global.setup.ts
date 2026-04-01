@@ -22,7 +22,15 @@ async function loginAndSave(
 
   const browser = await chromium.launch();
   try {
-    const context = await browser.newContext();
+    const context = await browser.newContext({
+      // Bypass Vercel Deployment Protection on preview URLs.
+      // Has no effect on local runs where this env var is not set.
+      ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET && {
+        extraHTTPHeaders: {
+          'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+        },
+      }),
+    });
     const page = await context.newPage();
 
     await page.goto(`${baseURL}/login`);
