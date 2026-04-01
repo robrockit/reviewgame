@@ -36,8 +36,8 @@ export default function StudentGamePage() {
   // Use buzzer hook for real-time buzz events
   const { sendBuzz } = useBuzzer(gameId);
 
-  // Get buzz queue and current question from game store
-  const { buzzQueue, currentQuestion } = useGameStore();
+  // Get buzz queue, current question, and revealed answer from game store
+  const { buzzQueue, currentQuestion, revealedAnswer } = useGameStore();
 
   // Reset claim attempted flag when deviceId changes (e.g., localStorage cleared)
   useEffect(() => {
@@ -434,6 +434,14 @@ export default function StudentGamePage() {
             size={300}
             queuePosition={queuePosition}
           />
+
+          {/* Answer Reveal Banner */}
+          {revealedAnswer && (
+            <div className="mt-6 w-full max-w-md bg-green-900/80 border border-green-400 rounded-lg p-4 text-center">
+              <p className="text-green-200 text-sm font-semibold uppercase tracking-wide">Answer</p>
+              <p className="text-white text-2xl font-bold mt-1">{revealedAnswer}</p>
+            </div>
+          )}
 
           {/* Instructions */}
           <div className="mt-12 bg-white rounded-lg shadow p-6 max-w-md">

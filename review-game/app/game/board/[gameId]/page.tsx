@@ -61,7 +61,7 @@ export default function GameBoardPage() {
 
   // Subscribe to buzz events from students
   // This hook automatically adds buzzes to the game store's buzz queue
-  const { clearBuzzes, broadcastQuestionSelected, broadcastQuestionClosed } = useBuzzer(gameId);
+  const { clearBuzzes, broadcastQuestionSelected, broadcastQuestionClosed, broadcastAnswerRevealed } = useBuzzer(gameId);
 
   // Fetch game data and questions
   useEffect(() => {
@@ -267,6 +267,7 @@ export default function GameBoardPage() {
             isUsed: usedQuestions.includes(q.id),
             isDailyDouble,
             categoryName, // Include category name for modal display
+            answer: q.answer_text,
             imageUrl: q.image_url,
             imageAltText: q.image_alt_text,
           };
@@ -933,6 +934,7 @@ export default function GameBoardPage() {
         gameId={gameId}
         onClearBuzzes={clearBuzzes}
         onQuestionClose={broadcastQuestionClosed}
+        onRevealAnswer={broadcastAnswerRevealed}
       />
 
       {/* Daily Double Modal */}

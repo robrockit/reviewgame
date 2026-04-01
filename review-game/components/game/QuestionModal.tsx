@@ -40,6 +40,7 @@ interface QuestionModalProps {
   gameId: string;
   onClearBuzzes: () => void;
   onQuestionClose?: () => void;
+  onRevealAnswer?: (answer: string | null) => void;
 }
 
 /**
@@ -161,7 +162,7 @@ BuzzQueueItem.displayName = 'BuzzQueueItem';
  * />
  * ```
  */
-export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuzzes, onQuestionClose }) => {
+export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuzzes, onQuestionClose, onRevealAnswer }) => {
   const {
     currentQuestion,
     setCurrentQuestion,
@@ -177,6 +178,7 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
   const [previousBuzzQueueLength, setPreviousBuzzQueueLength] = useState(0);
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [isAnswerRevealed, setIsAnswerRevealed] = useState(false);
 
   // Supabase client - memoized to ensure stable reference for callbacks
   const supabase = useMemo(() => createClient(), []);
@@ -289,6 +291,9 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
       // Restore focus when modal closes
       previousActiveElementRef.current.focus();
       previousActiveElementRef.current = null;
+
+      // Reset answer reveal state when modal closes
+      setIsAnswerRevealed(false);
 
       // Announce modal closed
       setSrAnnouncement('Question modal closed');
@@ -833,6 +838,36 @@ export const QuestionModal: React.FC<QuestionModalProps> = ({ gameId, onClearBuz
                 </div>
               )}
             </div>
+
+            {/* Reveal Answer Section */}
+            {onRevealAnswer && currentQuestion.answer && (
+              <div className="mb-6">
+                <button
+                  onClick={() => {
+                    const next = !isAnswerRevealed;
+                    setIsAnswerRevealed(next);
+                    onRevealAnswer(next ? (currentQuestion.answer ?? null) : null);
+                    setSrAnnouncement(next ? `Answer revealed: ${currentQuestion.answer}` : 'Answer hidden');
+                  }}
+                  disabled={isProcessing}
+                  aria-disabled={isProcessing}
+                  aria-pressed={isAnswerRevealed}
+                  className={`w-full py-3 px-6 font-bold text-lg rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 ${
+                    isAnswerRevealed
+                      ? 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500 text-white'
+                      : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500 text-white'
+                  } disabled:bg-gray-600 disabled:cursor-not-allowed`}
+                >
+                  {isAnswerRevealed ? 'Hide Answer' : 'Reveal Answer'}
+                </button>
+                {isAnswerRevealed && (
+                  <div className="mt-3 bg-green-900/80 border border-green-400 rounded-lg p-4 text-center">
+                    <p className="text-green-200 text-sm font-semibold uppercase tracking-wide">Answer</p>
+                    <p className="text-white text-2xl font-bold mt-1">{currentQuestion.answer}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Teacher Controls Section */}
             <div className="flex flex-col sm:flex-row gap-4" role="group" aria-label="Question scoring controls">

@@ -33,6 +33,7 @@ import { GameData, Team, Question, BuzzEntry, GamePhase, FinalJeopardyQuestion, 
  * @property {GamePhase} currentPhase - The current phase of the game
  * @property {FinalJeopardyQuestion | null} finalJeopardyQuestion - The Final Jeopardy question data
  * @property {Record<string, FinalJeopardyTeamStatus>} finalJeopardyTeamStatuses - Team statuses for Final Jeopardy
+ * @property {string | null} revealedAnswer - The answer text broadcast to students, or null if hidden
  */
 interface GameState {
   currentGameData: GameData | null;
@@ -47,6 +48,7 @@ interface GameState {
   currentPhase: GamePhase;
   finalJeopardyQuestion: FinalJeopardyQuestion | null;
   finalJeopardyTeamStatuses: Record<string, FinalJeopardyTeamStatus>;
+  revealedAnswer: string | null;
 }
 
 /**
@@ -152,6 +154,12 @@ interface GameActions {
   resetFinalJeopardy: () => void;
 
   /**
+   * Sets the revealed answer text broadcast to students.
+   * @param {string | null} answer - The answer to reveal, or null to hide
+   */
+  setRevealedAnswer: (answer: string | null) => void;
+
+  /**
    * Resets the entire store to initial state.
    */
   reset: () => void;
@@ -181,6 +189,7 @@ const initialState: GameState = {
   currentPhase: 'regular',
   finalJeopardyQuestion: null,
   finalJeopardyTeamStatuses: {},
+  revealedAnswer: null,
 };
 
 /**
@@ -266,6 +275,8 @@ export const useGameStore = create<GameStore>((set) => ({
   setWagerSubmitted: (submitted) => set({ isWagerSubmitted: submitted }),
   setControllingTeam: (teamId) => set({ controllingTeamId: teamId }),
   clearWager: () => set({ currentWager: null, isWagerSubmitted: false, controllingTeamId: null }),
+
+  setRevealedAnswer: (answer) => set({ revealedAnswer: answer }),
 
   // Final Jeopardy actions
   setCurrentPhase: (phase) => set({ currentPhase: phase }),

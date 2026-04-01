@@ -365,4 +365,29 @@ describe('gameStore', () => {
       expect(state.selectedQuestions).toEqual([]);
     });
   });
+
+  // revealedAnswer ─────────────────────────────────────────────────────────────
+
+  describe('revealedAnswer', () => {
+    it('starts as null', () => {
+      expect(useGameStore.getState().revealedAnswer).toBeNull();
+    });
+
+    it('setRevealedAnswer sets the answer text', () => {
+      useGameStore.getState().setRevealedAnswer('Paris');
+      expect(useGameStore.getState().revealedAnswer).toBe('Paris');
+    });
+
+    it('setRevealedAnswer(null) clears the answer', () => {
+      useGameStore.getState().setRevealedAnswer('Paris');
+      useGameStore.getState().setRevealedAnswer(null);
+      expect(useGameStore.getState().revealedAnswer).toBeNull();
+    });
+
+    it('reset() clears revealedAnswer', () => {
+      useGameStore.getState().setRevealedAnswer('Paris');
+      useGameStore.getState().reset();
+      expect(useGameStore.getState().revealedAnswer).toBeNull();
+    });
+  });
 });
