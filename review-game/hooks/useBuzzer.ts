@@ -232,7 +232,17 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
         return;
       }
 
-      useGameStore.getState().setCurrentQuestion(payload.question);
+      // The broadcast payload has `answer` stripped for security (students must not
+      // receive it). On the teacher side the self-loop would otherwise overwrite the
+      // store's question with the stripped copy, hiding the Reveal Answer button.
+      // Re-attach the answer from existing state when the same question is already set.
+      const existing = useGameStore.getState().currentQuestion;
+      const question =
+        existing?.id === payload.question.id && existing.answer
+          ? { ...payload.question, answer: existing.answer }
+          : payload.question;
+
+      useGameStore.getState().setCurrentQuestion(question);
     });
 
     // Subscribe to 'question-closed' events to clear question state
