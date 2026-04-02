@@ -195,6 +195,9 @@ export default function GameBoardPage() {
           name: t.team_name || `Team ${t.team_number}`,
           team_name: t.team_name || `Team ${t.team_number}`,
           score: t.score || 0,
+          final_jeopardy_wager: t.final_jeopardy_wager ?? null,
+          final_jeopardy_answer: t.final_jeopardy_answer ?? null,
+          final_jeopardy_submitted_at: t.final_jeopardy_submitted_at ?? null,
         }));
 
         // Validate and set timer settings
@@ -411,6 +414,9 @@ export default function GameBoardPage() {
               name: updatedTeam.team_name || `Team ${updatedTeam.team_number}`,
               team_name: updatedTeam.team_name || `Team ${updatedTeam.team_number}`,
               score: updatedTeam.score || 0,
+              final_jeopardy_wager: updatedTeam.final_jeopardy_wager ?? null,
+              final_jeopardy_answer: updatedTeam.final_jeopardy_answer ?? null,
+              final_jeopardy_submitted_at: updatedTeam.final_jeopardy_submitted_at ?? null,
             };
 
             // Update only the changed team using callback form to prevent memory leak
