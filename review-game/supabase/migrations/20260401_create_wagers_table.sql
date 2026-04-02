@@ -17,19 +17,41 @@ CREATE TABLE IF NOT EXISTS public.wagers (
   answer_text       TEXT,
   is_correct        BOOLEAN,
   revealed          BOOLEAN     NOT NULL DEFAULT FALSE,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- One canonical row per team per game per wager type.
+  -- The SECURITY DEFINER functions INSERT once (wager submission) then UPDATE the
+  -- same row (answer submission, reveal). Without this constraint a retry or race
+  -- could silently insert a duplicate, causing the subsequent UPDATE to hit only
+  -- the first row and leave a stale second one.
+  CONSTRAINT uq_wagers_game_team_type UNIQUE (game_id, team_id, wager_type)
 );
 
--- Indexes for the look-up patterns used by the SECURITY DEFINER functions
-CREATE INDEX IF NOT EXISTS idx_wagers_game_team
-  ON public.wagers(game_id, team_id);
-
+-- The UNIQUE constraint above creates an implicit index on (game_id, team_id, wager_type),
+-- covering two-column (game_id, team_id) look-ups as a leading-prefix match.
+-- Only keep the index for the (game_id, wager_type) pattern used by skip_final_jeopardy.
 CREATE INDEX IF NOT EXISTS idx_wagers_game_type
   ON public.wagers(game_id, wager_type);
+
+-- Trigger function to keep updated_at current on every UPDATE.
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER wagers_set_updated_at
+  BEFORE UPDATE ON public.wagers
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 -- Enable RLS — the table is only accessed through SECURITY DEFINER functions
 -- so no row-level policies are needed; RLS simply blocks direct client access.
 ALTER TABLE public.wagers ENABLE ROW LEVEL SECURITY;
 
 COMMENT ON TABLE public.wagers IS
-  'Audit trail for Daily Double and Final Jeopardy wagers. Written atomically by SECURITY DEFINER functions; not written directly by clients.';
+  'One canonical row per (game_id, team_id, wager_type). Written atomically by SECURITY DEFINER functions; not written directly by clients. INSERT on wager submission, UPDATE on answer submission and reveal.';
