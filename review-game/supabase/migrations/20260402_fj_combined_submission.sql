@@ -58,11 +58,15 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Verify game phase and fetch FJ question for audit record
+  -- Lock the game row so that a concurrent phase advance (wager → reveal) cannot
+  -- slip between this phase check and the team UPDATE below. Without FOR UPDATE,
+  -- a narrow race could allow a submission to pass the phase check and then write
+  -- into a team that is already in the reveal phase.
   SELECT current_phase, final_jeopardy_question
   INTO v_game_phase, v_fj_question
   FROM games
-  WHERE id = p_game_id;
+  WHERE id = p_game_id
+  FOR UPDATE;
 
   IF v_game_phase != 'final_jeopardy_wager' THEN
     RETURN QUERY SELECT false, 'Not in wagering phase'::TEXT, NULL::TIMESTAMP;

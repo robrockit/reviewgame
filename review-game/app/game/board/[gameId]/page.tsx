@@ -352,11 +352,15 @@ export default function GameBoardPage() {
               };
             });
 
-            // If the question_revealed flag just flipped to true, broadcast to students.
-            // The board page acts as the authoritative broadcaster — students subscribe
-            // to the buzzer channel, not directly to postgres_changes.
+            // Broadcast the reveal event only on the rising edge (false → true).
+            // Without this guard, any game-row update while FJ is running (e.g.
+            // a score change) would re-fire broadcastFinalJeopardyQuestionRevealed
+            // on every student screen, even though nothing changed.
+            // useGameStore.getState() is a synchronous Zustand read — it reflects
+            // the value *before* setFinalJeopardyQuestionRevealed is called below.
             const updatedGameTyped = updatedGame as Game & { final_jeopardy_question_revealed?: boolean };
-            if (updatedGameTyped.final_jeopardy_question_revealed === true) {
+            const prevRevealed = useGameStore.getState().finalJeopardyQuestionRevealed;
+            if (!prevRevealed && updatedGameTyped.final_jeopardy_question_revealed === true) {
               setFinalJeopardyQuestionRevealed(true);
               broadcastFinalJeopardyQuestionRevealed();
             }

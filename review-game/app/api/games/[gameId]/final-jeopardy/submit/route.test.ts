@@ -204,7 +204,7 @@ describe('POST /api/games/[gameId]/final-jeopardy/submit', () => {
   // ── Success path ───────────────────────────────────────────────────────────
 
   describe('success', () => {
-    it('returns 200 with teamId, wager, and answer on success', async () => {
+    it('returns 200 with teamId and wager on success (answer intentionally omitted)', async () => {
       mockServiceClient([{ success: true, submitted_at: '2026-04-01T00:00:00Z' }]);
 
       const res = await POST(
@@ -217,7 +217,9 @@ describe('POST /api/games/[gameId]/final-jeopardy/submit', () => {
       expect(body.success).toBe(true);
       expect(body.teamId).toBe(VALID_TEAM_ID);
       expect(body.wager).toBe(200);
-      expect(body.answer).toBe('Russia');
+      // answer is NOT echoed back to avoid logging student responses through
+      // Vercel/Sentry pipelines — the client already holds it locally
+      expect(body.answer).toBeUndefined();
     });
 
     it('calls submit_final_jeopardy RPC with correct args', async () => {
