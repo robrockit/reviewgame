@@ -46,7 +46,6 @@ export interface BuzzEntry {
 export type GamePhase =
   | 'regular'
   | 'final_jeopardy_wager'
-  | 'final_jeopardy_answer'
   | 'final_jeopardy_reveal';
 
 export interface FinalJeopardyQuestion {

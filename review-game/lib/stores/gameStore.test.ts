@@ -245,11 +245,6 @@ describe('gameStore', () => {
       expect(useGameStore.getState().currentPhase).toBe('final_jeopardy_wager');
     });
 
-    it('transitions to final_jeopardy_answer', () => {
-      useGameStore.getState().setCurrentPhase('final_jeopardy_answer');
-      expect(useGameStore.getState().currentPhase).toBe('final_jeopardy_answer');
-    });
-
     it('transitions to final_jeopardy_reveal', () => {
       useGameStore.getState().setCurrentPhase('final_jeopardy_reveal');
       expect(useGameStore.getState().currentPhase).toBe('final_jeopardy_reveal');
@@ -314,12 +309,32 @@ describe('gameStore', () => {
     });
   });
 
+  // setFinalJeopardyQuestionRevealed ─────────────────────────────────────────
+
+  describe('setFinalJeopardyQuestionRevealed', () => {
+    it('starts as false', () => {
+      expect(useGameStore.getState().finalJeopardyQuestionRevealed).toBe(false);
+    });
+
+    it('sets to true when teacher reveals question', () => {
+      useGameStore.getState().setFinalJeopardyQuestionRevealed(true);
+      expect(useGameStore.getState().finalJeopardyQuestionRevealed).toBe(true);
+    });
+
+    it('resets to false', () => {
+      useGameStore.getState().setFinalJeopardyQuestionRevealed(true);
+      useGameStore.getState().setFinalJeopardyQuestionRevealed(false);
+      expect(useGameStore.getState().finalJeopardyQuestionRevealed).toBe(false);
+    });
+  });
+
   // resetFinalJeopardy ────────────────────────────────────────────────────────
 
   describe('resetFinalJeopardy', () => {
-    it('resets phase, question, and team statuses', () => {
+    it('resets phase, question, questionRevealed, and team statuses', () => {
       useGameStore.getState().setCurrentPhase('final_jeopardy_reveal');
       useGameStore.getState().setFinalJeopardyQuestion(makeFJQuestion());
+      useGameStore.getState().setFinalJeopardyQuestionRevealed(true);
       useGameStore.getState().updateFinalJeopardyTeamStatus('t1', {
         teamId: 't1', teamName: 'T', currentScore: 0, wager: 200,
         answer: null, submittedAt: null, isCorrect: null, revealed: false,
@@ -330,6 +345,7 @@ describe('gameStore', () => {
       const state = useGameStore.getState();
       expect(state.currentPhase).toBe('regular');
       expect(state.finalJeopardyQuestion).toBeNull();
+      expect(state.finalJeopardyQuestionRevealed).toBe(false);
       expect(state.finalJeopardyTeamStatuses).toEqual({});
     });
 

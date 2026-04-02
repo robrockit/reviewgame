@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { useGameStore } from '@/lib/stores/gameStore';
-import { MusicalNoteIcon, TrophyIcon } from '@heroicons/react/24/solid';
+import { TrophyIcon } from '@heroicons/react/24/solid';
 
 export default function FinalJeopardyDisplay() {
   const { currentPhase, finalJeopardyQuestion, allTeams, finalJeopardyTeamStatuses } = useGameStore();
@@ -46,38 +46,7 @@ export default function FinalJeopardyDisplay() {
           </div>
         )}
 
-        {/* PHASE 2: Answering */}
-        {currentPhase === 'final_jeopardy_answer' && (
-          <div className="text-center">
-            <div className="mb-8">
-              <MusicalNoteIcon className="mx-auto h-24 w-24 animate-bounce text-yellow-400" />
-            </div>
-            <div className="rounded-2xl bg-white/10 backdrop-blur-lg p-8">
-              <p className="text-2xl font-medium text-blue-200 mb-4">
-                {finalJeopardyQuestion.category}
-              </p>
-              <p className="text-5xl font-bold text-white leading-tight">
-                {finalJeopardyQuestion.question}
-              </p>
-            </div>
-            <div className="mt-12 grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((note) => (
-                <div
-                  key={note}
-                  className="animate-bounce text-6xl"
-                  style={{
-                    animationDelay: `${note * 0.1}s`,
-                    animationDuration: '1.5s',
-                  }}
-                >
-                  ♪
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* PHASE 3: Revealing */}
+        {/* PHASE 2: Revealing */}
         {currentPhase === 'final_jeopardy_reveal' && (
           <div className="space-y-8">
             <div className="text-center">

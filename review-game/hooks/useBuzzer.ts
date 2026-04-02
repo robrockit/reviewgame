@@ -80,6 +80,16 @@ interface AnswerRevealedPayload {
 }
 
 /**
+ * Payload structure for Final Jeopardy question reveal events.
+ * Sent by the teacher when they click "Reveal Question".
+ * No payload fields needed — the question data is already in the store.
+ */
+interface FinalJeopardyQuestionRevealedPayload {
+  // intentionally empty — receipt alone triggers the UI update
+  _unused?: never;
+}
+
+/**
  * Payload structure for Final Jeopardy reveal events.
  *
  * @interface FinalJeopardyTeamRevealedPayload
@@ -106,6 +116,7 @@ interface FinalJeopardyTeamRevealedPayload {
  * @property {function} broadcastFinalJeopardyWagerSubmitted - Function to broadcast wager submission
  * @property {function} broadcastFinalJeopardyAnswerSubmitted - Function to broadcast answer submission
  * @property {function} broadcastFinalJeopardyTeamRevealed - Function to broadcast team reveal
+ * @property {function} broadcastFinalJeopardyQuestionRevealed - Function to broadcast that teacher revealed the FJ question
  * @property {function} broadcastAnswerRevealed - Function to broadcast/clear the revealed answer
  */
 interface BuzzerHook {
@@ -117,6 +128,7 @@ interface BuzzerHook {
   broadcastFinalJeopardyPhaseChanged: (phase: GamePhase) => void;
   broadcastFinalJeopardyWagerSubmitted: (teamId: string) => void;
   broadcastFinalJeopardyAnswerSubmitted: (teamId: string) => void;
+  broadcastFinalJeopardyQuestionRevealed: () => void;
   broadcastFinalJeopardyTeamRevealed: (teamId: string, isCorrect: boolean, newScore: number) => void;
   broadcastAnswerRevealed: (answer: string | null) => void;
 }
@@ -167,6 +179,11 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
   }
 
   useEffect(() => {
+    // Re-arm the mounted flag for this subscription lifetime. Without this, if
+    // gameId changes (navigating between games), the cleanup sets isMountedRef
+    // to false and broadcast handlers become permanently deaf for the new game.
+    isMountedRef.current = true;
+
     // Ensure gameId is a valid non-empty string before subscribing
     if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !supabaseClientRef.current) {
       if (gameId !== undefined) {
@@ -333,6 +350,16 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
         gameId,
         teamId: payload.teamId,
         operation: 'finalJeopardyAnswerSubmittedHandler',
+      });
+    });
+
+    channel.on('broadcast', { event: 'final-jeopardy-question-revealed' }, (_msg: { payload: FinalJeopardyQuestionRevealedPayload }) => {
+      if (!isMountedRef.current) return;
+      useGameStore.getState().setFinalJeopardyQuestionRevealed(true);
+
+      logger.info('Received final-jeopardy-question-revealed broadcast', {
+        gameId,
+        operation: 'finalJeopardyQuestionRevealedHandler',
       });
     });
 
@@ -754,6 +781,39 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
   };
 
   /**
+   * Broadcasts that the teacher has revealed the Final Jeopardy question text.
+   * Students who receive this event update their store to show the question.
+   */
+  const broadcastFinalJeopardyQuestionRevealed = () => {
+    if (!gameId || typeof gameId !== 'string' || gameId.trim() === '' || !channelRef.current) {
+      logger.warn('Cannot broadcast FJ question revealed: invalid gameId or channel not initialized', {
+        gameId,
+        channelInitialized: !!channelRef.current,
+        operation: 'broadcastFinalJeopardyQuestionRevealed',
+      });
+      return;
+    }
+
+    try {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'final-jeopardy-question-revealed',
+        payload: {},
+      });
+
+      logger.info('Broadcasted Final Jeopardy question revealed', {
+        gameId,
+        operation: 'broadcastFinalJeopardyQuestionRevealed',
+      });
+    } catch (error) {
+      logger.error('Exception while broadcasting FJ question revealed', error, {
+        gameId,
+        operation: 'broadcastFinalJeopardyQuestionRevealed',
+      });
+    }
+  };
+
+  /**
    * Broadcasts that a team's Final Jeopardy answer has been revealed.
    *
    * @param {string} teamId - The team being revealed
@@ -836,6 +896,7 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
     broadcastFinalJeopardyPhaseChanged,
     broadcastFinalJeopardyWagerSubmitted,
     broadcastFinalJeopardyAnswerSubmitted,
+    broadcastFinalJeopardyQuestionRevealed,
     broadcastFinalJeopardyTeamRevealed,
     broadcastAnswerRevealed,
   };

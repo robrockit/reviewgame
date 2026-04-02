@@ -1,19 +1,19 @@
 /**
- * @fileoverview E2E tests for the Final Jeopardy flow.
+ * @fileoverview E2E tests for the Final Jeopardy flow (RG-183).
  *
- * Covers the three-phase Final Jeopardy workflow driven by the teacher:
- *   1. Wager phase  — teams submit wagers while teacher waits
- *   2. Answering phase — teams write answers to the revealed question
- *   3. Reveal phase — teacher reveals and grades each team's answer
+ * Covers the two-phase Final Jeopardy workflow:
+ *   1. Wager phase — teacher reveals question; teams submit wager + answer together
+ *   2. Reveal phase — teacher flips each team card individually, then grades
  *
  * Setup: a 1-team game created with Final Jeopardy enabled, one team
  * joined and approved, game started. The teacher then triggers FJ from
  * the board header.
  *
  * Note: Students are stuck on the waiting room (RG-145), so team
- * submission counts will show 0/1 throughout. The phase-advance buttons
- * are not gated on submission count, so the full teacher-side flow is
- * testable without real student interactions.
+ * submission counts will show 0/1 throughout. Phase-advance buttons are
+ * not gated on submission count, so the full teacher-side flow is
+ * testable without real student interactions (except the grading test,
+ * which submits via the API directly).
  *
  * Prerequisites:
  *   - At least one public question bank must exist in the staging Supabase project.
@@ -92,7 +92,7 @@ test.describe('Final Jeopardy flow', () => {
     await expect(fjButton).toBeEnabled();
   });
 
-  test('clicking Start Final Jeopardy opens the wager phase modal', async ({
+  test('clicking Start Final Jeopardy opens the wager phase modal with Reveal Question button', async ({
     teacherPage,
     anonymousPage,
   }) => {
@@ -102,17 +102,22 @@ test.describe('Final Jeopardy flow', () => {
 
     await teacherPage.locator('button', { hasText: 'Start Final Jeopardy' }).click();
 
-    // Wager phase shows the waiting copy and the advance button
+    // Wager phase shows the combined submission copy and the Reveal Question button
     await expect(
-      teacherPage.locator('text=Teams are placing their wagers...')
+      teacherPage.locator('text=Teams are submitting their wager and answer...')
     ).toBeVisible({ timeout: 10_000 });
 
+    // Before teacher reveals: Reveal Question button visible, Begin Reveals not yet
     await expect(
-      teacherPage.locator('button', { hasText: 'Advance to Answering' })
+      teacherPage.locator('button', { hasText: 'Reveal Question' })
     ).toBeVisible();
+
+    await expect(
+      teacherPage.locator('button', { hasText: 'Begin Reveals' })
+    ).not.toBeVisible();
   });
 
-  test('teacher can advance from wager phase to answering phase', async ({
+  test('teacher can reveal question during wager phase', async ({
     teacherPage,
     anonymousPage,
   }) => {
@@ -122,22 +127,26 @@ test.describe('Final Jeopardy flow', () => {
 
     await teacherPage.locator('button', { hasText: 'Start Final Jeopardy' }).click();
     await expect(
-      teacherPage.locator('button', { hasText: 'Advance to Answering' })
+      teacherPage.locator('button', { hasText: 'Reveal Question' })
     ).toBeVisible({ timeout: 10_000 });
 
-    await teacherPage.locator('button', { hasText: 'Advance to Answering' }).click();
+    await teacherPage.locator('button', { hasText: 'Reveal Question' }).click();
 
-    // Answering phase shows the question text and Begin Reveals button
+    // After reveal: the question text is shown and Reveal Question → Begin Reveals
     await expect(
-      teacherPage.locator('text=Teams are writing their answers...')
+      teacherPage.locator('text=Question revealed to students')
     ).toBeVisible({ timeout: 10_000 });
 
     await expect(
       teacherPage.locator('button', { hasText: 'Begin Reveals' })
     ).toBeVisible();
+
+    await expect(
+      teacherPage.locator('button', { hasText: 'Reveal Question' })
+    ).not.toBeVisible();
   });
 
-  test('teacher can advance from answering phase to reveal phase', async ({
+  test('teacher can advance directly from wager phase to reveal phase', async ({
     teacherPage,
     anonymousPage,
   }) => {
@@ -147,23 +156,24 @@ test.describe('Final Jeopardy flow', () => {
 
     await teacherPage.locator('button', { hasText: 'Start Final Jeopardy' }).click();
     await expect(
-      teacherPage.locator('button', { hasText: 'Advance to Answering' })
+      teacherPage.locator('button', { hasText: 'Reveal Question' })
     ).toBeVisible({ timeout: 10_000 });
-    await teacherPage.locator('button', { hasText: 'Advance to Answering' }).click();
 
+    // Reveal question first, then advance directly to reveal phase
+    await teacherPage.locator('button', { hasText: 'Reveal Question' }).click();
     await expect(
       teacherPage.locator('button', { hasText: 'Begin Reveals' })
     ).toBeVisible({ timeout: 10_000 });
+
     await teacherPage.locator('button', { hasText: 'Begin Reveals' }).click();
 
-    // Reveal phase shows "Correct Answer:" and team cards with grade buttons
+    // Reveal phase shows "Correct Answer:" — no intermediate answering phase
     await expect(
       teacherPage.locator('text=Correct Answer:')
     ).toBeVisible({ timeout: 10_000 });
 
-    // Each un-revealed team card shows Correct and Incorrect grade buttons
-    await expect(teacherPage.locator('button', { hasText: 'Correct' }).first()).toBeVisible();
-    await expect(teacherPage.locator('button', { hasText: 'Incorrect' }).first()).toBeVisible();
+    // Each unflipped team card shows "Click to reveal" (not yet graded)
+    await expect(teacherPage.locator('text=Click to reveal').first()).toBeVisible();
   });
 
   test('grading all teams in reveal phase shows the Finish Game button', async ({
@@ -185,35 +195,36 @@ test.describe('Final Jeopardy flow', () => {
     // Start Final Jeopardy — enters wager phase
     await teacherPage.locator('button', { hasText: 'Start Final Jeopardy' }).click();
     await expect(
-      teacherPage.locator('button', { hasText: 'Advance to Answering' })
+      teacherPage.locator('button', { hasText: 'Reveal Question' })
     ).toBeVisible({ timeout: 10_000 });
 
-    // Student submits wager during wager phase
-    await anonymousPage.request.post(`/api/games/${gameId}/final-jeopardy/wager`, {
-      data: { teamId, wager: 0 },
+    // Student submits wager AND answer together in one call
+    await anonymousPage.request.post(`/api/games/${gameId}/final-jeopardy/submit`, {
+      data: { teamId, wager: 0, answer: 'Russia' },
       headers: { 'X-Device-ID': deviceId },
     });
 
-    // Advance to answering phase
-    await teacherPage.locator('button', { hasText: 'Advance to Answering' }).click();
+    // Teacher reveals question, then advances to reveal phase
+    await teacherPage.locator('button', { hasText: 'Reveal Question' }).click();
     await expect(
       teacherPage.locator('button', { hasText: 'Begin Reveals' })
     ).toBeVisible({ timeout: 10_000 });
 
-    // Student submits answer during answering phase
-    await anonymousPage.request.post(`/api/games/${gameId}/final-jeopardy/answer`, {
-      data: { teamId, answer: 'Russia' },
-      headers: { 'X-Device-ID': deviceId },
-    });
-
-    // Advance to reveal phase
     await teacherPage.locator('button', { hasText: 'Begin Reveals' }).click();
     await expect(teacherPage.locator('text=Correct Answer:')).toBeVisible({ timeout: 10_000 });
 
-    // Grade the only team as correct — this reveals their card
+    // Step 1: click the team card to flip it (reveals wager + answer)
+    await teacherPage.locator('[aria-label*="Reveal"]').first().click();
+
+    // Step 2: Correct and Incorrect buttons appear after flip
+    await expect(teacherPage.locator('button', { hasText: 'Correct' }).first()).toBeVisible({
+      timeout: 5_000,
+    });
+
+    // Grade as correct — this is the server-confirmed grade action
     await teacherPage.locator('button', { hasText: 'Correct' }).first().click();
 
-    // Once all teams are revealed the Finish Game button appears
+    // Once all teams are graded the Finish Game button appears
     await expect(
       teacherPage.locator('button', { hasText: 'Finish Game' })
     ).toBeVisible({ timeout: 10_000 });

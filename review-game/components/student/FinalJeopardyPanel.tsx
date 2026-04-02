@@ -2,8 +2,7 @@
  * @fileoverview Final Jeopardy panel for student team view.
  *
  * Provides interface for teams to:
- * - Submit wagers during wagering phase
- * - Submit answers during answering phase
+ * - Submit wager AND answer together during wagering phase (question revealed progressively)
  * - View results during reveal phase
  *
  * @module components/student/FinalJeopardyPanel
@@ -30,14 +29,21 @@ export default function FinalJeopardyPanel({
   teamName,
   currentScore,
 }: FinalJeopardyPanelProps) {
-  const { currentPhase, finalJeopardyQuestion, finalJeopardyTeamStatuses } = useGameStore();
+  const {
+    currentPhase,
+    finalJeopardyQuestion,
+    finalJeopardyTeamStatuses,
+    finalJeopardyQuestionRevealed,
+  } = useGameStore();
 
   const [wagerInput, setWagerInput] = useState('');
   const [wagerError, setWagerError] = useState<string | null>(null);
   const [answerInput, setAnswerInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hasSubmittedWager, setHasSubmittedWager] = useState(false);
-  const [hasSubmittedAnswer, setHasSubmittedAnswer] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  // Captured on successful submit so reveal phase can display them after inputs clear
+  const [submittedWager, setSubmittedWager] = useState<number | null>(null);
+  const [submittedAnswer, setSubmittedAnswer] = useState<string | null>(null);
 
   // Get team status from store
   const teamStatus = finalJeopardyTeamStatuses[teamId];
@@ -45,24 +51,24 @@ export default function FinalJeopardyPanel({
   // Max wager is the greater of current score or 0
   const maxWager = Math.max(currentScore, 0);
 
-  // Reset state when phase changes
+  // Reset state when entering wager phase
   useEffect(() => {
     if (currentPhase === 'final_jeopardy_wager') {
-      setHasSubmittedWager(false);
-      setHasSubmittedAnswer(false);
+      setHasSubmitted(false);
+      setSubmittedWager(null);
+      setSubmittedAnswer(null);
       setWagerInput('');
       setAnswerInput('');
       setWagerError(null);
     }
   }, [currentPhase]);
 
-  const handleWagerSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setWagerError(null);
 
     const wager = parseInt(wagerInput, 10);
 
-    // Validate wager
     if (isNaN(wager)) {
       setWagerError('Please enter a valid number');
       return;
@@ -78,16 +84,18 @@ export default function FinalJeopardyPanel({
       return;
     }
 
+    if (!answerInput.trim()) {
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      // Get device ID for authentication
       const deviceId = getDeviceId();
       if (!deviceId) {
         throw new Error('Device ID not available');
       }
 
-      // Submit wager with device_id header
-      const response = await fetch(`/api/games/${gameId}/final-jeopardy/wager`, {
+      const response = await fetch(`/api/games/${gameId}/final-jeopardy/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -96,61 +104,6 @@ export default function FinalJeopardyPanel({
         body: JSON.stringify({
           teamId,
           wager,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to submit wager');
-      }
-
-      setHasSubmittedWager(true);
-      logger.info('Wager submitted successfully', {
-        operation: 'handleWagerSubmit',
-        gameId,
-        teamId,
-        wager,
-      });
-    } catch (error) {
-      logger.error('Failed to submit wager', error, {
-        operation: 'handleWagerSubmit',
-        gameId,
-        teamId,
-        wager,
-      });
-      setWagerError(
-        error instanceof Error ? error.message : 'Failed to submit wager. Please try again.'
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleAnswerSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!answerInput.trim()) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      // Get device ID for authentication
-      const deviceId = getDeviceId();
-      if (!deviceId) {
-        throw new Error('Device ID not available');
-      }
-
-      // Submit answer with device_id header
-      const response = await fetch(`/api/games/${gameId}/final-jeopardy/answer`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Device-ID': deviceId,
-        },
-        body: JSON.stringify({
-          teamId,
           answer: answerInput.trim(),
         }),
       });
@@ -158,21 +111,27 @@ export default function FinalJeopardyPanel({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to submit answer');
+        throw new Error(data.error || 'Failed to submit');
       }
 
-      setHasSubmittedAnswer(true);
-      logger.info('Answer submitted successfully', {
-        operation: 'handleAnswerSubmit',
+      setSubmittedWager(wager);
+      setSubmittedAnswer(answerInput.trim());
+      setHasSubmitted(true);
+      logger.info('Final Jeopardy wager and answer submitted', {
+        operation: 'handleFinalJeopardySubmit',
         gameId,
         teamId,
+        wager,
       });
     } catch (error) {
-      logger.error('Failed to submit answer', error, {
-        operation: 'handleAnswerSubmit',
+      logger.error('Failed to submit Final Jeopardy response', error, {
+        operation: 'handleFinalJeopardySubmit',
         gameId,
         teamId,
       });
+      setWagerError(
+        error instanceof Error ? error.message : 'Failed to submit. Please try again.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -204,14 +163,28 @@ export default function FinalJeopardyPanel({
           </div>
         </div>
 
-        {/* PHASE 1: Wagering */}
+        {/* PHASE 1: Wager + Answer (combined) */}
         {currentPhase === 'final_jeopardy_wager' && (
           <div className="space-y-4">
-            {!hasSubmittedWager ? (
-              <form onSubmit={handleWagerSubmit} className="space-y-4">
+            {/* Question text — shown only after teacher reveals it */}
+            {finalJeopardyQuestionRevealed ? (
+              <div className="rounded-lg bg-blue-50 p-4">
+                <p className="text-center text-lg font-bold text-gray-900">
+                  {finalJeopardyQuestion.question}
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border-2 border-dashed border-gray-300 p-4 text-center">
+                <p className="text-gray-500 italic">The question will be revealed soon...</p>
+              </div>
+            )}
+
+            {!hasSubmitted ? (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Wager input */}
                 <div>
                   <label htmlFor="wager" className="block text-sm font-medium text-gray-700">
-                    How much do you want to wager?
+                    Your Wager
                   </label>
                   <p id="wager-hint" className="mt-1 text-xs text-gray-500">
                     You can wager from $0 to ${maxWager}
@@ -226,7 +199,6 @@ export default function FinalJeopardyPanel({
                     className="mt-2 block w-full rounded-lg border-2 border-gray-300 px-4 py-3 text-xl font-bold focus:border-blue-500 focus:outline-none"
                     placeholder="Enter wager amount"
                     disabled={isSubmitting}
-                    autoFocus
                     aria-describedby="wager-hint"
                     aria-invalid={!!wagerError}
                   />
@@ -235,48 +207,10 @@ export default function FinalJeopardyPanel({
                   )}
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !wagerInput}
-                  className="w-full rounded-lg bg-blue-600 px-6 py-4 text-xl font-bold text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {isSubmitting ? 'Submitting...' : 'Submit Wager'}
-                </button>
-              </form>
-            ) : (
-              <div className="rounded-lg bg-green-50 p-6 text-center">
-                <CheckCircleIcon className="mx-auto h-16 w-16 text-green-600" />
-                <p className="mt-4 text-xl font-bold text-gray-900">Wager Submitted!</p>
-                <p className="mt-2 text-lg text-gray-600">
-                  You wagered: <span className="font-bold text-green-600">${wagerInput}</span>
-                </p>
-                <p className="mt-4 text-sm text-gray-500">
-                  Waiting for other teams to submit their wagers...
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* PHASE 2: Answering */}
-        {currentPhase === 'final_jeopardy_answer' && (
-          <div className="space-y-4">
-            <div className="rounded-lg bg-blue-50 p-6">
-              <p className="text-center text-xl font-bold text-gray-900">
-                {finalJeopardyQuestion.question}
-              </p>
-            </div>
-
-            <div className="rounded-lg bg-purple-50 p-4">
-              <p className="text-sm text-gray-600">Your Wager</p>
-              <p className="text-2xl font-bold text-purple-600">${wagerInput || 0}</p>
-            </div>
-
-            {!hasSubmittedAnswer ? (
-              <form onSubmit={handleAnswerSubmit} className="space-y-4">
+                {/* Answer input */}
                 <div>
                   <label htmlFor="answer" className="block text-sm font-medium text-gray-700">
-                    What is your answer?
+                    Your Answer
                   </label>
                   <textarea
                     id="answer"
@@ -287,7 +221,6 @@ export default function FinalJeopardyPanel({
                     className="mt-2 block w-full rounded-lg border-2 border-gray-300 px-4 py-3 text-lg focus:border-purple-500 focus:outline-none"
                     placeholder="Type your answer here..."
                     disabled={isSubmitting}
-                    autoFocus
                     aria-label="Your Final Jeopardy answer"
                     aria-describedby="answer-char-count"
                   />
@@ -298,29 +231,35 @@ export default function FinalJeopardyPanel({
 
                 <button
                   type="submit"
-                  disabled={isSubmitting || !answerInput.trim()}
+                  disabled={isSubmitting || !wagerInput || !answerInput.trim()}
                   className="w-full rounded-lg bg-purple-600 px-6 py-4 text-xl font-bold text-white hover:bg-purple-700 disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Submitting...' : 'Submit Answer'}
+                  {isSubmitting ? 'Submitting...' : 'Submit Wager & Answer'}
                 </button>
               </form>
             ) : (
               <div className="rounded-lg bg-green-50 p-6 text-center">
                 <CheckCircleIcon className="mx-auto h-16 w-16 text-green-600" />
-                <p className="mt-4 text-xl font-bold text-gray-900">Answer Submitted!</p>
-                <div className="mt-4 rounded-lg bg-white p-4">
-                  <p className="text-sm text-gray-600">Your Answer</p>
-                  <p className="mt-1 text-lg font-medium text-gray-900">{answerInput}</p>
+                <p className="mt-4 text-xl font-bold text-gray-900">Submitted!</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 text-left">
+                  <div className="rounded-lg bg-white p-3 border border-gray-200">
+                    <p className="text-xs text-gray-500">Your Wager</p>
+                    <p className="mt-1 text-lg font-bold text-green-600">${submittedWager}</p>
+                  </div>
+                  <div className="rounded-lg bg-white p-3 border border-gray-200">
+                    <p className="text-xs text-gray-500">Your Answer</p>
+                    <p className="mt-1 text-sm font-medium text-gray-900">{submittedAnswer}</p>
+                  </div>
                 </div>
                 <p className="mt-4 text-sm text-gray-500">
-                  Waiting for results...
+                  Waiting for teacher to begin reveals...
                 </p>
               </div>
             )}
           </div>
         )}
 
-        {/* PHASE 3: Reveal */}
+        {/* PHASE 2: Reveal */}
         {currentPhase === 'final_jeopardy_reveal' && (
           <div className="space-y-4">
             <div className="rounded-lg bg-purple-50 p-4 text-center">
@@ -334,11 +273,15 @@ export default function FinalJeopardyPanel({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <p className="text-sm text-gray-600">Your Wager</p>
-                  <p className="text-2xl font-bold text-gray-900">${wagerInput || 0}</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    ${submittedWager ?? 0}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Your Answer</p>
-                  <p className="text-lg font-medium text-gray-900">{answerInput || '(No answer)'}</p>
+                  <p className="text-lg font-medium text-gray-900">
+                    {submittedAnswer ?? '(No answer)'}
+                  </p>
                 </div>
               </div>
 
@@ -350,13 +293,13 @@ export default function FinalJeopardyPanel({
                     <>
                       <CheckCircleIcon className="mx-auto h-12 w-12 text-green-600" />
                       <p className="mt-2 text-xl font-bold text-green-900">Correct!</p>
-                      <p className="mt-1 text-lg text-green-700">+${wagerInput || 0}</p>
+                      <p className="mt-1 text-lg text-green-700">+${submittedWager ?? 0}</p>
                     </>
                   ) : (
                     <>
                       <XCircleIcon className="mx-auto h-12 w-12 text-red-600" />
                       <p className="mt-2 text-xl font-bold text-red-900">Incorrect</p>
-                      <p className="mt-1 text-lg text-red-700">-${wagerInput || 0}</p>
+                      <p className="mt-1 text-lg text-red-700">-${submittedWager ?? 0}</p>
                     </>
                   )}
                   <div className="mt-4 pt-4 border-t border-gray-300">

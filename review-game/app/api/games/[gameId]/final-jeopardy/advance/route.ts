@@ -5,12 +5,15 @@ import type { GamePhase } from '@/types/game';
 
 /**
  * POST /api/games/[gameId]/final-jeopardy/advance
- * Advances the game to the next Final Jeopardy phase.
+ * Advances the game to the next Final Jeopardy phase (RG-183).
  *
  * Phase transitions:
- * - wager → answer
- * - answer → reveal
+ * - wager → reveal (also resets final_jeopardy_question_revealed)
  * - reveal → regular (and set status to 'completed')
+ *
+ * Note: the 'final_jeopardy_answer' phase has been removed from the app flow.
+ * The DB CHECK constraint still permits it for backwards compatibility with
+ * any in-progress games.
  *
  * Verifies:
  * - User owns the game
@@ -75,9 +78,6 @@ export async function POST(
 
     switch (currentPhase) {
       case 'final_jeopardy_wager':
-        nextPhase = 'final_jeopardy_answer';
-        break;
-      case 'final_jeopardy_answer':
         nextPhase = 'final_jeopardy_reveal';
         break;
       case 'final_jeopardy_reveal':
@@ -91,14 +91,25 @@ export async function POST(
         );
     }
 
-    // Update game phase (and status if completing)
+    // Update game phase (and status if completing).
+    // Reset final_jeopardy_question_revealed when advancing out of wager phase
+    // so a re-started FJ round starts with the question hidden again.
+    //
+    // Type assertion: final_jeopardy_question_revealed is a new column added by
+    // migration 20260402 and is not yet reflected in the generated database types.
     const updates: {
       current_phase: GamePhase;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      final_jeopardy_question_revealed?: any;
       status?: string;
       completed_at?: string;
     } = {
       current_phase: nextPhase,
     };
+
+    if (currentPhase === 'final_jeopardy_wager') {
+      updates.final_jeopardy_question_revealed = false;
+    }
 
     if (shouldComplete) {
       updates.status = 'completed';
@@ -107,7 +118,8 @@ export async function POST(
 
     const { error: updateError } = await supabase
       .from('games')
-      .update(updates)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .update(updates as any)
       .eq('id', gameId);
 
     if (updateError) {
