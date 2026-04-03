@@ -475,7 +475,7 @@ export default function StudentGamePage() {
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-6 text-center mb-6">
                 <p className="text-blue-100 text-sm font-semibold uppercase tracking-wide mb-1">Final Jeopardy</p>
                 <h2 className="text-3xl font-bold text-white">
-                  {(finalJeopardyQuestion as FinalJeopardyQuestion | null)?.category ?? 'Final Jeopardy'}
+                  {finalJeopardyQuestion?.category ?? 'Final Jeopardy'}
                 </h2>
               </div>
 
@@ -483,7 +483,7 @@ export default function StudentGamePage() {
               {finalJeopardyQuestionRevealed ? (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 text-center">
                   <p className="text-gray-900 font-bold text-lg">
-                    {(finalJeopardyQuestion as FinalJeopardyQuestion | null)?.question ?? ''}
+                    {finalJeopardyQuestion?.question ?? ''}
                   </p>
                 </div>
               ) : (

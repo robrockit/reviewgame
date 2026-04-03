@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import type { GamePhase } from '@/types/game';
+import { isValidUUID } from '@/lib/utils/uuid';
 
 /**
  * POST /api/games/[gameId]/final-jeopardy/advance
@@ -43,8 +44,7 @@ export async function POST(
     const { gameId } = await context.params;
 
     // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(gameId)) {
+    if (!isValidUUID(gameId)) {
       return NextResponse.json(
         { error: 'Invalid game ID format' },
         { status: 400 }
@@ -97,6 +97,7 @@ export async function POST(
     //
     // Type assertion: final_jeopardy_question_revealed is a new column added by
     // migration 20260402 and is not yet reflected in the generated database types.
+    // TODO: remove after Supabase types are regenerated post-migration.
     const updates: {
       current_phase: GamePhase;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

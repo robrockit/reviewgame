@@ -186,6 +186,26 @@ describe('POST /api/games/[gameId]/final-jeopardy/submit', () => {
       expect(body.error).toMatch(/negative/i);
     });
 
+    it('returns 400 for empty answer string', async () => {
+      const res = await POST(
+        makeRequest(VALID_GAME_ID, { teamId: VALID_TEAM_ID, wager: 0, answer: '' }),
+        makeContext(VALID_GAME_ID)
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/required/i);
+    });
+
+    it('returns 400 for whitespace-only answer', async () => {
+      const res = await POST(
+        makeRequest(VALID_GAME_ID, { teamId: VALID_TEAM_ID, wager: 0, answer: '   ' }),
+        makeContext(VALID_GAME_ID)
+      );
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/required/i);
+    });
+
     it('returns 400 for answer exceeding 500 chars', async () => {
       const res = await POST(
         makeRequest(VALID_GAME_ID, {

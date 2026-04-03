@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServerClient, createAdminServiceClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { verifyDeviceOwnsTeam, getDeviceIdFromRequest } from '@/lib/auth/device';
+import { isValidUUID } from '@/lib/utils/uuid';
 
 /**
  * POST /api/games/[gameId]/final-jeopardy/submit
@@ -32,8 +33,7 @@ export async function POST(
     const { gameId } = await context.params;
 
     // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(gameId)) {
+    if (!isValidUUID(gameId)) {
       return NextResponse.json(
         { error: 'Invalid game ID format' },
         { status: 400 }
@@ -52,7 +52,7 @@ export async function POST(
       );
     }
 
-    if (!uuidRegex.test(teamId)) {
+    if (!isValidUUID(teamId)) {
       return NextResponse.json(
         { error: 'Invalid team ID format' },
         { status: 400 }
@@ -94,6 +94,13 @@ export async function POST(
     if (typeof answer !== 'string') {
       return NextResponse.json(
         { error: 'Answer must be a string' },
+        { status: 400 }
+      );
+    }
+
+    if (answer.trim().length === 0) {
+      return NextResponse.json(
+        { error: 'Answer is required' },
         { status: 400 }
       );
     }
