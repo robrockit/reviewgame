@@ -176,6 +176,61 @@ test.describe('Final Jeopardy flow', () => {
     await expect(teacherPage.locator('text=Click to reveal').first()).toBeVisible();
   });
 
+  test('clicking Finish Game shows the winner screen, not the dashboard', async ({
+    teacherPage,
+    anonymousPage,
+  }) => {
+    const gameId = await createFJGame(teacherPage);
+    const teamId = await joinGame(anonymousPage, gameId);
+    await startGame(teacherPage, gameId);
+
+    const deviceId = await anonymousPage.evaluate(
+      () => localStorage.getItem('reviewgame_device_id')
+    );
+    if (!deviceId) throw new Error('device_id not found in anonymousPage localStorage');
+
+    await teacherPage.locator('button', { hasText: 'Start Final Jeopardy' }).click();
+    await expect(
+      teacherPage.locator('button', { hasText: 'Reveal Question' })
+    ).toBeVisible({ timeout: 10_000 });
+
+    await anonymousPage.request.post(`/api/games/${gameId}/final-jeopardy/submit`, {
+      data: { teamId, wager: 0, answer: 'Russia' },
+      headers: { 'X-Device-ID': deviceId },
+    });
+
+    await teacherPage.locator('button', { hasText: 'Reveal Question' }).click();
+    await expect(
+      teacherPage.locator('button', { hasText: 'Begin Reveals' })
+    ).toBeVisible({ timeout: 10_000 });
+
+    await teacherPage.locator('button', { hasText: 'Begin Reveals' }).click();
+    await expect(teacherPage.locator('text=Correct Answer:')).toBeVisible({ timeout: 10_000 });
+
+    await teacherPage.locator('[aria-label*="Reveal"]').first().click();
+    await expect(teacherPage.locator('button', { hasText: 'Correct' }).first()).toBeVisible({ timeout: 5_000 });
+    await teacherPage.locator('button', { hasText: 'Correct' }).first().click();
+
+    await teacherPage.locator('button', { hasText: 'Finish Game' }).click();
+
+    // Winner screen should appear — not a redirect to /dashboard
+    await expect(
+      teacherPage.locator('text=Game Complete')
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Only "Return to Dashboard" is shown post-FJ — Play Again is hidden
+    await expect(
+      teacherPage.locator('button', { hasText: 'Return to Dashboard' })
+    ).toBeVisible();
+
+    await expect(
+      teacherPage.locator('button', { hasText: 'Play Again' })
+    ).not.toBeVisible();
+
+    // URL should still be the board, not /dashboard
+    expect(teacherPage.url()).toContain(`/game/board/${gameId}`);
+  });
+
   test('grading all teams in reveal phase shows the Finish Game button', async ({
     teacherPage,
     anonymousPage,

@@ -43,6 +43,7 @@ export default function GameBoardPage() {
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGameCompleteModal, setShowGameCompleteModal] = useState(false);
+  const [isPostFinalJeopardy, setIsPostFinalJeopardy] = useState(false);
   const [showFinalJeopardyModal, setShowFinalJeopardyModal] = useState(false);
   const [isFjStarting, setIsFjStarting] = useState(false);
   const [fjError, setFjError] = useState<string | null>(null);
@@ -601,7 +602,9 @@ export default function GameBoardPage() {
     // Check if all questions have been answered
     const allQuestionsAnswered = totalQuestions > 0 && selectedQuestions.length === totalQuestions;
 
-    if (allQuestionsAnswered && !showGameCompleteModal) {
+    // Only auto-open when the board clears for games without Final Jeopardy.
+    // Games with FJ should show the winner screen after FJ completes instead.
+    if (allQuestionsAnswered && !showGameCompleteModal && !game?.final_jeopardy_question) {
       logger.info('All questions answered, opening game complete modal', {
         operation: 'auto_open_game_complete_modal',
         gameId,
@@ -610,7 +613,7 @@ export default function GameBoardPage() {
       });
       setShowGameCompleteModal(true);
     }
-  }, [selectedQuestions, currentGameData, gameId, showGameCompleteModal]);
+  }, [selectedQuestions, currentGameData, gameId, showGameCompleteModal, game]);
 
   // Auto-dismiss Final Jeopardy error toast after 5 seconds
   useEffect(() => {
@@ -853,7 +856,8 @@ export default function GameBoardPage() {
 
     setCurrentPhase(data.currentPhase);
     setShowFinalJeopardyModal(false);
-    router.push('/dashboard');
+    setIsPostFinalJeopardy(true);
+    setShowGameCompleteModal(true);
   };
 
   // Skip Final Jeopardy and return to regular game view
@@ -883,18 +887,21 @@ export default function GameBoardPage() {
       return [];
     }
 
-    return allTeams
+    const sorted = allTeams
       .map(team => ({
         teamId: team.id,
         teamName: team.name,
         score: team.score,
-        rank: 0, // Will be set after sorting
       }))
-      .sort((a, b) => b.score - a.score) // Sort by score descending
-      .map((team, index) => ({
-        ...team,
-        rank: index + 1, // Assign rank based on position (1st place = rank 1)
-      }));
+      .sort((a, b) => b.score - a.score);
+
+    // Assign rank: teams with equal scores share the same rank (co-winners).
+    // findIndex returns the position of the first team with this score, giving
+    // tied teams identical ranks (e.g. two teams at 500 both get rank 1).
+    return sorted.map((team, _index, arr) => ({
+      ...team,
+      rank: arr.findIndex(t => t.score === team.score) + 1,
+    }));
   }, [allTeams, gameId]);
 
   if (loading) {
@@ -1004,12 +1011,13 @@ export default function GameBoardPage() {
       <DailyDoubleModal gameId={gameId} onQuestionClose={broadcastQuestionClosed} />
 
       {/* Game Complete Celebration Modal */}
+      {/* After Final Jeopardy: hide Play Again and Start FJ — the game is fully over. */}
       <GameCompleteModal
         isOpen={showGameCompleteModal}
         finalScores={finalScores}
         onReturnToDashboard={handleReturnToDashboard}
-        onPlayAgain={handlePlayAgain}
-        onStartFinalJeopardy={game.final_jeopardy_question !== null ? handleStartFinalJeopardy : undefined}
+        onPlayAgain={isPostFinalJeopardy ? undefined : handlePlayAgain}
+        onStartFinalJeopardy={!isPostFinalJeopardy && game.final_jeopardy_question !== null ? handleStartFinalJeopardy : undefined}
       />
 
       {/* Final Jeopardy Modal */}

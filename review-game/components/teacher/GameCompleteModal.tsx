@@ -40,9 +40,10 @@ interface GameCompleteModalProps {
    */
   onReturnToDashboard: () => void;
   /**
-   * Callback to reset game and play again.
+   * Callback to reset game and play again. Omit to hide the Play Again button
+   * (e.g. after Final Jeopardy when the game is fully complete).
    */
-  onPlayAgain: () => void;
+  onPlayAgain?: () => void;
   /**
    * Optional callback to start Final Jeopardy. Only rendered when provided.
    */
@@ -294,14 +295,16 @@ export default function GameCompleteModal({
                   >
                     Return to Dashboard
                   </button>
-                  <button
-                    type="button"
-                    onClick={onPlayAgain}
-                    className="w-full sm:w-auto px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
-                    aria-label="Play again with same teams"
-                  >
-                    Play Again
-                  </button>
+                  {onPlayAgain && (
+                    <button
+                      type="button"
+                      onClick={onPlayAgain}
+                      className="w-full sm:w-auto px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                      aria-label="Play again with same teams"
+                    >
+                      Play Again
+                    </button>
+                  )}
                 </div>
               </Dialog.Panel>
             </Transition.Child>
