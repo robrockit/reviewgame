@@ -38,13 +38,12 @@ export default function StudentGamePage() {
   const { sendBuzz } = useBuzzer(gameId);
 
   // Get buzz queue, current question, revealed answer, and FJ state from game store
-  const { buzzQueue, currentQuestion, revealedAnswer, currentPhase, finalJeopardyQuestion } = useGameStore();
+  const { buzzQueue, currentQuestion, revealedAnswer, currentPhase, finalJeopardyQuestion, finalJeopardyQuestionRevealed } = useGameStore();
 
-  // Final Jeopardy local state
+  // Final Jeopardy local state — combined wager + answer form (RG-183)
   const [fjWager, setFjWager] = useState<string>('0');
-  const [fjWagerSubmitted, setFjWagerSubmitted] = useState(false);
   const [fjAnswer, setFjAnswer] = useState('');
-  const [fjAnswerSubmitted, setFjAnswerSubmitted] = useState(false);
+  const [fjSubmitted, setFjSubmitted] = useState(false);
   const [fjSubmitting, setFjSubmitting] = useState(false);
   const [fjError, setFjError] = useState<string | null>(null);
 
@@ -298,19 +297,18 @@ export default function StudentGamePage() {
     }
   }, [buzzQueue, teamId, game?.status, currentQuestion]);
 
-  // Reset FJ submission state when returning to regular play
+  // Reset FJ submission state when returning to regular play or entering wager phase
   useEffect(() => {
-    if (currentPhase === 'regular') {
+    if (currentPhase === 'regular' || currentPhase === 'final_jeopardy_wager') {
       setFjWager('0');
-      setFjWagerSubmitted(false);
       setFjAnswer('');
-      setFjAnswerSubmitted(false);
+      setFjSubmitted(false);
       setFjError(null);
     }
   }, [currentPhase]);
 
-  // Submit Final Jeopardy wager
-  const handleSubmitWager = async () => {
+  // Submit Final Jeopardy wager + answer together (RG-183)
+  const handleSubmitFJ = async () => {
     const wagerNum = parseInt(fjWager, 10);
     const maxWager = Math.max(team?.score ?? 0, 0);
 
@@ -319,32 +317,6 @@ export default function StudentGamePage() {
       return;
     }
 
-    setFjSubmitting(true);
-    setFjError(null);
-    try {
-      const response = await fetch(`/api/games/${gameId}/final-jeopardy/wager`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(deviceId ? { 'X-Device-ID': deviceId } : {}),
-        },
-        body: JSON.stringify({ teamId, wager: wagerNum }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setFjError(data.error || 'Failed to submit wager');
-        return;
-      }
-      setFjWagerSubmitted(true);
-    } catch {
-      setFjError('Failed to submit wager. Please try again.');
-    } finally {
-      setFjSubmitting(false);
-    }
-  };
-
-  // Submit Final Jeopardy answer
-  const handleSubmitAnswer = async () => {
     if (!fjAnswer.trim()) {
       setFjError('Please enter an answer');
       return;
@@ -353,22 +325,22 @@ export default function StudentGamePage() {
     setFjSubmitting(true);
     setFjError(null);
     try {
-      const response = await fetch(`/api/games/${gameId}/final-jeopardy/answer`, {
+      const response = await fetch(`/api/games/${gameId}/final-jeopardy/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(deviceId ? { 'X-Device-ID': deviceId } : {}),
         },
-        body: JSON.stringify({ teamId, answer: fjAnswer.trim() }),
+        body: JSON.stringify({ teamId, wager: wagerNum, answer: fjAnswer.trim() }),
       });
       const data = await response.json();
       if (!response.ok) {
-        setFjError(data.error || 'Failed to submit answer');
+        setFjError(data.error || 'Failed to submit');
         return;
       }
-      setFjAnswerSubmitted(true);
+      setFjSubmitted(true);
     } catch {
-      setFjError('Failed to submit answer. Please try again.');
+      setFjError('Failed to submit. Please try again.');
     } finally {
       setFjSubmitting(false);
     }
@@ -497,79 +469,68 @@ export default function StudentGamePage() {
         {/* Main Game Area */}
         <div className="flex flex-col items-center justify-center py-12">
 
-          {/* ── Final Jeopardy: Wager Phase ── */}
+          {/* ── Final Jeopardy: Wager + Answer Phase (combined, RG-183) ── */}
           {currentPhase === 'final_jeopardy_wager' && (
             <div className="w-full max-w-md">
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-6 text-center mb-6">
                 <p className="text-blue-100 text-sm font-semibold uppercase tracking-wide mb-1">Final Jeopardy</p>
                 <h2 className="text-3xl font-bold text-white">
-                  {(finalJeopardyQuestion as FinalJeopardyQuestion | null)?.category ?? 'Final Jeopardy'}
+                  {finalJeopardyQuestion?.category ?? 'Final Jeopardy'}
                 </h2>
               </div>
 
-              {fjWagerSubmitted ? (
-                <div className="bg-green-50 border border-green-300 rounded-lg p-6 text-center">
-                  <p className="text-green-700 text-lg font-semibold">Wager submitted!</p>
-                  <p className="text-green-600 mt-1">Waiting for the teacher to reveal the question…</p>
+              {/* Question text — shown only after teacher reveals it */}
+              {finalJeopardyQuestionRevealed ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 text-center">
+                  <p className="text-gray-900 font-bold text-lg">
+                    {finalJeopardyQuestion?.question ?? ''}
+                  </p>
                 </div>
               ) : (
-                <div className="bg-white rounded-lg shadow p-6">
-                  <p className="text-gray-700 font-medium mb-4">
-                    Enter your wager (0 – {Math.max(team?.score ?? 0, 0)} points)
-                  </p>
-                  <input
-                    type="number"
-                    min={0}
-                    max={Math.max(team?.score ?? 0, 0)}
-                    value={fjWager}
-                    onChange={e => setFjWager(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-2xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-                  />
-                  {fjError && <p className="text-red-600 text-sm mb-3">{fjError}</p>}
-                  <button
-                    onClick={handleSubmitWager}
-                    disabled={fjSubmitting}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors"
-                  >
-                    {fjSubmitting ? 'Submitting…' : 'Lock In Wager'}
-                  </button>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 mb-4 text-center">
+                  <p className="text-gray-500 italic">The question will be revealed soon…</p>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ── Final Jeopardy: Answer Phase ── */}
-          {currentPhase === 'final_jeopardy_answer' && (
-            <div className="w-full max-w-md">
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg p-6 text-center mb-6">
-                <p className="text-blue-100 text-sm font-semibold uppercase tracking-wide mb-2">Final Jeopardy</p>
-                <p className="text-white text-xl font-bold">
-                  {(finalJeopardyQuestion as FinalJeopardyQuestion | null)?.question ?? ''}
-                </p>
-              </div>
-
-              {fjAnswerSubmitted ? (
+              {fjSubmitted ? (
                 <div className="bg-green-50 border border-green-300 rounded-lg p-6 text-center">
-                  <p className="text-green-700 text-lg font-semibold">Answer submitted!</p>
-                  <p className="text-green-600 mt-1">Waiting for the teacher to reveal results…</p>
+                  <p className="text-green-700 text-lg font-semibold">Submitted!</p>
+                  <p className="text-green-600 mt-1">Waiting for teacher to begin reveals…</p>
                 </div>
               ) : (
-                <div className="bg-white rounded-lg shadow p-6">
-                  <p className="text-gray-700 font-medium mb-4">Write your answer</p>
-                  <textarea
-                    value={fjAnswer}
-                    onChange={e => setFjAnswer(e.target.value)}
-                    rows={3}
-                    placeholder="Your answer…"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 resize-none"
-                  />
-                  {fjError && <p className="text-red-600 text-sm mb-3">{fjError}</p>}
+                <div className="bg-white rounded-lg shadow p-6 space-y-4">
+                  <div>
+                    <p className="text-gray-700 font-medium mb-2">
+                      Wager (0 – {Math.max(team?.score ?? 0, 0)} points)
+                    </p>
+                    <input
+                      type="number"
+                      min={0}
+                      max={Math.max(team?.score ?? 0, 0)}
+                      value={fjWager}
+                      onChange={e => setFjWager(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-3 text-2xl font-bold text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-gray-700 font-medium mb-2">Your Answer</p>
+                    <textarea
+                      value={fjAnswer}
+                      onChange={e => setFjAnswer(e.target.value)}
+                      rows={3}
+                      maxLength={500}
+                      placeholder="Your answer…"
+                      className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">{fjAnswer.length} / 500</p>
+                  </div>
+                  {fjError && <p className="text-red-600 text-sm">{fjError}</p>}
                   <button
-                    onClick={handleSubmitAnswer}
-                    disabled={fjSubmitting}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors"
+                    onClick={handleSubmitFJ}
+                    disabled={fjSubmitting || !fjAnswer.trim()}
+                    className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 rounded-lg transition-colors"
                   >
-                    {fjSubmitting ? 'Submitting…' : 'Submit Answer'}
+                    {fjSubmitting ? 'Submitting…' : 'Submit Wager & Answer'}
                   </button>
                 </div>
               )}

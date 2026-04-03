@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { getDeviceId } from '@/hooks/useDeviceId';
 import { logger } from '@/lib/logger';
 
 interface JoinPageProps {
-  params: {
+  params: Promise<{
     gameId: string;
-  };
+  }>;
 }
 
 /**
@@ -33,7 +33,7 @@ export default function JoinGamePage({ params }: JoinPageProps) {
   const [isValidating, setIsValidating] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gameInfo, setGameInfo] = useState<{ title: string } | null>(null);
-  const { gameId } = params;
+  const { gameId } = use(params);
 
   // Validate gameId on mount
   useEffect(() => {

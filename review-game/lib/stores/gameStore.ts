@@ -47,6 +47,7 @@ interface GameState {
   controllingTeamId: string | null;
   currentPhase: GamePhase;
   finalJeopardyQuestion: FinalJeopardyQuestion | null;
+  finalJeopardyQuestionRevealed: boolean;
   finalJeopardyTeamStatuses: Record<string, FinalJeopardyTeamStatus>;
   revealedAnswer: string | null;
 }
@@ -149,6 +150,12 @@ interface GameActions {
   updateFinalJeopardyTeamStatus: (teamId: string, status: Partial<FinalJeopardyTeamStatus>) => void;
 
   /**
+   * Sets whether the Final Jeopardy question text has been revealed to students.
+   * @param {boolean} revealed - True when teacher has revealed the question
+   */
+  setFinalJeopardyQuestionRevealed: (revealed: boolean) => void;
+
+  /**
    * Resets all Final Jeopardy state.
    */
   resetFinalJeopardy: () => void;
@@ -188,6 +195,7 @@ const initialState: GameState = {
   controllingTeamId: null,
   currentPhase: 'regular',
   finalJeopardyQuestion: null,
+  finalJeopardyQuestionRevealed: false,
   finalJeopardyTeamStatuses: {},
   revealedAnswer: null,
 };
@@ -281,6 +289,7 @@ export const useGameStore = create<GameStore>((set) => ({
   // Final Jeopardy actions
   setCurrentPhase: (phase) => set({ currentPhase: phase }),
   setFinalJeopardyQuestion: (question) => set({ finalJeopardyQuestion: question }),
+  setFinalJeopardyQuestionRevealed: (revealed) => set({ finalJeopardyQuestionRevealed: revealed }),
   updateFinalJeopardyTeamStatus: (teamId, status) =>
     set((state) => ({
       finalJeopardyTeamStatuses: {
@@ -295,6 +304,7 @@ export const useGameStore = create<GameStore>((set) => ({
     set({
       currentPhase: 'regular',
       finalJeopardyQuestion: null,
+      finalJeopardyQuestionRevealed: false,
       finalJeopardyTeamStatuses: {},
     }),
 

@@ -2,3 +2,6 @@
 
 // Feature access control utilities
 export * from './feature-access';
+
+// UUID validation
+export * from './uuid';

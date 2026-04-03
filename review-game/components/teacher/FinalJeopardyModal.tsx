@@ -1,10 +1,11 @@
 /**
- * @fileoverview Final Jeopardy Modal for teacher control.
+ * @fileoverview Final Jeopardy Modal for teacher control (RG-183).
  *
- * Manages the three-phase Final Jeopardy workflow:
- * - Wagering phase: Teams submit wagers
- * - Answering phase: Teams submit answers (with music)
- * - Revealing phase: Teacher reveals and grades each team
+ * Manages the two-phase Final Jeopardy workflow:
+ * - Wager/submission phase: Teams submit wager + answer simultaneously.
+ *   Teacher can optionally reveal the question text before teams submit.
+ * - Revealing phase: Teacher reveals and grades each team one at a time
+ *   via a two-step card flip (click to reveal, then grade).
  *
  * @module components/teacher/FinalJeopardyModal
  */
@@ -13,14 +14,15 @@
 
 import React, { Fragment, useState, useEffect, useRef } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { CheckCircleIcon, XCircleIcon, MusicalNoteIcon } from '@heroicons/react/24/solid';
+import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import { useGameStore } from '@/lib/stores/gameStore';
-import type { GamePhase, FinalJeopardyTeamStatus } from '@/types/game';
+import type { GamePhase } from '@/types/game';
 import { logger } from '@/lib/logger';
 
 interface FinalJeopardyModalProps {
   isOpen: boolean;
   gameId: string;
+  onRevealQuestion: () => Promise<void>;
   onAdvancePhase: () => Promise<void>;
   onRevealTeam: (teamId: string, isCorrect: boolean) => Promise<void>;
   onFinishGame: () => Promise<void>;
@@ -30,6 +32,7 @@ interface FinalJeopardyModalProps {
 export default function FinalJeopardyModal({
   isOpen,
   gameId,
+  onRevealQuestion,
   onAdvancePhase,
   onRevealTeam,
   onFinishGame,
@@ -38,22 +41,22 @@ export default function FinalJeopardyModal({
   const {
     currentPhase,
     finalJeopardyQuestion,
+    finalJeopardyQuestionRevealed,
     allTeams,
   } = useGameStore();
 
   const [isProcessing, setIsProcessing] = useState(false);
+  // flippedCards: cards that have been clicked to show wager+answer (local only, no API)
+  const [flippedCards, setFlippedCards] = useState<Set<string>>(new Set());
+  // revealedTeams: teams that have been fully graded (Correct/Incorrect clicked → API call)
   const [revealedTeams, setRevealedTeams] = useState<Set<string>>(new Set());
   const buttonRef = useRef<HTMLButtonElement>(null);
   const prevPhaseRef = useRef<GamePhase | null>(null);
   // Frozen at the moment we enter reveal phase so late-arriving team subscriptions
   // can't silently raise the denominator and prevent "Finish Game" from enabling.
-  // Known residual race: if a Supabase team event lands in the window between the
-  // advance RPC returning and the phase state updating, the freeze will capture the
-  // inflated count. This is extremely unlikely in practice (sub-100ms window) and
-  // cannot be fully eliminated without a server-side team-count snapshot.
   const frozenRevealTotalRef = useRef<number | null>(null);
 
-  // Reset revealed teams only when entering wager phase (not on every phase change)
+  // Reset local state only when entering wager phase (not on every phase change)
   useEffect(() => {
     const isEnteringWagerPhase =
       isOpen &&
@@ -66,6 +69,7 @@ export default function FinalJeopardyModal({
       prevPhaseRef.current !== 'final_jeopardy_reveal';
 
     if (isEnteringWagerPhase) {
+      setFlippedCards(new Set());
       setRevealedTeams(new Set());
       frozenRevealTotalRef.current = null;
     }
@@ -77,23 +81,34 @@ export default function FinalJeopardyModal({
     prevPhaseRef.current = currentPhase;
   }, [isOpen, currentPhase, allTeams.length]);
 
-  // Get teams with Final Jeopardy data
+  // Get teams with submission status for the wager phase
   const teamsWithData = allTeams.map(team => ({
     ...team,
-    hasSubmitted: currentPhase === 'final_jeopardy_wager'
-      ? team.final_jeopardy_wager !== null
-      : team.final_jeopardy_answer !== null,
+    // With combined submission, wager IS NOT NULL means both wager + answer submitted
+    hasSubmitted: team.final_jeopardy_wager !== null,
   }));
 
-  // Count submitted teams
   const submittedCount = teamsWithData.filter(t => t.hasSubmitted).length;
   const totalTeams = allTeams.length;
 
-  // Check if all teams have been revealed.
-  // Use the frozen count (captured at reveal-phase entry) so that late-arriving
-  // team subscriptions cannot raise the denominator mid-reveal.
+  // "Finish Game" is enabled only after all teams have been graded.
+  // Use the frozen count to avoid denominator drift from late team subscriptions.
   const revealDenominator = frozenRevealTotalRef.current ?? totalTeams;
-  const allRevealed = currentPhase === 'final_jeopardy_reveal' && revealedTeams.size === revealDenominator;
+  const allGraded = currentPhase === 'final_jeopardy_reveal' && revealedTeams.size === revealDenominator;
+
+  const handleRevealQuestion = async () => {
+    setIsProcessing(true);
+    try {
+      await onRevealQuestion();
+    } catch (error) {
+      logger.error('Failed to reveal Final Jeopardy question', error, {
+        operation: 'handleRevealQuestion',
+        gameId,
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleAdvance = async () => {
     setIsProcessing(true);
@@ -108,6 +123,10 @@ export default function FinalJeopardyModal({
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleFlipCard = (teamId: string) => {
+    setFlippedCards(prev => new Set([...prev, teamId]));
   };
 
   const handleReveal = async (teamId: string, isCorrect: boolean) => {
@@ -206,12 +225,28 @@ export default function FinalJeopardyModal({
                 </div>
 
                 <div className="px-6 py-6">
-                  {/* PHASE 1: Wagering */}
+                  {/* PHASE 1: Wager + Answer Submission */}
                   {currentPhase === 'final_jeopardy_wager' && (
                     <div className="space-y-6">
+                      {/* Question reveal status */}
+                      {finalJeopardyQuestionRevealed ? (
+                        <div className="rounded-lg bg-blue-50 p-4 text-center">
+                          <p className="text-sm font-medium text-blue-700">Question revealed to students</p>
+                          <p className="mt-1 text-base text-gray-800 font-medium">
+                            {finalJeopardyQuestion.question}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="rounded-lg bg-gray-50 border border-dashed border-gray-300 p-4 text-center">
+                          <p className="text-sm text-gray-600">
+                            Students see the category but not the question yet.
+                          </p>
+                        </div>
+                      )}
+
                       <div className="text-center">
                         <p className="text-lg font-medium text-gray-900">
-                          Teams are placing their wagers...
+                          Teams are submitting their wager and answer...
                         </p>
                         <p className="mt-2 text-3xl font-bold text-blue-600">
                           {submittedCount} / {totalTeams} Teams Submitted
@@ -245,14 +280,25 @@ export default function FinalJeopardyModal({
                       </div>
 
                       <div className="flex gap-3">
-                        <button
-                          ref={buttonRef}
-                          onClick={handleAdvance}
-                          disabled={isProcessing}
-                          className="flex-1 rounded-lg bg-blue-600 px-6 py-3 text-lg font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          {isProcessing ? 'Processing...' : 'Advance to Answering'}
-                        </button>
+                        {!finalJeopardyQuestionRevealed ? (
+                          <button
+                            ref={buttonRef}
+                            onClick={handleRevealQuestion}
+                            disabled={isProcessing}
+                            className="flex-1 rounded-lg bg-blue-600 px-6 py-3 text-lg font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {isProcessing ? 'Processing...' : 'Reveal Question'}
+                          </button>
+                        ) : (
+                          <button
+                            ref={buttonRef}
+                            onClick={handleAdvance}
+                            disabled={isProcessing}
+                            className="flex-1 rounded-lg bg-purple-600 px-6 py-3 text-lg font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
+                          >
+                            {isProcessing ? 'Processing...' : 'Begin Reveals'}
+                          </button>
+                        )}
                         <button
                           onClick={handleSkip}
                           disabled={isProcessing}
@@ -264,63 +310,7 @@ export default function FinalJeopardyModal({
                     </div>
                   )}
 
-                  {/* PHASE 2: Answering */}
-                  {currentPhase === 'final_jeopardy_answer' && (
-                    <div className="space-y-6">
-                      <div className="rounded-lg bg-blue-50 p-6 text-center">
-                        <MusicalNoteIcon className="mx-auto h-16 w-16 animate-bounce text-blue-600" />
-                        <p className="mt-4 text-2xl font-bold text-gray-900">
-                          {finalJeopardyQuestion.question}
-                        </p>
-                      </div>
-
-                      <div className="text-center">
-                        <p className="text-lg font-medium text-gray-900">
-                          Teams are writing their answers...
-                        </p>
-                        <p className="mt-2 text-3xl font-bold text-blue-600">
-                          {submittedCount} / {totalTeams} Teams Submitted
-                        </p>
-                      </div>
-
-                      {/* Team Status List */}
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {teamsWithData.map(team => (
-                          <div
-                            key={team.id}
-                            className={`rounded-lg border-2 px-4 py-3 ${
-                              team.hasSubmitted
-                                ? 'border-green-500 bg-green-50'
-                                : 'border-gray-300 bg-gray-50'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium text-gray-900">{team.team_name}</span>
-                              {team.hasSubmitted ? (
-                                <CheckCircleIcon className="h-6 w-6 text-green-600" />
-                              ) : (
-                                <div className="h-6 w-6 rounded-full border-2 border-gray-400 animate-pulse" />
-                              )}
-                            </div>
-                            <p className="mt-1 text-sm text-gray-600">
-                              Wager: ${team.final_jeopardy_wager || 0}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-
-                      <button
-                        ref={buttonRef}
-                        onClick={handleAdvance}
-                        disabled={isProcessing}
-                        className="w-full rounded-lg bg-purple-600 px-6 py-3 text-lg font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
-                      >
-                        {isProcessing ? 'Processing...' : 'Begin Reveals'}
-                      </button>
-                    </div>
-                  )}
-
-                  {/* PHASE 3: Revealing */}
+                  {/* PHASE 2: Revealing */}
                   {currentPhase === 'final_jeopardy_reveal' && (
                     <div className="space-y-6">
                       <div className="rounded-lg bg-purple-50 p-4 text-center">
@@ -329,19 +319,22 @@ export default function FinalJeopardyModal({
                         </p>
                       </div>
 
-                      {/* Team Reveal Cards */}
+                      {/* Team Reveal Cards — two-step: flip then grade */}
                       <div className="grid gap-4 sm:grid-cols-2">
                         {allTeams.map(team => {
-                          const isRevealed = revealedTeams.has(team.id);
-                          const wager = team.final_jeopardy_wager || 0;
-                          const answer = team.final_jeopardy_answer || '(No answer)';
+                          const isFlipped = flippedCards.has(team.id);
+                          const isGraded = revealedTeams.has(team.id);
+                          const wager = team.final_jeopardy_wager ?? 0;
+                          const answer = team.final_jeopardy_answer ?? '(No answer)';
 
                           return (
                             <div
                               key={team.id}
                               className={`rounded-lg border-2 p-4 transition-all ${
-                                isRevealed
+                                isGraded
                                   ? 'border-purple-500 bg-purple-50'
+                                  : isFlipped
+                                  ? 'border-blue-400 bg-blue-50'
                                   : 'border-gray-300 bg-white hover:border-purple-300 cursor-pointer'
                               }`}
                             >
@@ -350,14 +343,57 @@ export default function FinalJeopardyModal({
                                 <p className="text-sm text-gray-600">Current Score: {team.score}</p>
                               </div>
 
-                              {!isRevealed ? (
-                                <div className="text-center">
+                              {/* STEP 0: Unflipped — show "?" and click to flip */}
+                              {!isFlipped && !isGraded && (
+                                <div
+                                  className="text-center cursor-pointer"
+                                  onClick={() => handleFlipCard(team.id)}
+                                  role="button"
+                                  aria-label={`Reveal ${team.team_name}'s answer`}
+                                >
                                   <p className="mb-3 text-sm font-medium text-gray-700">Click to reveal</p>
                                   <div className="h-16 rounded bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
                                     <span className="text-2xl font-bold text-white">?</span>
                                   </div>
                                 </div>
-                              ) : (
+                              )}
+
+                              {/* STEP 1: Flipped — show wager + answer + grade buttons */}
+                              {isFlipped && !isGraded && (
+                                <div className="space-y-3">
+                                  <div className="rounded bg-gray-100 p-3">
+                                    <p className="text-xs font-medium text-gray-600">Wager</p>
+                                    <p className="text-lg font-bold text-gray-900">${wager}</p>
+                                  </div>
+                                  <div className="rounded bg-gray-100 p-3">
+                                    <p className="text-xs font-medium text-gray-600">Answer</p>
+                                    <p className="text-sm text-gray-900">{answer}</p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => handleReveal(team.id, true)}
+                                      disabled={isProcessing}
+                                      className="flex-1 rounded bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      aria-label={`Mark ${team.team_name} as correct`}
+                                    >
+                                      <CheckCircleIcon className="inline h-4 w-4 mr-1" />
+                                      Correct
+                                    </button>
+                                    <button
+                                      onClick={() => handleReveal(team.id, false)}
+                                      disabled={isProcessing}
+                                      className="flex-1 rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      aria-label={`Mark ${team.team_name} as incorrect`}
+                                    >
+                                      <XCircleIcon className="inline h-4 w-4 mr-1" />
+                                      Incorrect
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* STEP 2: Graded — show wager + answer (read-only) */}
+                              {isGraded && (
                                 <div className="space-y-3">
                                   <div className="rounded bg-gray-100 p-3">
                                     <p className="text-xs font-medium text-gray-600">Wager</p>
@@ -369,35 +405,12 @@ export default function FinalJeopardyModal({
                                   </div>
                                 </div>
                               )}
-
-                              {!isRevealed && (
-                                <div className="mt-4 flex gap-2">
-                                  <button
-                                    onClick={() => handleReveal(team.id, true)}
-                                    disabled={isProcessing}
-                                    className="flex-1 rounded bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    aria-label={`Mark ${team.team_name} as correct`}
-                                  >
-                                    <CheckCircleIcon className="inline h-4 w-4 mr-1" />
-                                    Correct
-                                  </button>
-                                  <button
-                                    onClick={() => handleReveal(team.id, false)}
-                                    disabled={isProcessing}
-                                    className="flex-1 rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    aria-label={`Mark ${team.team_name} as incorrect`}
-                                  >
-                                    <XCircleIcon className="inline h-4 w-4 mr-1" />
-                                    Incorrect
-                                  </button>
-                                </div>
-                              )}
                             </div>
                           );
                         })}
                       </div>
 
-                      {allRevealed && (
+                      {allGraded && (
                         <button
                           ref={buttonRef}
                           onClick={handleFinish}

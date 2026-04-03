@@ -6,6 +6,34 @@ import { useGameStore } from '../lib/stores/gameStore';
 // without mounting the hook (which requires Supabase + React).
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// final-jeopardy-question-revealed event handler
+// ---------------------------------------------------------------------------
+
+describe('useBuzzer — final-jeopardy-question-revealed integration (store)', () => {
+  beforeEach(() => {
+    useGameStore.getState().reset();
+  });
+
+  it('setFinalJeopardyQuestionRevealed(true) reflects in store', () => {
+    // Simulates the handler in useBuzzer that fires on 'final-jeopardy-question-revealed'
+    useGameStore.getState().setFinalJeopardyQuestionRevealed(true);
+    expect(useGameStore.getState().finalJeopardyQuestionRevealed).toBe(true);
+  });
+
+  it('store starts with finalJeopardyQuestionRevealed=false before any event', () => {
+    expect(useGameStore.getState().finalJeopardyQuestionRevealed).toBe(false);
+  });
+
+  it('reset() returns finalJeopardyQuestionRevealed to false', () => {
+    useGameStore.getState().setFinalJeopardyQuestionRevealed(true);
+    useGameStore.getState().reset();
+    expect(useGameStore.getState().finalJeopardyQuestionRevealed).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
 describe('useBuzzer — answer-revealed integration (store)', () => {
   beforeEach(() => {
     useGameStore.getState().reset();
