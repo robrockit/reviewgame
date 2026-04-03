@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import type { Database } from '@/types/database.types';
@@ -9,9 +9,9 @@ import { logger } from '@/lib/logger';
 type Team = Database['public']['Tables']['teams']['Row'];
 
 interface WaitingRoomProps {
-  params: {
+  params: Promise<{
     teamId: string;
-  };
+  }>;
 }
 
 /**
@@ -32,7 +32,7 @@ export default function WaitingRoomPage({ params }: WaitingRoomProps) {
   const router = useRouter();
   const [team, setTeam] = useState<Team | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { teamId } = params;
+  const { teamId } = use(params);
 
   useEffect(() => {
     const supabase = createClient();

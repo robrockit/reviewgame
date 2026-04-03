@@ -56,6 +56,7 @@ export default function GameBoardPage() {
     reset: resetGameStore,
     setCurrentPhase,
     setFinalJeopardyQuestion,
+    setFinalJeopardyQuestionRevealed,
     currentPhase,
   } = useGameStore();
 
@@ -68,6 +69,8 @@ export default function GameBoardPage() {
     broadcastAnswerRevealed,
     broadcastFinalJeopardyStarted,
     broadcastFinalJeopardyPhaseChanged,
+    broadcastFinalJeopardyQuestionRevealed,
+    broadcastFinalJeopardyTeamRevealed,
   } = useBuzzer(gameId);
 
   // Fetch game data and questions
@@ -221,6 +224,10 @@ export default function GameBoardPage() {
           timerSeconds: Math.max(1, timerSeconds), // Ensure at least 1 second
         });
         setTeams(teamsForStore);
+        // Restore FJ question-revealed state for late-joining clients
+        setFinalJeopardyQuestionRevealed(
+          (gameData as Game & { final_jeopardy_question_revealed?: boolean }).final_jeopardy_question_revealed ?? false
+        );
         setLoading(false);
       } catch (err) {
         logger.error('Error fetching game data', {
@@ -238,7 +245,8 @@ export default function GameBoardPage() {
     if (gameId) {
       fetchGameData();
     }
-    // resetGameStore is stable (Zustand action) but included for explicit dependency tracking
+    // resetGameStore and setFinalJeopardyQuestionRevealed are stable Zustand actions
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, router, supabase, setStoreGame, setTeams, resetGameStore]);
 
   // Transform database questions into Category[] format
@@ -343,6 +351,19 @@ export default function GameBoardPage() {
                 question_banks: prevGame.question_banks,
               };
             });
+
+            // Broadcast the reveal event only on the rising edge (false → true).
+            // Without this guard, any game-row update while FJ is running (e.g.
+            // a score change) would re-fire broadcastFinalJeopardyQuestionRevealed
+            // on every student screen, even though nothing changed.
+            // useGameStore.getState() is a synchronous Zustand read — it reflects
+            // the value *before* setFinalJeopardyQuestionRevealed is called below.
+            const updatedGameTyped = updatedGame as Game & { final_jeopardy_question_revealed?: boolean };
+            const prevRevealed = useGameStore.getState().finalJeopardyQuestionRevealed;
+            if (!prevRevealed && updatedGameTyped.final_jeopardy_question_revealed === true) {
+              setFinalJeopardyQuestionRevealed(true);
+              broadcastFinalJeopardyQuestionRevealed();
+            }
           } catch (error) {
             logger.error('Error in game update handler', {
               error: error instanceof Error ? error.message : String(error),
@@ -508,6 +529,9 @@ export default function GameBoardPage() {
       supabase.removeChannel(gameChannel);
       supabase.removeChannel(teamsChannel);
     };
+    // setFinalJeopardyQuestionRevealed and broadcastFinalJeopardyQuestionRevealed are stable
+    // (Zustand action + stable useBuzzer reference) — omitting to prevent re-subscription
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, supabase, setTeams, setGame, teacherId]);
 
   // Fullscreen management
@@ -743,6 +767,7 @@ export default function GameBoardPage() {
       }
 
       setFinalJeopardyQuestion(data.question as FinalJeopardyQuestion);
+      setFinalJeopardyQuestionRevealed(false);
       setCurrentPhase('final_jeopardy_wager');
       setShowGameCompleteModal(false);
       setShowFinalJeopardyModal(true);
@@ -759,7 +784,25 @@ export default function GameBoardPage() {
     }
   };
 
-  // Advance Final Jeopardy to next phase (wager→answer, answer→reveal).
+  // Teacher reveals the Final Jeopardy question text to students
+  const handleRevealQuestion = async () => {
+    const response = await fetch(`/api/games/${gameId}/final-jeopardy/reveal-question`, { method: 'POST' });
+
+    if (!response.ok) {
+      const data = await response.json();
+      const msg = data.error || 'Failed to reveal question';
+      setFjError(msg);
+      throw new Error(msg);
+    }
+
+    // Update the teacher's own store immediately (no need to wait for the DB
+    // subscription to echo back). The subscription handler broadcasts to all
+    // student channels when it fires — we do NOT call broadcastFinalJeopardyQuestionRevealed
+    // here to avoid double-firing the event.
+    setFinalJeopardyQuestionRevealed(true);
+  };
+
+  // Advance Final Jeopardy to next phase (wager→reveal).
   // Sets fjError so the teacher sees the failure, then re-throws so
   // FinalJeopardyModal's wrapper resets its isProcessing spinner.
   const handleAdvancePhase = async () => {
@@ -784,12 +827,17 @@ export default function GameBoardPage() {
       body: JSON.stringify({ teamId, isCorrect }),
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const data = await response.json();
       const msg = data.error || 'Failed to reveal team answer';
       setFjError(msg);
       throw new Error(msg);
     }
+
+    // Broadcast to student screens so they see updated scores immediately,
+    // without waiting for the Postgres subscription to propagate.
+    broadcastFinalJeopardyTeamRevealed(teamId, isCorrect, data.newScore as number);
   };
 
   // Finish the game after all Final Jeopardy reveals (advances reveal→complete)
@@ -968,6 +1016,7 @@ export default function GameBoardPage() {
       <FinalJeopardyModal
         isOpen={showFinalJeopardyModal}
         gameId={gameId}
+        onRevealQuestion={handleRevealQuestion}
         onAdvancePhase={handleAdvancePhase}
         onRevealTeam={handleRevealTeam}
         onFinishGame={handleFinishGame}
