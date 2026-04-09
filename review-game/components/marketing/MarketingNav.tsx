@@ -34,6 +34,12 @@ export default function MarketingNav() {
           {/* Desktop nav */}
           <nav aria-label="Main" className="hidden md:flex items-center gap-6">
             <Link
+              href="/for-teachers"
+              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              For Teachers
+            </Link>
+            <Link
               href="/pricing"
               className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
             >
@@ -113,6 +119,13 @@ export default function MarketingNav() {
 
               {/* Drawer links */}
               <nav aria-label="Mobile menu" className="px-4 py-4 flex flex-col gap-2">
+                <Link
+                  href="/for-teachers"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition-colors"
+                >
+                  For Teachers
+                </Link>
                 <Link
                   href="/pricing"
                   onClick={() => setMobileMenuOpen(false)}
