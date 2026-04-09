@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import MarketingNav from '@/components/marketing/MarketingNav';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
@@ -10,6 +11,24 @@ import {
   ShieldCheckIcon,
   LightBulbIcon,
 } from '@heroicons/react/24/outline';
+
+export const metadata: Metadata = {
+  title: 'For Teachers | Review Game',
+  description:
+    'Strategies and classroom tips for running Review Game — keep every student engaged without losing control of the room.',
+  openGraph: {
+    title: 'For Teachers | Review Game',
+    description:
+      'Strategies and classroom tips for running Review Game — keep every student engaged without losing control of the room.',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'For Teachers | Review Game',
+    description:
+      'Strategies and classroom tips for running Review Game — keep every student engaged without losing control of the room.',
+  },
+};
 
 export default function ForTeachersPage() {
   return (
@@ -31,13 +50,13 @@ export default function ForTeachersPage() {
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
                 href="/signup"
-                className="w-full sm:w-auto px-8 py-3 rounded-lg bg-blue-600 text-white font-semibold text-base hover:bg-blue-700 transition-colors shadow-sm"
+                className="w-full sm:w-auto px-8 py-3 rounded-lg bg-blue-600 text-white font-semibold text-base hover:bg-blue-700 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
               >
                 Get Started Free
               </Link>
               <Link
                 href="/pricing"
-                className="w-full sm:w-auto px-8 py-3 rounded-lg border border-gray-300 text-gray-700 font-semibold text-base hover:bg-gray-50 transition-colors"
+                className="w-full sm:w-auto px-8 py-3 rounded-lg border border-gray-300 text-gray-700 font-semibold text-base hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
               >
                 View Pricing
               </Link>
@@ -332,7 +351,7 @@ export default function ForTeachersPage() {
             </p>
             <Link
               href="/signup"
-              className="inline-block px-8 py-3 rounded-lg bg-white text-blue-600 font-semibold text-base hover:bg-blue-50 transition-colors shadow-sm"
+              className="inline-block px-8 py-3 rounded-lg bg-white text-blue-600 font-semibold text-base hover:bg-blue-50 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-white focus-visible:ring-offset-blue-600"
             >
               Get Started Free
             </Link>
