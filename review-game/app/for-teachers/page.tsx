@@ -16,18 +16,8 @@ export const metadata: Metadata = {
   title: 'For Teachers | Review Game',
   description:
     'Strategies and classroom tips for running Review Game — keep every student engaged without losing control of the room.',
-  openGraph: {
-    title: 'For Teachers | Review Game',
-    description:
-      'Strategies and classroom tips for running Review Game — keep every student engaged without losing control of the room.',
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'For Teachers | Review Game',
-    description:
-      'Strategies and classroom tips for running Review Game — keep every student engaged without losing control of the room.',
-  },
+  openGraph: { type: 'website' },
+  twitter: { card: 'summary_large_image' },
 };
 
 export default function ForTeachersPage() {
@@ -155,8 +145,8 @@ export default function ForTeachersPage() {
                   title: 'Match team counts to your class size',
                   body: 'Aim for 4–6 teams in a typical class. Too many teams means long waits between turns; too few and competition disappears. Adjust based on how many students are present.',
                 },
-              ].map(({ title, body }) => (
-                <div key={title} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+              ].map(({ title, body }, i) => (
+                <div key={i} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                   <h3 className="font-semibold text-gray-900 mb-2">{title}</h3>
                   <p className="text-sm text-gray-600 leading-relaxed">{body}</p>
                 </div>
@@ -276,8 +266,8 @@ export default function ForTeachersPage() {
                   title: 'Address disputes immediately, not after the game',
                   body: 'If a team disputes a ruling, make a call and move on. Announce at the start that all teacher rulings are final during play. Post-game reviews are fine, but mid-game debates kill momentum for everyone.',
                 },
-              ].map(({ title, body }) => (
-                <div key={title} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+              ].map(({ title, body }, i) => (
+                <div key={i} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                   <h3 className="font-semibold text-gray-900 mb-2">{title}</h3>
                   <p className="text-sm text-gray-600 leading-relaxed">{body}</p>
                 </div>
@@ -326,9 +316,9 @@ export default function ForTeachersPage() {
                   title: 'Celebrate collaboration, not just the winner',
                   body: 'Publicly recognize the team that collaborated most visibly — regardless of their final score. Students remember recognition. A team that communicates well and loses will bring better energy to the next game than a team that won through one loud student.',
                 },
-              ].map(({ title, body }) => (
+              ].map(({ title, body }, i) => (
                 <div
-                  key={title}
+                  key={i}
                   className="bg-gray-50 rounded-xl p-6 border border-gray-100"
                 >
                   <h3 className="font-semibold text-gray-900 mb-2">{title}</h3>
