@@ -16,6 +16,12 @@ export default function MarketingFooter() {
           {/* Right: nav links */}
           <nav aria-label="Footer" className="flex flex-col sm:flex-row gap-4 sm:gap-8 text-sm">
             <Link
+              href="/for-teachers"
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              For Teachers
+            </Link>
+            <Link
               href="/pricing"
               className="text-gray-400 hover:text-white transition-colors"
             >
