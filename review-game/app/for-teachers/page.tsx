@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import type { ComponentType, SVGProps } from 'react';
 import Link from 'next/link';
 import MarketingNav from '@/components/marketing/MarketingNav';
 import MarketingFooter from '@/components/marketing/MarketingFooter';
@@ -19,6 +20,158 @@ export const metadata: Metadata = {
   openGraph: { type: 'website' },
   twitter: { card: 'summary_large_image' },
 };
+
+// ── Section data ─────────────────────────────────────────────────────────────
+
+interface Step {
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  step: string;
+  title: string;
+  body: string;
+}
+
+interface Tip {
+  title: string;
+  body: string;
+}
+
+interface Strategy {
+  number: string;
+  title: string;
+  body: string;
+}
+
+const HOW_IT_WORKS: Step[] = [
+  {
+    icon: PencilSquareIcon,
+    step: '1',
+    title: 'Build your question bank',
+    body: 'Create categories and questions using any subject matter. Save banks and reuse them across multiple games — no rebuilding from scratch every time.',
+  },
+  {
+    icon: LinkIcon,
+    step: '2',
+    title: 'Launch and share the code',
+    body: 'Start a game session and share the join code with your class. Teams connect from any device — phones, tablets, or laptops. No app install required.',
+  },
+  {
+    icon: TrophyIcon,
+    step: '3',
+    title: 'Play and review together',
+    body: 'You control the board from your device. Teams buzz in, earn points, and compete for the win. Final Jeopardy keeps everyone in it until the last question.',
+  },
+];
+
+const TEAM_SETUP_TIPS: Tip[] = [
+  {
+    title: 'Keep teams small — 3 to 5 students',
+    body: 'Larger teams let students hide. With 3–5 per team, everyone has a role and there is nowhere to disappear. Fewer than three and shy students feel exposed.',
+  },
+  {
+    title: 'Assign teams randomly',
+    body: 'Random grouping breaks up friend clusters that tend to carry one student and let others coast. Use a random name picker, draw sticks, or count off around the room.',
+  },
+  {
+    title: 'Let teams choose their name',
+    body: 'A self-chosen team name builds immediate identity and investment. Give teams 60 seconds — the time limit keeps it from becoming a distraction.',
+  },
+  {
+    title: 'Assign a rotating spokesperson',
+    body: 'Before the game, tell each team to pick a speaking order. The spokesperson changes every question. This prevents one student from dominating and guarantees everyone speaks.',
+  },
+  {
+    title: 'Seat teams together, away from other teams',
+    body: 'Physical proximity helps teams huddle. Proximity to other teams invites cross-talk. A horseshoe or cluster arrangement usually works better than rows.',
+  },
+  {
+    title: 'Match team counts to your class size',
+    body: 'Aim for 4–6 teams in a typical class. Too many teams means long waits between turns; too few and competition disappears. Adjust based on how many students are present.',
+  },
+];
+
+const PARTICIPATION_STRATEGIES: Strategy[] = [
+  {
+    number: '01',
+    title: 'Use the answer relay',
+    body: 'Assign each team member a number (1, 2, 3…). For question 1, person #1 is the speaker; for question 2, person #2; and so on. Rotate back to #1 after cycling through the team. Every student knows their turn is coming — they cannot check out.',
+  },
+  {
+    number: '02',
+    title: 'Add a think time rule',
+    body: 'Before any team can buzz in, give the class 15–20 seconds of silent think time. This levels the playing field between fast processors and slower, more deliberate thinkers — and improves answer quality across the board.',
+  },
+  {
+    number: '03',
+    title: 'Require a full-team discussion before answering',
+    body: "No team may submit an answer until every member has said at least one thing. One student whispers \"I don't know\" still counts — what matters is that every voice is engaged. This norm is easiest to establish in the first two or three questions.",
+  },
+  {
+    number: '04',
+    title: 'Award a bonus point for process, not just correctness',
+    body: 'Announce before the game that you will occasionally award a bonus point to a team you observe collaborating well — regardless of whether they got the answer right. Watching for this keeps you actively scanning the room and gives quieter students a path to contribute.',
+  },
+  {
+    number: '05',
+    title: 'Debrief wrong answers out loud',
+    body: "When a team answers incorrectly, open the floor briefly before revealing the correct answer. \"Does any other team want to add to that?\" keeps all teams engaged even when it isn't their turn.",
+  },
+];
+
+const ORDER_TIPS: Tip[] = [
+  {
+    title: 'Set buzz-in rules before you start',
+    body: 'Decide upfront: raised hand, team spokesperson speaks, or a designated clapper. Announce it, demonstrate it, and stick to it. Inconsistent enforcement is the fastest path to noise.',
+  },
+  {
+    title: 'Use a countdown for answers',
+    body: 'Give teams a fixed window — 30 seconds is usually right — to submit their answer after you read the question. A countdown visible to the room creates urgency without chaos.',
+  },
+  {
+    title: 'Establish Daily Double wager limits',
+    body: 'Before starting, announce a wager cap — for example, no team may wager more than their current score. This prevents the runaway leader problem and keeps all teams competitive.',
+  },
+  {
+    title: 'Brief Final Jeopardy before the last question',
+    body: "Spend 60 seconds explaining Final Jeopardy rules: wagers are silent, answers are written, all teams reveal at the same time. Students who understand the format play it correctly; students who don't cause confusion.",
+  },
+  {
+    title: 'Have a reset signal',
+    body: 'Choose a specific signal — a clap pattern, a phrase, or raising your hand — that means "reset and listen." Practice it before the game so students know it means stop, not eventually stop.',
+  },
+  {
+    title: 'Address disputes immediately, not after the game',
+    body: 'If a team disputes a ruling, make a call and move on. Announce at the start that all teacher rulings are final during play. Post-game reviews are fine, but mid-game debates kill momentum for everyone.',
+  },
+];
+
+const PRO_TIPS: Tip[] = [
+  {
+    title: 'Run a practice game first',
+    body: 'Use a low-stakes topic — class trivia, pop culture, school history — for the first game. Students learn the mechanics without the pressure of a grade. The second game, on real content, runs far more smoothly.',
+  },
+  {
+    title: 'Hold off on Final Jeopardy',
+    body: 'Skip Final Jeopardy the first time you play. Let students master the core board before adding wager mechanics. Introduce it once they understand how scoring works and are comfortable with the pace.',
+  },
+  {
+    title: 'Review wrong answers after the game',
+    body: 'The 10 minutes after a game are the highest-retention window of the period. Competitive energy carries over. Walk through missed questions while students are still engaged, not after they have mentally moved on.',
+  },
+  {
+    title: 'Reuse and iterate your question banks',
+    body: 'Save every question bank. After the game, note which questions stumped everyone — those are your teaching targets. Revise the bank, run it again in a few weeks, and watch scores improve.',
+  },
+  {
+    title: 'Mix question difficulty intentionally',
+    body: 'Put easier questions in lower point values and harder ones in higher values — but plant one hard question at the 100-point level early. It signals to students that point value is not always a reliable difficulty indicator and keeps them on their toes.',
+  },
+  {
+    title: 'Celebrate collaboration, not just the winner',
+    body: 'Publicly recognize the team that collaborated most visibly — regardless of their final score. Students remember recognition. A team that communicates well and loses will bring better energy to the next game than a team that won through one loud student.',
+  },
+];
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ForTeachersPage() {
   return (
@@ -67,26 +220,7 @@ export default function ForTeachersPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {[
-                {
-                  icon: PencilSquareIcon,
-                  step: '1',
-                  title: 'Build your question bank',
-                  body: 'Create categories and questions using any subject matter. Save banks and reuse them across multiple games — no rebuilding from scratch every time.',
-                },
-                {
-                  icon: LinkIcon,
-                  step: '2',
-                  title: 'Launch and share the code',
-                  body: "Start a game session and share the join code with your class. Teams connect from any device — phones, tablets, or laptops. No app install required.",
-                },
-                {
-                  icon: TrophyIcon,
-                  step: '3',
-                  title: 'Play and review together',
-                  body: 'You control the board from your device. Teams buzz in, earn points, and compete for the win. Final Jeopardy keeps everyone in it until the last question.',
-                },
-              ].map(({ icon: Icon, step, title, body }) => (
+              {HOW_IT_WORKS.map(({ icon: Icon, step, title, body }) => (
                 <div
                   key={step}
                   className="relative bg-gray-50 rounded-xl p-8 border border-gray-100"
@@ -120,33 +254,8 @@ export default function ForTeachersPage() {
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {[
-                {
-                  title: 'Keep teams small — 3 to 5 students',
-                  body: 'Larger teams let students hide. With 3–5 per team, everyone has a role and there is nowhere to disappear. Fewer than three and shy students feel exposed.',
-                },
-                {
-                  title: 'Assign teams randomly',
-                  body: 'Random grouping breaks up friend clusters that tend to carry one student and let others coast. Use a random name picker, draw sticks, or count off around the room.',
-                },
-                {
-                  title: 'Let teams choose their name',
-                  body: 'A self-chosen team name builds immediate identity and investment. Give teams 60 seconds — the time limit keeps it from becoming a distraction.',
-                },
-                {
-                  title: 'Assign a rotating spokesperson',
-                  body: 'Before the game, tell each team to pick a speaking order. The spokesperson changes every question. This prevents one student from dominating and guarantees everyone speaks.',
-                },
-                {
-                  title: 'Seat teams together, away from other teams',
-                  body: 'Physical proximity helps teams huddle. Proximity to other teams invites cross-talk. A horseshoe or cluster arrangement usually works better than rows.',
-                },
-                {
-                  title: 'Match team counts to your class size',
-                  body: 'Aim for 4–6 teams in a typical class. Too many teams means long waits between turns; too few and competition disappears. Adjust based on how many students are present.',
-                },
-              ].map(({ title, body }, i) => (
-                <div key={i} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+              {TEAM_SETUP_TIPS.map(({ title, body }) => (
+                <div key={title} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                   <h3 className="font-semibold text-gray-900 mb-2">{title}</h3>
                   <p className="text-sm text-gray-600 leading-relaxed">{body}</p>
                 </div>
@@ -170,33 +279,7 @@ export default function ForTeachersPage() {
             </p>
 
             <div className="space-y-6">
-              {[
-                {
-                  number: '01',
-                  title: 'Use the answer relay',
-                  body: 'Assign each team member a number (1, 2, 3…). For question 1, person #1 is the speaker; for question 2, person #2; and so on. Rotate back to #1 after cycling through the team. Every student knows their turn is coming — they cannot check out.',
-                },
-                {
-                  number: '02',
-                  title: 'Add a think time rule',
-                  body: 'Before any team can buzz in, give the class 15–20 seconds of silent think time. This levels the playing field between fast processors and slower, more deliberate thinkers — and improves answer quality across the board.',
-                },
-                {
-                  number: '03',
-                  title: 'Require a full-team discussion before answering',
-                  body: 'No team may submit an answer until every member has said at least one thing. One student whispers "I don\'t know" still counts — what matters is that every voice is engaged. This norm is easiest to establish in the first two or three questions.',
-                },
-                {
-                  number: '04',
-                  title: 'Award a bonus point for process, not just correctness',
-                  body: 'Announce before the game that you will occasionally award a bonus point to a team you observe collaborating well — regardless of whether they got the answer right. Watching for this keeps you actively scanning the room and gives quieter students a path to contribute.',
-                },
-                {
-                  number: '05',
-                  title: 'Debrief wrong answers out loud',
-                  body: 'When a team answers incorrectly, open the floor briefly before revealing the correct answer. "Does any other team want to add to that?" keeps all teams engaged even when it isn\'t their turn.',
-                },
-              ].map(({ number, title, body }) => (
+              {PARTICIPATION_STRATEGIES.map(({ number, title, body }) => (
                 <div key={number} className="flex gap-6 items-start">
                   <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">
                     {number}
@@ -241,33 +324,8 @@ export default function ForTeachersPage() {
                 </p>
               </div>
 
-              {[
-                {
-                  title: 'Set buzz-in rules before you start',
-                  body: 'Decide upfront: raised hand, team spokesperson speaks, or a designated clapper. Announce it, demonstrate it, and stick to it. Inconsistent enforcement is the fastest path to noise.',
-                },
-                {
-                  title: 'Use a countdown for answers',
-                  body: 'Give teams a fixed window — 30 seconds is usually right — to submit their answer after you read the question. A countdown visible to the room creates urgency without chaos.',
-                },
-                {
-                  title: 'Establish Daily Double wager limits',
-                  body: "Before starting, announce a wager cap — for example, no team may wager more than their current score. This prevents the runaway leader problem and keeps all teams competitive.",
-                },
-                {
-                  title: 'Brief Final Jeopardy before the last question',
-                  body: "Spend 60 seconds explaining Final Jeopardy rules: wagers are silent, answers are written, all teams reveal at the same time. Students who understand the format play it correctly; students who don't cause confusion.",
-                },
-                {
-                  title: 'Have a reset signal',
-                  body: 'Choose a specific signal — a clap pattern, a phrase, or raising your hand — that means "reset and listen." Practice it before the game so students know it means stop, not eventually stop.',
-                },
-                {
-                  title: 'Address disputes immediately, not after the game',
-                  body: 'If a team disputes a ruling, make a call and move on. Announce at the start that all teacher rulings are final during play. Post-game reviews are fine, but mid-game debates kill momentum for everyone.',
-                },
-              ].map(({ title, body }, i) => (
-                <div key={i} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+              {ORDER_TIPS.map(({ title, body }) => (
+                <div key={title} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                   <h3 className="font-semibold text-gray-900 mb-2">{title}</h3>
                   <p className="text-sm text-gray-600 leading-relaxed">{body}</p>
                 </div>
@@ -291,36 +349,8 @@ export default function ForTeachersPage() {
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[
-                {
-                  title: 'Run a practice game first',
-                  body: "Use a low-stakes topic — class trivia, pop culture, school history — for the first game. Students learn the mechanics without the pressure of a grade. The second game, on real content, runs far more smoothly.",
-                },
-                {
-                  title: "Hold off on Final Jeopardy",
-                  body: "Skip Final Jeopardy the first time you play. Let students master the core board before adding wager mechanics. Introduce it once they understand how scoring works and are comfortable with the pace.",
-                },
-                {
-                  title: 'Review wrong answers after the game',
-                  body: 'The 10 minutes after a game are the highest-retention window of the period. Competitive energy carries over. Walk through missed questions while students are still engaged, not after they have mentally moved on.',
-                },
-                {
-                  title: 'Reuse and iterate your question banks',
-                  body: 'Save every question bank. After the game, note which questions stumped everyone — those are your teaching targets. Revise the bank, run it again in a few weeks, and watch scores improve.',
-                },
-                {
-                  title: 'Mix question difficulty intentionally',
-                  body: 'Put easier questions in lower point values and harder ones in higher values — but plant one hard question at the 100-point level early. It signals to students that point value is not always a reliable difficulty indicator and keeps them on their toes.',
-                },
-                {
-                  title: 'Celebrate collaboration, not just the winner',
-                  body: 'Publicly recognize the team that collaborated most visibly — regardless of their final score. Students remember recognition. A team that communicates well and loses will bring better energy to the next game than a team that won through one loud student.',
-                },
-              ].map(({ title, body }, i) => (
-                <div
-                  key={i}
-                  className="bg-gray-50 rounded-xl p-6 border border-gray-100"
-                >
+              {PRO_TIPS.map(({ title, body }) => (
+                <div key={title} className="bg-gray-50 rounded-xl p-6 border border-gray-100">
                   <h3 className="font-semibold text-gray-900 mb-2">{title}</h3>
                   <p className="text-sm text-gray-600 leading-relaxed">{body}</p>
                 </div>
