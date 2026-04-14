@@ -3,19 +3,28 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const cspHeader = [
   "default-src 'self'",
-  // Next.js requires unsafe-inline for its hydration scripts; Stripe.js loaded from CDN
+  // TODO: Migrate to nonce-based CSP to drop unsafe-inline and restore XSS protection.
+  // Next.js App Router supports this via middleware — see:
+  // https://nextjs.org/docs/app/building-your-application/configuring/content-security-policy
   "script-src 'self' 'unsafe-inline' https://js.stripe.com",
   // Tailwind CSS uses inline styles
   "style-src 'self' 'unsafe-inline'",
-  // Supabase REST/Auth (HTTPS) + Supabase Realtime (WSS); Stripe API for checkout
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com",
+  // Supabase REST/Auth (HTTPS) + Supabase Realtime (WSS)
+  // Stripe: api.stripe.com (checkout), q.stripe.com (Radar fraud signals)
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://q.stripe.com",
   // Fonts are self-hosted via next/font — no external font CDN needed
   "font-src 'self'",
-  "img-src 'self' data: blob: https:",
-  // Stripe uses an iframe for secure card input
-  "frame-src https://js.stripe.com",
+  // Images from the app domain, inline data URIs, blobs, and Supabase Storage
+  "img-src 'self' data: blob: https://*.supabase.co",
+  // Stripe uses iframes for secure card input (js.stripe.com) and 3DS auth (hooks.stripe.com)
+  "frame-src https://js.stripe.com https://hooks.stripe.com",
   // Sentry replay uses a blob worker; Sentry requests route through /monitoring (app domain)
   "worker-src blob: 'self'",
+  // Baseline hardening: block plugins/Flash and prevent <base> tag injection
+  "object-src 'none'",
+  "base-uri 'self'",
+  // Report violations during rollout to catch unexpected blocks (Stripe 3DS, browser extensions, etc.)
+  "report-uri /api/csp-report",
 ].join('; ');
 
 const nextConfig: NextConfig = {
