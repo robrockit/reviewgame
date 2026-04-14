@@ -28,6 +28,12 @@ export default function MarketingFooter() {
               Pricing
             </Link>
             <Link
+              href="/network-requirements"
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              For IT Admins
+            </Link>
+            <Link
               href="/login"
               className="text-gray-400 hover:text-white transition-colors"
             >

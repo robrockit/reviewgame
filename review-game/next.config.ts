@@ -1,8 +1,38 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
+const cspHeader = [
+  "default-src 'self'",
+  // Next.js requires unsafe-inline for its hydration scripts; Stripe.js loaded from CDN
+  "script-src 'self' 'unsafe-inline' https://js.stripe.com",
+  // Tailwind CSS uses inline styles
+  "style-src 'self' 'unsafe-inline'",
+  // Supabase REST/Auth (HTTPS) + Supabase Realtime (WSS); Stripe API for checkout
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com",
+  // Fonts are self-hosted via next/font — no external font CDN needed
+  "font-src 'self'",
+  "img-src 'self' data: blob: https:",
+  // Stripe uses an iframe for secure card input
+  "frame-src https://js.stripe.com",
+  // Sentry replay uses a blob worker; Sentry requests route through /monitoring (app domain)
+  "worker-src blob: 'self'",
+].join('; ');
+
 const nextConfig: NextConfig = {
   serverExternalPackages: ['sharp'],
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: cspHeader,
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default withSentryConfig(nextConfig, {
