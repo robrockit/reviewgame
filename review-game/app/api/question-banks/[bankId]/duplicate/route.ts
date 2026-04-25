@@ -3,6 +3,7 @@ import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { canAccessCustomQuestionBanks } from '@/lib/utils/feature-access';
 import { canAccessBank, _checkCanCreateCustomBank } from '@/lib/access-control/banks';
+import type { DuplicateBankResult } from '@/types/question-bank.types';
 
 /**
  * POST /api/question-banks/[bankId]/duplicate
@@ -115,19 +116,6 @@ export async function POST(
 
     // 7. Call atomic database function to duplicate bank + questions
     // This ensures no orphaned banks are created if question insertion fails
-    type DuplicateBankResult = {
-      id: string;
-      title: string;
-      subject: string;
-      description: string | null;
-      difficulty: string | null;
-      is_custom: boolean;
-      is_public: boolean;
-      owner_id: string;
-      created_at: string;
-      updated_at: string;
-      questions_count: number;
-    };
     const { data: rawResult, error: rpcError } = await supabase
       .rpc('duplicate_question_bank', {
         source_bank_id: bankId,

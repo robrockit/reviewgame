@@ -251,13 +251,25 @@ VALUES
 END $$;
 
 -- =========================================================
--- Verify the import
+-- Verify the import (raises an exception if seed failed)
 -- =========================================================
-SELECT 'Bank inserted: ' || title AS result
-FROM public.question_banks
-WHERE title = 'Evolution: High School Biology' AND is_public = true;
+DO $$
+DECLARE
+  v_question_count INTEGER;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.question_banks
+    WHERE title = 'Evolution: High School Biology' AND is_public = true
+  ) THEN
+    RAISE EXCEPTION 'Seed failed: Evolution question bank not found';
+  END IF;
 
-SELECT 'Questions inserted: ' || COUNT(*) AS result
-FROM public.questions q
-JOIN public.question_banks b ON q.bank_id = b.id
-WHERE b.title = 'Evolution: High School Biology';
+  SELECT COUNT(*) INTO v_question_count
+  FROM public.questions q
+  JOIN public.question_banks b ON q.bank_id = b.id
+  WHERE b.title = 'Evolution: High School Biology';
+
+  IF v_question_count <> 35 THEN
+    RAISE EXCEPTION 'Seed failed: expected 35 questions, found %', v_question_count;
+  END IF;
+END $$;

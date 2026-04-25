@@ -54,6 +54,7 @@ export default function QuestionBankCard({
           <div className="flex-1 min-w-0">
             <Link
               href={`/dashboard/question-banks/${bank.id}`}
+              data-testid="bank-card-title"
               className="text-lg font-semibold text-gray-900 hover:text-indigo-600 transition-colors"
             >
               {bank.title}

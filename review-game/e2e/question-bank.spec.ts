@@ -30,9 +30,9 @@ test.describe('question banks — feature gating', () => {
   test('free-tier teacher: upgrade banner is visible', async ({ freeTeacherPage: page }) => {
     await page.goto('/dashboard/question-banks');
 
-    // The yellow upgrade banner renders whenever canCreate is false (FREE tier),
+    // The upgrade banner renders whenever canCreate is false (FREE tier),
     // regardless of how many banks the teacher has visible.
-    const banner = page.locator('div.bg-yellow-50');
+    const banner = page.getByTestId('upgrade-banner');
     await expect(banner).toBeVisible({ timeout: 10_000 });
   });
 
@@ -55,7 +55,7 @@ test.describe('question banks — feature gating', () => {
     const createButton = page.getByRole('button', { name: /create question bank/i });
     await expect(createButton).toBeVisible({ timeout: 10_000 });
 
-    await expect(page.locator('div.bg-yellow-50')).not.toBeVisible();
+    await expect(page.getByTestId('upgrade-banner')).not.toBeVisible();
   });
 
   test('premium teacher: "Create Question Bank" button is enabled', async ({
@@ -83,7 +83,7 @@ test.describe('question banks — duplicate', () => {
     // Capture the title of the bank we are about to duplicate so we can assert
     // on "Copy of <title>" appearing afterwards.
     const firstBankTitle = await page
-      .locator('a.text-lg.font-semibold')
+      .getByTestId('bank-card-title')
       .first()
       .textContent();
 

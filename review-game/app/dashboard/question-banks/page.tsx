@@ -196,7 +196,7 @@ export default function QuestionBanksPage() {
 
         {/* Upgrade Banner for FREE users */}
         {!isLoading && !canCreate && (
-          <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4">
+          <div data-testid="upgrade-banner" className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4">
             <div className="flex">
               <div className="flex-shrink-0">
                 <svg
