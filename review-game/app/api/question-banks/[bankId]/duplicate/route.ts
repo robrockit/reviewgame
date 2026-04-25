@@ -3,6 +3,7 @@ import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { canAccessCustomQuestionBanks } from '@/lib/utils/feature-access';
 import { canAccessBank, _checkCanCreateCustomBank } from '@/lib/access-control/banks';
+import type { DuplicateBankResult } from '@/types/question-bank.types';
 
 /**
  * POST /api/question-banks/[bankId]/duplicate
@@ -115,14 +116,13 @@ export async function POST(
 
     // 7. Call atomic database function to duplicate bank + questions
     // This ensures no orphaned banks are created if question insertion fails
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- duplicate_question_bank not present in generated types; regenerate after verifying function exists
-    const { data: result, error: rpcError } = await (supabase as any)
+    const { data: rawResult, error: rpcError } = await supabase
       .rpc('duplicate_question_bank', {
         source_bank_id: bankId,
         new_owner_id: user.id,
       });
 
-    if (rpcError || !result) {
+    if (rpcError || !rawResult) {
       logger.error('Failed to duplicate question bank', rpcError, {
         operation: 'duplicateQuestionBank',
         userId: user.id,
@@ -160,6 +160,23 @@ export async function POST(
         { status: 500 }
       );
     }
+
+    // Runtime shape guard — catches SQL function return-type drift without
+    // relying solely on the compile-time assertion below.
+    if (typeof rawResult !== 'object' || !('id' in rawResult)) {
+      logger.error('duplicate_question_bank returned unexpected shape', null, {
+        operation: 'duplicateQuestionBank',
+        userId: user.id,
+        bankId,
+        rawResult,
+      });
+      return NextResponse.json(
+        { error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+
+    const result = rawResult as DuplicateBankResult;
 
     logger.info('Question bank duplicated successfully', {
       operation: 'duplicateQuestionBank',

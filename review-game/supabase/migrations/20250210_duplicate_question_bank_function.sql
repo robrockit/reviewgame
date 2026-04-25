@@ -108,7 +108,4 @@ GRANT EXECUTE ON FUNCTION duplicate_question_bank(UUID, UUID) TO authenticated;
 
 -- Add comment for documentation
 COMMENT ON FUNCTION duplicate_question_bank IS
-  'Atomically duplicates a question bank with all its questions. ' ||
-  'Ensures no orphaned banks are created if question insertion fails. ' ||
-  'Verifies access permissions (public OR owned by requester). ' ||
-  'Returns JSON with new bank data and question count.';
+  'Atomically duplicates a question bank with all its questions. Ensures no orphaned banks are created if question insertion fails. Verifies access permissions (public OR owned by requester). Returns JSON with new bank data and question count.';
