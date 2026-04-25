@@ -11,6 +11,17 @@ DECLARE
 BEGIN
 
 -- =========================================================
+-- 0. Idempotency guard — skip if already seeded
+-- =========================================================
+
+IF EXISTS (
+  SELECT 1 FROM public.question_banks WHERE title = 'Evolution: High School Biology'
+) THEN
+  RAISE NOTICE 'Evolution question bank already exists — skipping seed.';
+  RETURN;
+END IF;
+
+-- =========================================================
 -- 1. Insert the question bank (prebuilt, public, no owner)
 -- =========================================================
 

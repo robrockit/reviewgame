@@ -121,9 +121,8 @@ export async function POST(
         source_bank_id: bankId,
         new_owner_id: user.id,
       });
-    const result = rawResult as DuplicateBankResult | null;
 
-    if (rpcError || !result) {
+    if (rpcError || !rawResult) {
       logger.error('Failed to duplicate question bank', rpcError, {
         operation: 'duplicateQuestionBank',
         userId: user.id,
@@ -161,6 +160,23 @@ export async function POST(
         { status: 500 }
       );
     }
+
+    // Runtime shape guard — catches SQL function return-type drift without
+    // relying solely on the compile-time assertion below.
+    if (typeof rawResult !== 'object' || !('id' in rawResult)) {
+      logger.error('duplicate_question_bank returned unexpected shape', null, {
+        operation: 'duplicateQuestionBank',
+        userId: user.id,
+        bankId,
+        rawResult,
+      });
+      return NextResponse.json(
+        { error: 'Internal server error' },
+        { status: 500 }
+      );
+    }
+
+    const result = rawResult as DuplicateBankResult;
 
     logger.info('Question bank duplicated successfully', {
       operation: 'duplicateQuestionBank',
