@@ -115,12 +115,25 @@ export async function POST(
 
     // 7. Call atomic database function to duplicate bank + questions
     // This ensures no orphaned banks are created if question insertion fails
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- duplicate_question_bank not present in generated types; regenerate after verifying function exists
-    const { data: result, error: rpcError } = await (supabase as any)
+    type DuplicateBankResult = {
+      id: string;
+      title: string;
+      subject: string;
+      description: string | null;
+      difficulty: string | null;
+      is_custom: boolean;
+      is_public: boolean;
+      owner_id: string;
+      created_at: string;
+      updated_at: string;
+      questions_count: number;
+    };
+    const { data: rawResult, error: rpcError } = await supabase
       .rpc('duplicate_question_bank', {
         source_bank_id: bankId,
         new_owner_id: user.id,
       });
+    const result = rawResult as DuplicateBankResult | null;
 
     if (rpcError || !result) {
       logger.error('Failed to duplicate question bank', rpcError, {

@@ -72,6 +72,7 @@ export type Database = {
           current_phase: string | null
           daily_double_positions: Json | null
           final_jeopardy_question: Json | null
+          final_jeopardy_question_revealed: boolean
           id: string
           num_teams: number
           selected_questions: string[] | null
@@ -90,6 +91,7 @@ export type Database = {
           current_phase?: string | null
           daily_double_positions?: Json | null
           final_jeopardy_question?: Json | null
+          final_jeopardy_question_revealed?: boolean
           id?: string
           num_teams: number
           selected_questions?: string[] | null
@@ -108,6 +110,7 @@ export type Database = {
           current_phase?: string | null
           daily_double_positions?: Json | null
           final_jeopardy_question?: Json | null
+          final_jeopardy_question_revealed?: boolean
           id?: string
           num_teams?: number
           selected_questions?: string[] | null
@@ -562,6 +565,73 @@ export type Database = {
           },
         ]
       }
+      wagers: {
+        Row: {
+          answer_text: string | null
+          created_at: string
+          game_id: string
+          id: string
+          is_correct: boolean | null
+          question_category: string | null
+          question_id: string | null
+          question_value: number
+          revealed: boolean
+          team_id: string
+          wager_amount: number
+          wager_type: string
+        }
+        Insert: {
+          answer_text?: string | null
+          created_at?: string
+          game_id: string
+          id?: string
+          is_correct?: boolean | null
+          question_category?: string | null
+          question_id?: string | null
+          question_value?: number
+          revealed?: boolean
+          team_id: string
+          wager_amount?: number
+          wager_type: string
+        }
+        Update: {
+          answer_text?: string | null
+          created_at?: string
+          game_id?: string
+          id?: string
+          is_correct?: boolean | null
+          question_category?: string | null
+          question_id?: string | null
+          question_value?: number
+          revealed?: boolean
+          team_id?: string
+          wager_amount?: number
+          wager_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wagers_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wagers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wagers_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -584,6 +654,10 @@ export type Database = {
             Args: { p_add_mb: number; p_limit_mb: number; p_user_id: string }
             Returns: boolean
           }
+      claim_team: {
+        Args: { p_device_id: string; p_game_id: string; p_team_id: string }
+        Returns: Json
+      }
       cleanup_old_audit_logs: { Args: never; Returns: number }
       cleanup_old_stripe_events: { Args: never; Returns: undefined }
       create_custom_bank_with_limit_check: {
@@ -597,6 +671,10 @@ export type Database = {
         Returns: string
       }
       decrement_game_count: { Args: { p_user_id: string }; Returns: boolean }
+      duplicate_question_bank: {
+        Args: { new_owner_id: string; source_bank_id: string }
+        Returns: Json
+      }
       end_game: { Args: { p_game_id: string }; Returns: Json }
       end_impersonation_session: {
         Args: { p_session_id: string }
@@ -663,6 +741,19 @@ export type Database = {
           p_user_agent?: string
         }
         Returns: Json
+      }
+      submit_final_jeopardy: {
+        Args: {
+          p_answer: string
+          p_game_id: string
+          p_team_id: string
+          p_wager: number
+        }
+        Returns: {
+          error_message: string
+          submitted_at: string
+          success: boolean
+        }[]
       }
       submit_final_jeopardy_answer: {
         Args: { p_answer: string; p_game_id: string; p_team_id: string }
