@@ -169,6 +169,8 @@ export interface SubmitAnswerRequest {
   playerId: string;
   answerText: string;
   deviceId: string;
+  /** ID of the question the player is answering; server rejects if it no longer matches the active question. */
+  questionId: string;
 }
 
 export interface SubmitAnswerResponse {

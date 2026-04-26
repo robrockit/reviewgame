@@ -5,7 +5,6 @@ import { logger } from '@/lib/logger';
 import type { SubmitAnswerRequest, SubmitAnswerResponse } from '@/types/pub-trivia';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const QUESTION_DURATION_MS = 20_000;
 
 /**
  * POST /api/games/[gameId]/pub-trivia/question/answer
@@ -32,15 +31,15 @@ export async function POST(
     }
 
     const body = (await req.json()) as Partial<SubmitAnswerRequest>;
-    const { playerId, answerText, deviceId } = body;
+    const { playerId, answerText, deviceId, questionId: submittedQuestionId } = body;
 
-    if (!playerId || !answerText || !deviceId) {
+    if (!playerId || !answerText || !deviceId || !submittedQuestionId) {
       return NextResponse.json(
-        { error: 'playerId, answerText, and deviceId are required' },
+        { error: 'playerId, answerText, deviceId, and questionId are required' },
         { status: 400 }
       );
     }
-    if (!UUID_RE.test(playerId) || !UUID_RE.test(deviceId)) {
+    if (!UUID_RE.test(playerId) || !UUID_RE.test(deviceId) || !UUID_RE.test(submittedQuestionId)) {
       return NextResponse.json({ error: 'Invalid ID format' }, { status: 400 });
     }
     if (typeof answerText !== 'string' || answerText.trim().length === 0) {
@@ -52,7 +51,7 @@ export async function POST(
     // Load game state
     const { data: game, error: gameError } = await serviceClient
       .from('games')
-      .select('status, game_type, current_question_index, pub_trivia_question_order, current_question_started_at')
+      .select('status, game_type, current_question_index, pub_trivia_question_order, current_question_started_at, timer_seconds')
       .eq('id', gameId)
       .single();
 
@@ -90,6 +89,12 @@ export async function POST(
     }
     const questionId = questionOrder[game.current_question_index ?? 0];
 
+    // Reject if the client is answering a question that is no longer active
+    // (teacher advanced while the HTTP request was in-flight)
+    if (submittedQuestionId !== questionId) {
+      return NextResponse.json({ error: 'Question is no longer active' }, { status: 409 });
+    }
+
     const { data: question, error: qError } = await serviceClient
       .from('questions')
       .select('id, answer_text')
@@ -101,10 +106,11 @@ export async function POST(
     }
 
     // Compute time-based score (server-side, immune to client clock manipulation)
+    const questionDurationMs = (game.timer_seconds ?? 20) * 1_000;
     const startedAt = new Date(game.current_question_started_at).getTime();
     const answeredAt = Date.now();
     const elapsedMs = answeredAt - startedAt;
-    const elapsedFraction = Math.min(1, Math.max(0, elapsedMs / QUESTION_DURATION_MS));
+    const elapsedFraction = Math.min(1, Math.max(0, elapsedMs / questionDurationMs));
 
     const isCorrect = answerText.trim().toLowerCase() === question.answer_text.trim().toLowerCase();
     const pointsEarned = isCorrect ? calcPointsEarned(elapsedFraction) : 0;
@@ -151,40 +157,41 @@ export async function POST(
       // Non-fatal: answer is already recorded; score update can be reconciled
     }
 
-    // Query the current answer distribution for this question and broadcast to the teacher.
-    // Fire-and-forget — we return the student's response immediately without waiting.
-    const { data: tallyCounts } = await serviceClient
-      .from('pub_trivia_answers')
-      .select('answer_text')
-      .eq('game_id', gameId)
-      .eq('question_id', questionId);
-
-    const tally: Record<string, number> = {};
-    for (const row of tallyCounts ?? []) {
-      tally[row.answer_text] = (tally[row.answer_text] ?? 0) + 1;
-    }
-    const totalAnswered = tallyCounts?.length ?? 0;
-
+    // Fire-and-forget: query tally and broadcast to teacher without blocking the student response.
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (supabaseUrl && serviceKey) {
-      void fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': serviceKey,
-          'Authorization': `Bearer ${serviceKey}`,
-        },
-        body: JSON.stringify({
-          messages: [
-            {
-              topic: `pub-trivia:${gameId}`,
-              event: 'pt_answer_tally',
-              payload: { tally, totalAnswered },
-            },
-          ],
-        }),
-      }).catch(() => {}); // Non-fatal — teacher updates on next answer if this misses
+      void (async () => {
+        const { data: tallyCounts } = await serviceClient
+          .from('pub_trivia_answers')
+          .select('answer_text')
+          .eq('game_id', gameId)
+          .eq('question_id', questionId);
+
+        const tally: Record<string, number> = {};
+        for (const row of tallyCounts ?? []) {
+          tally[row.answer_text] = (tally[row.answer_text] ?? 0) + 1;
+        }
+        const totalAnswered = tallyCounts?.length ?? 0;
+
+        await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': serviceKey,
+            'Authorization': `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                topic: `pub-trivia:${gameId}`,
+                event: 'pt_answer_tally',
+                payload: { tally, totalAnswered },
+              },
+            ],
+          }),
+        });
+      })().catch(() => {}); // Non-fatal — teacher updates on next answer if this misses
     }
 
     const response: SubmitAnswerResponse = {

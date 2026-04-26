@@ -278,7 +278,7 @@ export default function PubTriviaPlayerPage() {
 
   const handleSubmitAnswer = useCallback(
     async (answerText: string) => {
-      if (!playerId || selectedAnswer !== null) return;
+      if (!playerId || selectedAnswer !== null || !currentQuestion) return;
 
       const deviceId = getDeviceId();
       if (!deviceId) return;
@@ -290,7 +290,7 @@ export default function PubTriviaPlayerPage() {
         const res = await fetch(`/api/games/${gameId}/pub-trivia/question/answer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ playerId, answerText, deviceId }),
+          body: JSON.stringify({ playerId, answerText, deviceId, questionId: currentQuestion.id }),
         });
 
         const data = await res.json();
@@ -308,7 +308,7 @@ export default function PubTriviaPlayerPage() {
         logger.error('Failed to submit answer', err, { operation: 'submitPubTriviaAnswer', gameId });
       }
     },
-    [gameId, playerId, selectedAnswer],
+    [gameId, playerId, selectedAnswer, currentQuestion],
   );
 
   if (phase === 'loading') {
