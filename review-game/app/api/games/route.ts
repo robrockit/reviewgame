@@ -3,6 +3,7 @@ import { createAdminServerClient } from '@/lib/admin/auth';
 import type { TablesInsert } from '@/types/database.types';
 import type { GameListItem, GameListResponse } from '@/types/game.types';
 import { logger } from '@/lib/logger';
+import { canAccessPubTrivia, getMaxPubTriviaPlayers } from '@/lib/utils/feature-access';
 
 /**
  * GET /api/games
@@ -266,12 +267,22 @@ export async function POST(req: NextRequest) {
       daily_double_positions,
       effective_user_id, // Optional: for admin impersonation
       final_jeopardy_question, // Optional: Final Jeopardy question data
+      game_type: rawGameType,
     } = body;
 
-    // Validate required fields
-    if (!bank_id || !num_teams || !daily_double_positions) {
+    const game_type: 'jeopardy' | 'pub_trivia' = rawGameType === 'pub_trivia' ? 'pub_trivia' : 'jeopardy';
+    const targetUserId = effective_user_id || user.id;
+
+    // Validate required fields (daily_double_positions only required for jeopardy)
+    if (!bank_id || !num_teams) {
       return NextResponse.json(
-        { error: 'Missing required fields: bank_id, num_teams, daily_double_positions' },
+        { error: 'Missing required fields: bank_id, num_teams' },
+        { status: 400 }
+      );
+    }
+    if (game_type === 'jeopardy' && !daily_double_positions) {
+      return NextResponse.json(
+        { error: 'daily_double_positions is required for Jeopardy games' },
         { status: 400 }
       );
     }
@@ -285,10 +296,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate num_teams (must be positive integer between 1 and 10)
-    if (typeof num_teams !== 'number' || !Number.isInteger(num_teams) || num_teams < 1 || num_teams > 10) {
+    // Gate pub trivia to BASIC+ and compute per-tier player cap before num_teams validation.
+    // This must run before the num_teams check so the limit reflects the user's actual plan.
+    let maxPlayers = 10; // jeopardy default
+    if (game_type === 'pub_trivia') {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', targetUserId)
+        .single();
+
+      if (!profile || !canAccessPubTrivia(profile)) {
+        return NextResponse.json(
+          { error: 'Quick Fire requires a BASIC or PREMIUM subscription', upgrade_url: '/pricing' },
+          { status: 403 }
+        );
+      }
+      maxPlayers = getMaxPubTriviaPlayers(profile);
+    }
+
+    // Validate num_teams — Jeopardy: 1-10, Pub Trivia: 1-<per-tier-max>
+    if (typeof num_teams !== 'number' || !Number.isInteger(num_teams) || num_teams < 1 || num_teams > maxPlayers) {
       return NextResponse.json(
-        { error: 'num_teams must be an integer between 1 and 10' },
+        { error: `num_teams must be an integer between 1 and ${maxPlayers} for ${game_type}` },
         { status: 400 }
       );
     }
@@ -301,8 +331,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate daily_double_positions (must be array of 2 valid positions)
-    if (!Array.isArray(daily_double_positions) || daily_double_positions.length !== 2) {
+    // Validate daily_double_positions (jeopardy only)
+    if (game_type === 'jeopardy' && (!Array.isArray(daily_double_positions) || daily_double_positions.length !== 2)) {
       return NextResponse.json(
         { error: 'daily_double_positions must be an array of exactly 2 positions' },
         { status: 400 }
@@ -384,9 +414,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Determine which user ID to use (for admin impersonation support)
-    const targetUserId = effective_user_id || user.id;
-
     // Atomically check and increment game count (prevents race conditions)
     // This MUST happen BEFORE creating the game to ensure proper enforcement
     const { data: allowed, error: incrementError } = await supabase
@@ -455,11 +482,12 @@ export async function POST(req: NextRequest) {
       teacher_id: targetUserId,
       bank_id,
       num_teams,
-      team_names,
+      team_names: game_type === 'pub_trivia' ? null : (team_names ?? null),
       timer_enabled: timer_enabled ?? true,
       timer_seconds: timer_enabled ? timer_seconds : null,
-      daily_double_positions,
-      final_jeopardy_question: final_jeopardy_question ?? null,
+      daily_double_positions: game_type === 'pub_trivia' ? null : (daily_double_positions ?? null),
+      final_jeopardy_question: game_type === 'pub_trivia' ? null : (final_jeopardy_question ?? null),
+      game_type,
       status: 'setup',
       selected_questions: [],
     };

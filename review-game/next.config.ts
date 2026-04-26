@@ -29,6 +29,20 @@ const cspHeader = [
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['sharp'],
+  async redirects() {
+    return [
+      {
+        source: '/game/pub-trivia/player/:gameId',
+        destination: '/game/quick-fire/player/:gameId',
+        permanent: false,
+      },
+      {
+        source: '/game/pub-trivia/teacher/:gameId',
+        destination: '/game/quick-fire/teacher/:gameId',
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

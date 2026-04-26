@@ -240,6 +240,41 @@ export function canAccessCustomTeamNames(profile: Profile | null | undefined): b
 }
 
 /**
+ * Checks if a user can create a Pub Trivia game.
+ * Requires BASIC or PREMIUM tier with TRIAL or ACTIVE status.
+ */
+export function canAccessPubTrivia(profile: Profile | null | undefined): boolean {
+  if (!profile) return false;
+
+  const tier = getTier(profile);
+  const isBasicOrPremium = tier === 'BASIC' || tier === 'PREMIUM';
+
+  return isBasicOrPremium && hasActiveSubscription(profile);
+}
+
+/**
+ * Returns the maximum number of individual players allowed in a pub trivia game.
+ * FREE tier returns 0 (pub trivia is gated at BASIC+).
+ * BASIC: 25, PREMIUM: 40.
+ */
+export function getMaxPubTriviaPlayers(profile: Profile | null | undefined): number {
+  if (!profile) return 0;
+
+  const tier = getTier(profile);
+
+  if (!hasActiveSubscription(profile)) return 0;
+
+  switch (tier) {
+    case 'BASIC':
+      return 25;
+    case 'PREMIUM':
+      return 40;
+    default:
+      return 0;
+  }
+}
+
+/**
  * Checks if a user can access AI features.
  * Requires PREMIUM tier with TRIAL or ACTIVE status.
  *
@@ -335,6 +370,7 @@ export type Feature =
   | 'custom_question_banks'
   | 'video_images'
   | 'custom_team_names'
+  | 'pub_trivia'
   | 'ai'
   | 'community_banks'
   | 'google_classroom'
@@ -395,6 +431,13 @@ export function getFeatureList(profile: Profile | null | undefined): FeatureInfo
       name: 'Custom Team Names',
       description: 'Customize team names for your games',
       enabled: canAccessCustomTeamNames(profile),
+      requiredTier: 'BASIC',
+    },
+    {
+      id: 'pub_trivia',
+      name: 'Quick Fire Mode',
+      description: 'Run individual-player multiple-choice games with time-based scoring',
+      enabled: canAccessPubTrivia(profile),
       requiredTier: 'BASIC',
     },
     {
