@@ -353,6 +353,7 @@ export const useBuzzer = (gameId: string | undefined): BuzzerHook => {
       });
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- _msg required by Supabase channel.on callback signature
     channel.on('broadcast', { event: 'final-jeopardy-question-revealed' }, (_msg: { payload: FinalJeopardyQuestionRevealedPayload }) => {
       if (!isMountedRef.current) return;
       useGameStore.getState().setFinalJeopardyQuestionRevealed(true);

@@ -32,7 +32,7 @@ import { useState, useEffect } from 'react';
  * @todo Replace with actual Supabase Auth integration
  */
 export function useAuth() {
-  const [user, setUser] = useState(null);
+  const [user] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

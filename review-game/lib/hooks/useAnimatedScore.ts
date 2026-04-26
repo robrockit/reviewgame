@@ -61,6 +61,7 @@ export const useAnimatedScore = (
         cancelAnimationFrame(animationRef.current);
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- displayScore is captured into startScoreRef at effect start; adding it to deps would restart the animation on every frame tick
   }, [targetScore, duration]);
 
   return displayScore;
