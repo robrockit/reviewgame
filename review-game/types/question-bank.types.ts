@@ -53,6 +53,8 @@ export interface QuestionFormData {
   teacher_notes?: string | null;
   image_url?: string | null;
   image_alt_text?: string | null;
+  /** Array of exactly 3 wrong answer strings for pub trivia MC mode. null = Jeopardy-only. */
+  mc_options?: string[] | null;
 }
 
 /**

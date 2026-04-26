@@ -21,6 +21,8 @@ import {
   canAccessGoogleClassroom,
   canAccessAnalytics,
   getFeatureList,
+  canAccessPubTrivia,
+  getMaxPubTriviaPlayers,
 } from './feature-access';
 import { describe, it, expect } from 'vitest';
 import type { Tables } from '@/types/database.types';
@@ -434,10 +436,10 @@ describe('canAccessAnalytics', () => {
 });
 
 describe('getFeatureList', () => {
-  it('should return 8 features', () => {
+  it('should return 9 features', () => {
     const profile = createProfile('PREMIUM', 'ACTIVE');
     const features = getFeatureList(profile);
-    expect(features).toHaveLength(8);
+    expect(features).toHaveLength(9);
   });
 
   it('should enable all features for PREMIUM + ACTIVE with no games created', () => {
@@ -485,7 +487,7 @@ describe('getFeatureList', () => {
 
   it('should handle null profile gracefully', () => {
     const features = getFeatureList(null);
-    expect(features).toHaveLength(8);
+    expect(features).toHaveLength(9);
     // All features are disabled for a null profile. create_game is the only FREE-tier
     // feature, but canCreateGame(null) also returns false (explicit null guard in the
     // implementation). The allowlist here documents intentional design: create_game is
@@ -512,5 +514,69 @@ describe('getFeatureList', () => {
       expect(feature.description).toBeTruthy();
       expect(feature.id).toBeTruthy();
     });
+  });
+
+  it('should include pub_trivia feature', () => {
+    const profile = createProfile('BASIC', 'ACTIVE');
+    const features = getFeatureList(profile);
+    const ptFeature = features.find((f) => f.id === 'pub_trivia');
+    expect(ptFeature).toBeDefined();
+    expect(ptFeature?.requiredTier).toBe('BASIC');
+  });
+});
+
+describe('canAccessPubTrivia', () => {
+  it('should allow BASIC + ACTIVE', () => {
+    expect(canAccessPubTrivia(createProfile('BASIC', 'ACTIVE'))).toBe(true);
+  });
+
+  it('should allow BASIC + TRIAL', () => {
+    expect(canAccessPubTrivia(createProfile('BASIC', 'TRIAL'))).toBe(true);
+  });
+
+  it('should allow PREMIUM + ACTIVE', () => {
+    expect(canAccessPubTrivia(createProfile('PREMIUM', 'ACTIVE'))).toBe(true);
+  });
+
+  it('should deny FREE tier', () => {
+    expect(canAccessPubTrivia(createProfile('FREE', 'ACTIVE'))).toBe(false);
+  });
+
+  it('should deny BASIC + CANCELLED', () => {
+    expect(canAccessPubTrivia(createProfile('BASIC', 'CANCELLED'))).toBe(false);
+  });
+
+  it('should deny BASIC + INACTIVE', () => {
+    expect(canAccessPubTrivia(createProfile('BASIC', 'INACTIVE'))).toBe(false);
+  });
+
+  it('should deny null profile', () => {
+    expect(canAccessPubTrivia(null)).toBe(false);
+  });
+});
+
+describe('getMaxPubTriviaPlayers', () => {
+  it('should return 0 for FREE tier', () => {
+    expect(getMaxPubTriviaPlayers(createProfile('FREE', 'ACTIVE'))).toBe(0);
+  });
+
+  it('should return 25 for BASIC + ACTIVE', () => {
+    expect(getMaxPubTriviaPlayers(createProfile('BASIC', 'ACTIVE'))).toBe(25);
+  });
+
+  it('should return 25 for BASIC + TRIAL', () => {
+    expect(getMaxPubTriviaPlayers(createProfile('BASIC', 'TRIAL'))).toBe(25);
+  });
+
+  it('should return 40 for PREMIUM + ACTIVE', () => {
+    expect(getMaxPubTriviaPlayers(createProfile('PREMIUM', 'ACTIVE'))).toBe(40);
+  });
+
+  it('should return 0 for BASIC + CANCELLED (inactive subscription)', () => {
+    expect(getMaxPubTriviaPlayers(createProfile('BASIC', 'CANCELLED'))).toBe(0);
+  });
+
+  it('should return 0 for null profile', () => {
+    expect(getMaxPubTriviaPlayers(null)).toBe(0);
   });
 });

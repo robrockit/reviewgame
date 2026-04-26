@@ -191,7 +191,7 @@ export async function POST(
 
     // 5. Get and validate request body
     const body = await req.json();
-    const { category, point_value, question_text, answer_text, teacher_notes, image_url, image_alt_text } = body;
+    const { category, point_value, question_text, answer_text, teacher_notes, image_url, image_alt_text, mc_options } = body;
 
     // Validate category
     if (!category || typeof category !== 'string') {
@@ -284,6 +284,30 @@ export async function POST(
       }
     }
 
+    // Validate mc_options (optional — null clears, array of 3 strings enables pub trivia MC)
+    if (mc_options !== undefined && mc_options !== null) {
+      if (!Array.isArray(mc_options) || mc_options.length !== 3) {
+        return NextResponse.json(
+          { error: 'mc_options must be an array of exactly 3 strings' },
+          { status: 400 }
+        );
+      }
+      for (const opt of mc_options) {
+        if (typeof opt !== 'string' || opt.trim().length === 0) {
+          return NextResponse.json(
+            { error: 'Each mc_options entry must be a non-empty string' },
+            { status: 400 }
+          );
+        }
+        if (opt.length > QUESTION_VALIDATION.ANSWER_TEXT_MAX_LENGTH) {
+          return NextResponse.json(
+            { error: `Each wrong answer must not exceed ${QUESTION_VALIDATION.ANSWER_TEXT_MAX_LENGTH} characters` },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     // Validate image_url (optional, requires feature access)
     if (image_url !== undefined && image_url !== null && image_url !== '') {
       // Validate type before checking feature access to return accurate status codes
@@ -346,6 +370,7 @@ export async function POST(
       image_url: trimmedImageUrl,
       // Never persist alt text without an image
       image_alt_text: trimmedImageUrl ? (image_alt_text?.trim() || null) : null,
+      mc_options: mc_options ?? null,
     };
 
     const { data: newQuestion, error: createError } = await supabase
