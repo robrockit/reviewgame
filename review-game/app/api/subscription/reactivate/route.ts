@@ -7,7 +7,7 @@
  * @module app/api/subscription/reactivate
  */
 
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getAuthenticatedUser } from '@/lib/api/auth';
 import { fetchWithTimeout, verifySubscriptionOwnership } from '@/lib/utils/stripe';
@@ -39,7 +39,7 @@ interface StripeSubscriptionWithFields extends Stripe.Subscription {
  *
  * Removes scheduled cancellation from the authenticated user's subscription
  */
-export async function POST(_req: NextRequest) {
+export async function POST() {
   try {
     // Authenticate user using shared utility
     const { user, supabase, error } = await getAuthenticatedUser();

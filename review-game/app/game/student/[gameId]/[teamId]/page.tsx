@@ -7,7 +7,6 @@ import { BuzzButton, BuzzButtonState } from '@/components/student/BuzzButton';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import { useGameStore } from '@/lib/stores/gameStore';
 import type { Tables } from '@/types/database.types';
-import type { FinalJeopardyQuestion } from '@/types/game';
 import { logger } from '@/lib/logger';
 import { useDeviceId } from '@/hooks/useDeviceId';
 
