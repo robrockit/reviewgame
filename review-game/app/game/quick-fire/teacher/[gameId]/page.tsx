@@ -137,7 +137,7 @@ export default function PubTriviaTeacherPage() {
 
         const { data: game, error: gameError } = await supabaseClient
           .from('games')
-          .select('status, current_question_index, pub_trivia_question_order, current_question_started_at')
+          .select('status, current_question_index, pub_trivia_question_order, current_question_started_at, timer_seconds')
           .eq('id', gameId)
           .single();
 
@@ -168,9 +168,35 @@ export default function PubTriviaTeacherPage() {
           setPhase('completed');
         } else if (game.status === 'in_progress') {
           const order = game.pub_trivia_question_order as string[] | null;
+          const questionIndex = game.current_question_index ?? 0;
           setTotalQuestions(order?.length ?? 0);
-          setCurrentQuestionIndex(game.current_question_index ?? 0);
-          setPhase(game.current_question_started_at ? 'question_active' : 'between_questions');
+          setCurrentQuestionIndex(questionIndex);
+
+          if (game.current_question_started_at) {
+            // Restore timer refs before setPhase so the interval reads correct values on the first tick
+            questionStartedAtRef.current = new Date(game.current_question_started_at).getTime();
+            questionDurationMsRef.current = (game.timer_seconds ?? 20) * 1_000;
+            // wrongOptionIndicesRef stays [] — the original shuffled order is not stored in DB,
+            // so elimination broadcasts are suppressed rather than risk targeting the wrong indices
+
+            // Fetch the active question for display (options will be in unshuffled DB order)
+            if (order && questionIndex < order.length) {
+              const { data: q } = await supabaseClient
+                .from('questions')
+                .select('id, question_text, answer_text, category, mc_options')
+                .eq('id', order[questionIndex])
+                .single();
+              if (q) {
+                const wrongOpts = (q.mc_options as string[]) ?? [];
+                const allOptions = [...wrongOpts, q.answer_text];
+                setCurrentQuestion({ id: q.id, questionText: q.question_text, category: q.category, options: allOptions });
+                setCorrectAnswerIndex(allOptions.length - 1);
+              }
+            }
+            setPhase('question_active');
+          } else {
+            setPhase('between_questions');
+          }
         }
       } catch (err) {
         logger.error('Failed to load pub trivia teacher page', err, {

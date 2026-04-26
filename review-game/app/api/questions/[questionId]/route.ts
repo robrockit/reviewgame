@@ -236,6 +236,14 @@ export async function PATCH(
             );
           }
         }
+        // Cross-validate against answer_text (use provided value if being updated, else existing DB value)
+        const effectiveAnswerText = typeof answer_text === 'string' ? answer_text : (existingQuestion.answer_text as string);
+        if (mc_options.some((opt: string) => opt.trim().toLowerCase() === effectiveAnswerText.trim().toLowerCase())) {
+          return NextResponse.json(
+            { error: 'Wrong answers must differ from the correct answer' },
+            { status: 400 }
+          );
+        }
         updateData.mc_options = mc_options.map((opt: string) => opt.trim());
       } else {
         updateData.mc_options = null;

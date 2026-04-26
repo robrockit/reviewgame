@@ -425,7 +425,7 @@ export default function PubTriviaPlayerPage() {
         {/* Timer bar */}
         <div className="h-2 bg-gray-700">
           <div
-            className={`h-full transition-all duration-250 ${timerColor}`}
+            className={`h-full transition-all duration-300 ${timerColor}`}
             style={{ width: `${timerFraction * 100}%` }}
           />
         </div>

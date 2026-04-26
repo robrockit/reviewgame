@@ -306,6 +306,12 @@ export async function POST(
           );
         }
       }
+      if (mc_options.some((opt: string) => opt.trim().toLowerCase() === answer_text.trim().toLowerCase())) {
+        return NextResponse.json(
+          { error: 'Wrong answers must differ from the correct answer' },
+          { status: 400 }
+        );
+      }
     }
 
     // Validate image_url (optional, requires feature access)
