@@ -93,11 +93,13 @@ export async function POST(
         approved: true,
       });
     } else {
-      const { error: deleteError } = await serviceClient
+      const { data: deleted, error: deleteError } = await serviceClient
         .from('teams')
         .delete()
         .eq('id', playerId)
-        .eq('game_id', gameId);
+        .eq('game_id', gameId)
+        .eq('connection_status', 'pending')
+        .select('id');
 
       if (deleteError) {
         logger.error('Failed to reject pub trivia player', deleteError, {
@@ -106,6 +108,10 @@ export async function POST(
           playerId,
         });
         return NextResponse.json({ error: 'Failed to reject player' }, { status: 500 });
+      }
+
+      if (!deleted || deleted.length === 0) {
+        return NextResponse.json({ error: 'Player not found or not pending' }, { status: 404 });
       }
 
       logger.info('Pub trivia player rejected', {

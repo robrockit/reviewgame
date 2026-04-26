@@ -51,6 +51,9 @@ export default function PubTriviaTeacherPage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState<PubTriviaQuestionForPlayer | null>(null);
   const [correctAnswerIndex, setCorrectAnswerIndex] = useState<number | null>(null);
+  // True when the page was refreshed mid-question; options are shown in unshuffled DB order
+  // rather than the shuffled order students received, so positions may not match.
+  const [isRestoredMidQuestion, setIsRestoredMidQuestion] = useState(false);
   const [players, setPlayers] = useState<PubTriviaPlayer[]>([]);
   const [roundResults, setRoundResults] = useState<PubTriviaRoundResult[]>([]);
   const [lastCorrectAnswer, setLastCorrectAnswer] = useState<string | null>(null);
@@ -193,6 +196,7 @@ export default function PubTriviaTeacherPage() {
                 setCorrectAnswerIndex(allOptions.length - 1);
               }
             }
+            setIsRestoredMidQuestion(true);
             setPhase('question_active');
           } else {
             setPhase('between_questions');
@@ -343,6 +347,7 @@ export default function PubTriviaTeacherPage() {
     setAnswerTally({});
     setEliminatedIndices([]);
     setActionError(null);
+    setIsRestoredMidQuestion(false);
     try {
       const res = await fetch(`/api/games/${gameId}/pub-trivia/question/start`, { method: 'POST' });
       const data = (await res.json()) as Partial<StartQuestionResponse>;
@@ -625,6 +630,11 @@ export default function PubTriviaTeacherPage() {
         {/* ── QUESTION ACTIVE ── */}
         {phase === 'question_active' && currentQuestion && (
           <div className="space-y-4">
+            {isRestoredMidQuestion && (
+              <div className="bg-yellow-900 border border-yellow-600 text-yellow-200 text-sm rounded-lg px-4 py-2">
+                Page was refreshed mid-question. Options are shown in original DB order — positions may differ from what students see. Option eliminations are paused until the next question.
+              </div>
+            )}
             <div className="bg-gray-800 rounded-xl p-6">
               <div className="flex items-start justify-between gap-4 mb-5">
                 <p className="text-lg font-semibold flex-1">{currentQuestion.questionText}</p>

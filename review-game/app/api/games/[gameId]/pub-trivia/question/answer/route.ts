@@ -163,17 +163,17 @@ export async function POST(
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (supabaseUrl && serviceKey) {
       void (async () => {
-        const { data: tallyCounts } = await serviceClient
-          .from('pub_trivia_answers')
-          .select('answer_text')
-          .eq('game_id', gameId)
-          .eq('question_id', questionId);
+        const { data: tallyRows } = await serviceClient.rpc('get_pub_trivia_answer_tally', {
+          p_game_id: gameId,
+          p_question_id: questionId,
+        });
 
         const tally: Record<string, number> = {};
-        for (const row of tallyCounts ?? []) {
-          tally[row.answer_text] = (tally[row.answer_text] ?? 0) + 1;
+        let totalAnswered = 0;
+        for (const row of tallyRows ?? []) {
+          tally[row.answer_text] = row.answer_count;
+          totalAnswered += row.answer_count;
         }
-        const totalAnswered = tallyCounts?.length ?? 0;
 
         await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
           method: 'POST',

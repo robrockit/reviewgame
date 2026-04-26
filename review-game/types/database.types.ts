@@ -763,6 +763,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      get_pub_trivia_answer_tally: {
+        Args: { p_game_id: string; p_question_id: string }
+        Returns: { answer_text: string; answer_count: number }[]
+      }
       increment_pub_trivia_score: {
         Args: { p_player_id: string; p_points_earned: number }
         Returns: number

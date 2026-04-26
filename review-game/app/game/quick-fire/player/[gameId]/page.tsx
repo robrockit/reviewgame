@@ -64,6 +64,9 @@ export default function PubTriviaPlayerPage() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playerIdRef = useRef<string | null>(null);
+  // Tracks whether the answer API already set an authoritative total score for this round.
+  // Prevents the pt_question_ended broadcast from double-counting the same points.
+  const hasReceivedApiScoreRef = useRef(false);
 
   const supabase = createClient();
 
@@ -149,6 +152,7 @@ export default function PubTriviaPlayerPage() {
           durationMs: number;
           startedAt: number;
         };
+        hasReceivedApiScoreRef.current = false;
         setCurrentQuestion(p.question);
         setQuestionStartedAt(p.startedAt);
         setQuestionDurationMs(p.durationMs);
@@ -174,10 +178,14 @@ export default function PubTriviaPlayerPage() {
         setCorrectAnswer(p.correctAnswer);
         setRoundResults(p.results);
         setHasNextQuestion(p.hasNextQuestion);
-        // Update my score from results
+        // Update score only if the answer API hasn't already set an authoritative total.
+        // Without this guard, a player who got 1000 pts from the API would see 2000
+        // after the broadcast adds the same delta on top.
         const myResult = p.results.find((r) => r.playerId === playerIdRef.current);
         if (myResult) {
-          setMyScore((prev) => prev + myResult.pointsEarned);
+          if (!hasReceivedApiScoreRef.current) {
+            setMyScore((prev) => prev + myResult.pointsEarned);
+          }
           setAnswerResult({ isCorrect: myResult.isCorrect, pointsEarned: myResult.pointsEarned });
         }
         setPhase('round_results');
@@ -296,6 +304,7 @@ export default function PubTriviaPlayerPage() {
         const data = await res.json();
 
         if (res.ok) {
+          hasReceivedApiScoreRef.current = true;
           setAnswerResult({
             isCorrect: data.isCorrect as boolean,
             pointsEarned: data.pointsEarned as number,

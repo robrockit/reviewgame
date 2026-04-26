@@ -37,20 +37,11 @@ CREATE INDEX IF NOT EXISTS idx_pub_trivia_answers_player
 -- using the service role key, which bypasses RLS. Direct client writes are blocked.
 ALTER TABLE public.pub_trivia_answers ENABLE ROW LEVEL SECURITY;
 
--- Allow authenticated players to read their own answer rows (for post-round display).
--- Players are identified by the teams row they claimed via device_id.
-CREATE POLICY "pub_trivia_answers_player_read_own"
-  ON public.pub_trivia_answers
-  FOR SELECT
-  TO anon, authenticated
-  USING (
-    player_id IN (
-      SELECT t.id
-      FROM   public.teams t
-      WHERE  t.game_id  = pub_trivia_answers.game_id
-        AND  t.device_id = current_setting('request.headers', true)::json->>'x-device-id'
-    )
-  );
+-- No SELECT policy is intentionally defined.
+-- All reads go through server-side API routes using the service role key, which
+-- bypasses RLS entirely. Direct client reads (anon/authenticated) are therefore
+-- blocked by default — which is the correct behavior since device identity cannot
+-- be reliably verified via PostgREST headers from the browser client.
 
 COMMENT ON TABLE public.pub_trivia_answers IS
   'One row per (game_id, player_id, question_id). Written by server API on answer submission. UNIQUE constraint blocks double-submission. Cleared when game ends via CASCADE.';
