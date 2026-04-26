@@ -763,6 +763,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      increment_pub_trivia_score: {
+        Args: { p_player_id: string; p_points_earned: number }
+        Returns: number
+      }
       join_game_atomic: {
         Args: { p_device_id: string; p_game_id: string }
         Returns: Json

@@ -141,12 +141,11 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to record answer' }, { status: 500 });
     }
 
-    // Increment player score
-    const newScore = (player.score ?? 0) + pointsEarned;
-    const { error: scoreError } = await serviceClient
-      .from('teams')
-      .update({ score: newScore, updated_at: new Date().toISOString() })
-      .eq('id', playerId);
+    // Atomically increment player score (eliminates read-modify-write race on concurrent retries)
+    const { data: newScoreData, error: scoreError } = await serviceClient.rpc('increment_pub_trivia_score', {
+      p_player_id: playerId,
+      p_points_earned: pointsEarned,
+    });
 
     if (scoreError) {
       logger.error('Failed to update player score', scoreError, {
@@ -156,6 +155,8 @@ export async function POST(
       });
       // Non-fatal: answer is already recorded; score update can be reconciled
     }
+
+    const totalScore = (newScoreData as number | null) ?? ((player.score ?? 0) + pointsEarned);
 
     // Fire-and-forget: query tally and broadcast to teacher without blocking the student response.
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -197,7 +198,7 @@ export async function POST(
     const response: SubmitAnswerResponse = {
       isCorrect,
       pointsEarned,
-      totalScore: newScore,
+      totalScore,
     };
 
     return NextResponse.json(response);

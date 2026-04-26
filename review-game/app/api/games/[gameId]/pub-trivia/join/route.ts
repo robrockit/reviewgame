@@ -87,6 +87,11 @@ export async function POST(
       });
     }
 
+    // Block new players from joining once the game has started (reconnections above are still allowed)
+    if (game.status === 'in_progress') {
+      return NextResponse.json({ error: 'This game has already started' }, { status: 409 });
+    }
+
     // Use existing RPC for atomic seat assignment (handles num_teams capacity)
     type JoinResult =
       | { success: true; team_id: string; team_number: number }

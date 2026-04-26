@@ -37,7 +37,7 @@ export async function POST(
 
     const { data: game, error: gameError } = await serviceClient
       .from('games')
-      .select('teacher_id, status, game_type, current_question_index, pub_trivia_question_order, timer_seconds')
+      .select('teacher_id, status, game_type, current_question_index, pub_trivia_question_order, timer_seconds, current_question_started_at')
       .eq('id', gameId)
       .single();
 
@@ -52,6 +52,9 @@ export async function POST(
     }
     if (game.status !== 'in_progress') {
       return NextResponse.json({ error: 'Game is not in progress' }, { status: 409 });
+    }
+    if (game.current_question_started_at) {
+      return NextResponse.json({ error: 'Question already active' }, { status: 409 });
     }
 
     const questionOrder = game.pub_trivia_question_order as string[] | null;

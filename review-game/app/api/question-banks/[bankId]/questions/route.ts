@@ -370,7 +370,7 @@ export async function POST(
       image_url: trimmedImageUrl,
       // Never persist alt text without an image
       image_alt_text: trimmedImageUrl ? (image_alt_text?.trim() || null) : null,
-      mc_options: mc_options ?? null,
+      mc_options: Array.isArray(mc_options) ? mc_options.map((opt: string) => opt.trim()) : null,
     };
 
     const { data: newQuestion, error: createError } = await supabase

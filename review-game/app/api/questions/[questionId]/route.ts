@@ -236,7 +236,7 @@ export async function PATCH(
             );
           }
         }
-        updateData.mc_options = mc_options;
+        updateData.mc_options = mc_options.map((opt: string) => opt.trim());
       } else {
         updateData.mc_options = null;
       }
