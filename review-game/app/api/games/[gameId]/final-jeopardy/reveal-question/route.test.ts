@@ -14,7 +14,6 @@ import { NextRequest } from 'next/server';
 // ---------------------------------------------------------------------------
 
 const mockGetUser = vi.fn();
-const mockUpdate = vi.fn();
 const mockSelect = vi.fn();
 
 vi.mock('@/lib/admin/auth', () => ({

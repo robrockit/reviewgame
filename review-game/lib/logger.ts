@@ -22,8 +22,6 @@
 
 import * as Sentry from '@sentry/nextjs';
 
-type LogLevel = 'info' | 'warn' | 'error';
-
 /**
  * Sensitive keys that should never be logged
  * These will be automatically redacted from log context

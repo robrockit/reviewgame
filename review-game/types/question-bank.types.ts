@@ -79,6 +79,25 @@ export interface QuestionGridData {
 }
 
 /**
+ * Shape returned by the duplicate_question_bank RPC function.
+ * The Supabase SDK types the return as Json; this alias lets callers
+ * assert the concrete shape after the call.
+ */
+export type DuplicateBankResult = {
+  id: string;
+  title: string;
+  subject: string;
+  description: string | null;
+  difficulty: string | null;
+  is_custom: boolean;
+  is_public: boolean;
+  owner_id: string;
+  created_at: string;
+  updated_at: string;
+  questions_count: number;
+};
+
+/**
  * API response for question bank list
  */
 export interface QuestionBankListResponse {

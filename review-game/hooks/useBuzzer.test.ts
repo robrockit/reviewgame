@@ -104,6 +104,7 @@ describe('useBuzzer — broadcastAnswerRevealed channel guard', () => {
     const channelRef: { current: null | { send: () => void } } = { current: null };
     const mockLogger = { warn: vi.fn() };
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- parameter required to match broadcast function signature
     const broadcastAnswerRevealed = (_answer: string | null) => {
       if (!channelRef.current) {
         mockLogger.warn('Cannot broadcast: channel not initialized');
@@ -122,6 +123,7 @@ describe('useBuzzer — broadcastAnswerRevealed channel guard', () => {
       current: { send: mockSend },
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- parameter required to match broadcast function signature
     const broadcastAnswerRevealed = (_answer: string | null) => {
       if (!channelRef.current) return;
       channelRef.current.send();
