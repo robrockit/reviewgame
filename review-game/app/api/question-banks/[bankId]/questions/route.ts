@@ -312,6 +312,13 @@ export async function POST(
           { status: 400 }
         );
       }
+      const uniqueOpts = new Set(mc_options.map((o: string) => o.trim().toLowerCase()));
+      if (uniqueOpts.size !== mc_options.length) {
+        return NextResponse.json(
+          { error: 'Wrong answers must all be distinct' },
+          { status: 400 }
+        );
+      }
     }
 
     // Validate image_url (optional, requires feature access)

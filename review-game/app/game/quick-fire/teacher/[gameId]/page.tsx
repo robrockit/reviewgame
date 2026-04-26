@@ -136,9 +136,7 @@ export default function PubTriviaTeacherPage() {
 
     const loadGame = async () => {
       try {
-        const supabaseClient = createClient();
-
-        const { data: game, error: gameError } = await supabaseClient
+        const { data: game, error: gameError } = await supabase
           .from('games')
           .select('status, current_question_index, pub_trivia_question_order, current_question_started_at, timer_seconds')
           .eq('id', gameId)
@@ -149,7 +147,7 @@ export default function PubTriviaTeacherPage() {
           return;
         }
 
-        const { data: teams } = await supabaseClient
+        const { data: teams } = await supabase
           .from('teams')
           .select('id, team_name, score, connection_status, player_icon')
           .eq('game_id', gameId)
@@ -184,7 +182,7 @@ export default function PubTriviaTeacherPage() {
 
             // Fetch the active question for display (options will be in unshuffled DB order)
             if (order && questionIndex < order.length) {
-              const { data: q } = await supabaseClient
+              const { data: q } = await supabase
                 .from('questions')
                 .select('id, question_text, answer_text, category, mc_options')
                 .eq('id', order[questionIndex])
@@ -212,6 +210,7 @@ export default function PubTriviaTeacherPage() {
     };
 
     loadGame();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- supabase is stable (one createClient() per mount); gameId is stable per page load
   }, [gameId]);
 
   // Start question timer when phase becomes 'question_active'

@@ -244,6 +244,13 @@ export async function PATCH(
             { status: 400 }
           );
         }
+        const uniqueOpts = new Set(mc_options.map((o: string) => o.trim().toLowerCase()));
+        if (uniqueOpts.size !== mc_options.length) {
+          return NextResponse.json(
+            { error: 'Wrong answers must all be distinct' },
+            { status: 400 }
+          );
+        }
         updateData.mc_options = mc_options.map((opt: string) => opt.trim());
       } else {
         updateData.mc_options = null;

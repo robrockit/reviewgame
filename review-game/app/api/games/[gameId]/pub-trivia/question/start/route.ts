@@ -100,12 +100,16 @@ export async function POST(
     const startedAt = Date.now();
     const durationMs = (game.timer_seconds ?? 20) * 1_000;
 
-    const { error: updateError } = await serviceClient
+    // Atomic conditional update: only writes if current_question_started_at is still null.
+    // A concurrent second request would see 0 rows returned and get a 409.
+    const { data: updatedRows, error: updateError } = await serviceClient
       .from('games')
       .update({
         current_question_started_at: new Date(startedAt).toISOString(),
       })
-      .eq('id', gameId);
+      .eq('id', gameId)
+      .is('current_question_started_at', null)
+      .select('id');
 
     if (updateError) {
       logger.error('Failed to persist question start timestamp', updateError, {
@@ -113,6 +117,9 @@ export async function POST(
         gameId,
       });
       return NextResponse.json({ error: 'Failed to start question' }, { status: 500 });
+    }
+    if (!updatedRows || updatedRows.length === 0) {
+      return NextResponse.json({ error: 'Question already active' }, { status: 409 });
     }
 
     const questionForPlayer: PubTriviaQuestionForPlayer = {

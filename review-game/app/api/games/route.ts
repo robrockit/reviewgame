@@ -271,6 +271,7 @@ export async function POST(req: NextRequest) {
     } = body;
 
     const game_type: 'jeopardy' | 'pub_trivia' = rawGameType === 'pub_trivia' ? 'pub_trivia' : 'jeopardy';
+    const targetUserId = effective_user_id || user.id;
 
     // Validate required fields (daily_double_positions only required for jeopardy)
     if (!bank_id || !num_teams) {
@@ -295,8 +296,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate num_teams — Jeopardy: 1-10, Pub Trivia: 1-40
-    const maxPlayers = game_type === 'pub_trivia' ? 40 : 10;
+    // Gate pub trivia to BASIC+ and compute per-tier player cap before num_teams validation.
+    // This must run before the num_teams check so the limit reflects the user's actual plan.
+    let maxPlayers = 10; // jeopardy default
+    if (game_type === 'pub_trivia') {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', targetUserId)
+        .single();
+
+      if (!profile || !canAccessPubTrivia(profile)) {
+        return NextResponse.json(
+          { error: 'Quick Fire requires a BASIC or PREMIUM subscription', upgrade_url: '/pricing' },
+          { status: 403 }
+        );
+      }
+      maxPlayers = getMaxPubTriviaPlayers(profile);
+    }
+
+    // Validate num_teams — Jeopardy: 1-10, Pub Trivia: 1-<per-tier-max>
     if (typeof num_teams !== 'number' || !Number.isInteger(num_teams) || num_teams < 1 || num_teams > maxPlayers) {
       return NextResponse.json(
         { error: `num_teams must be an integer between 1 and ${maxPlayers} for ${game_type}` },
@@ -391,33 +410,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { error: 'final_jeopardy_question.answer contains invalid characters' },
           { status: 400 }
-        );
-      }
-    }
-
-    // Determine which user ID to use (for admin impersonation support)
-    const targetUserId = effective_user_id || user.id;
-
-    // Gate pub trivia to BASIC+ and enforce player limits
-    if (game_type === 'pub_trivia') {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', targetUserId)
-        .single();
-
-      if (!profile || !canAccessPubTrivia(profile)) {
-        return NextResponse.json(
-          { error: 'Quick Fire requires a BASIC or PREMIUM subscription', upgrade_url: '/pricing' },
-          { status: 403 }
-        );
-      }
-
-      const maxAllowed = getMaxPubTriviaPlayers(profile);
-      if (num_teams > maxAllowed) {
-        return NextResponse.json(
-          { error: `Your plan allows up to ${maxAllowed} players for Quick Fire` },
-          { status: 403 }
         );
       }
     }

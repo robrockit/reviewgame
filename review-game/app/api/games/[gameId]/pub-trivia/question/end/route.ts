@@ -88,14 +88,18 @@ export async function POST(
     const nextIndex = index + 1;
     const hasNextQuestion = nextIndex < questionOrder.length;
 
-    // Advance to next question index, clear started_at
-    const { error: updateError } = await serviceClient
+    // Advance to next question index, clear started_at.
+    // Conditional filter: only updates when a question is active, so a concurrent
+    // double-click sees 0 rows returned and gets a 409 instead of double-advancing.
+    const { data: updatedRows, error: updateError } = await serviceClient
       .from('games')
       .update({
         current_question_index: nextIndex,
         current_question_started_at: null,
       })
-      .eq('id', gameId);
+      .eq('id', gameId)
+      .not('current_question_started_at', 'is', null)
+      .select('id');
 
     if (updateError) {
       logger.error('Failed to advance question index', updateError, {
@@ -103,6 +107,9 @@ export async function POST(
         gameId,
       });
       return NextResponse.json({ error: 'Failed to advance round' }, { status: 500 });
+    }
+    if (!updatedRows || updatedRows.length === 0) {
+      return NextResponse.json({ error: 'Question already ended' }, { status: 409 });
     }
 
     type AnswerRow = {

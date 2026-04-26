@@ -3,6 +3,7 @@ import { createAdminServiceClient } from '@/lib/admin/auth';
 import { calcPointsEarned } from '@/types/pub-trivia';
 import { logger } from '@/lib/logger';
 import type { SubmitAnswerRequest, SubmitAnswerResponse } from '@/types/pub-trivia';
+import { QUESTION_VALIDATION } from '@/lib/constants/question-banks';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -44,6 +45,12 @@ export async function POST(
     }
     if (typeof answerText !== 'string' || answerText.trim().length === 0) {
       return NextResponse.json({ error: 'answerText must be a non-empty string' }, { status: 400 });
+    }
+    if (answerText.trim().length > QUESTION_VALIDATION.ANSWER_TEXT_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: `answerText must not exceed ${QUESTION_VALIDATION.ANSWER_TEXT_MAX_LENGTH} characters` },
+        { status: 400 }
+      );
     }
 
     const serviceClient = createAdminServiceClient();
