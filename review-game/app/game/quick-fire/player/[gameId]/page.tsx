@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { getDeviceId } from '@/hooks/useDeviceId';
 import { logger } from '@/lib/logger';
 import { IconPicker } from '@/components/pub-trivia/IconPicker';
+import { calcPointsEarned } from '@/types/pub-trivia';
 import type { PubTriviaQuestionForPlayer, PubTriviaRoundResult } from '@/types/pub-trivia';
 
 type Phase =
@@ -416,7 +417,10 @@ export default function PubTriviaPlayerPage() {
   // ── QUESTION ACTIVE ────────────────────────────────────────────────────────
   if ((phase === 'question' || phase === 'answered') && currentQuestion) {
     const optionLetters = ['A', 'B', 'C', 'D'];
-    const timerFraction = timeRemaining / (questionDurationMs / 1000);
+    const totalSeconds = questionDurationMs / 1000;
+    const timerFraction = totalSeconds > 0 ? timeRemaining / totalSeconds : 0;
+    const elapsedFraction = Math.max(0, Math.min(1, 1 - timerFraction));
+    const pointsPossible = phase === 'question' ? calcPointsEarned(elapsedFraction) : 0;
     const timerColor =
       timeRemaining <= 5 ? 'bg-red-500' : timeRemaining <= 10 ? 'bg-yellow-500' : 'bg-green-500';
 
@@ -449,6 +453,11 @@ export default function PubTriviaPlayerPage() {
             >
               {timeRemaining}
             </span>
+            {phase === 'question' && (
+              <p className="text-sm font-semibold text-yellow-400 mt-0.5 tabular-nums">
+                {pointsPossible.toLocaleString()} pts available
+              </p>
+            )}
           </div>
 
           {/* Question text */}

@@ -182,7 +182,7 @@ export async function POST(
           totalAnswered += row.answer_count;
         }
 
-        await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
+        const res = await fetch(`${supabaseUrl}/realtime/v1/api/broadcast`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -192,14 +192,23 @@ export async function POST(
           body: JSON.stringify({
             messages: [
               {
-                topic: `pub-trivia:${gameId}`,
+                topic: `realtime:pub-trivia:${gameId}`,
                 event: 'pt_answer_tally',
                 payload: { tally, totalAnswered },
               },
             ],
           }),
         });
-      })().catch(() => {}); // Non-fatal — teacher updates on next answer if this misses
+        if (!res.ok) {
+          logger.error('Answer tally broadcast failed', null, {
+            operation: 'broadcastAnswerTally',
+            gameId,
+            status: res.status,
+          });
+        }
+      })().catch((err) => {
+        logger.error('Answer tally broadcast threw', err, { operation: 'broadcastAnswerTally', gameId });
+      });
     }
 
     const response: SubmitAnswerResponse = {
