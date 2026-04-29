@@ -11,6 +11,8 @@ export interface QuestionFormInit {
   teacherNotes?: string;
   imageUrl?: string;
   imageAltText?: string;
+  /** Pre-populate the 3 wrong-answer fields. Pass null or omit to clear. */
+  mcOptions?: [string, string, string] | null;
 }
 
 /**
@@ -30,6 +32,9 @@ export function useQuestionForm() {
   const [teacherNotes, setTeacherNotes] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [imageAltText, setImageAltText] = useState('');
+  const [mcOption1, setMcOption1] = useState('');
+  const [mcOption2, setMcOption2] = useState('');
+  const [mcOption3, setMcOption3] = useState('');
 
   // Validation error state
   const [categoryError, setCategoryError] = useState('');
@@ -54,6 +59,9 @@ export function useQuestionForm() {
     setTeacherNotes('');
     setImageUrl('');
     setImageAltText('');
+    setMcOption1('');
+    setMcOption2('');
+    setMcOption3('');
     clearErrors();
   }, [clearErrors]);
 
@@ -71,6 +79,11 @@ export function useQuestionForm() {
     if (values.teacherNotes !== undefined) setTeacherNotes(values.teacherNotes);
     if (values.imageUrl !== undefined) setImageUrl(values.imageUrl);
     if (values.imageAltText !== undefined) setImageAltText(values.imageAltText);
+    if (values.mcOptions !== undefined) {
+      setMcOption1(values.mcOptions?.[0] ?? '');
+      setMcOption2(values.mcOptions?.[1] ?? '');
+      setMcOption3(values.mcOptions?.[2] ?? '');
+    }
     clearErrors();
   }, [clearErrors]);
 
@@ -125,6 +138,11 @@ export function useQuestionForm() {
    */
   const buildPayload = (): QuestionFormData => {
     const trimmedImageUrl = imageUrl.trim() || null;
+    const o1 = mcOption1.trim();
+    const o2 = mcOption2.trim();
+    const o3 = mcOption3.trim();
+    // Only include mc_options when all 3 wrong answers are provided
+    const mcOptions = o1 && o2 && o3 ? [o1, o2, o3] : null;
     return {
       category: category.trim(),
       point_value: pointValue,
@@ -134,6 +152,7 @@ export function useQuestionForm() {
       image_url: trimmedImageUrl,
       // Only save alt text when an image is actually present
       image_alt_text: trimmedImageUrl ? imageAltText.trim() || null : null,
+      mc_options: mcOptions,
     };
   };
 
@@ -147,6 +166,9 @@ export function useQuestionForm() {
     teacherNotes, setTeacherNotes,
     imageUrl, setImageUrl,
     imageAltText, setImageAltText,
+    mcOption1, setMcOption1,
+    mcOption2, setMcOption2,
+    mcOption3, setMcOption3,
     // Validation errors
     categoryError,
     questionTextError,

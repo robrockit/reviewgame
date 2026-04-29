@@ -51,6 +51,68 @@ export async function joinGame(page: Page, gameId: string): Promise<string> {
   return match[1];
 }
 
+// ─── Quick Fire game creation ─────────────────────────────────────────────────
+
+/**
+ * Creates a Quick Fire (pub trivia) game as the teacher.
+ * Selects the Quick Fire game mode and the first available question bank.
+ * Returns the game ID extracted from the redirect URL.
+ *
+ * Prerequisite: the teacher account must have a BASIC+ subscription and the
+ * first available question bank must contain at least one question with
+ * mc_options populated (Quick Fire start will fail otherwise).
+ */
+export async function createQuickFireGame(page: Page): Promise<string> {
+  await page.goto('/dashboard/games/new');
+
+  // Select Quick Fire game mode (a button, not a <select>)
+  await page.locator('button', { hasText: 'Quick Fire' }).click();
+
+  // Index 0 is the placeholder "Select a question bank..."
+  await page.selectOption('#questionBank', { index: 1 });
+
+  await page.locator('button', { hasText: 'Create Game' }).click();
+
+  await page.waitForURL('**/game/quick-fire/teacher/**', { timeout: 15_000 });
+
+  const match = page.url().match(/\/game\/quick-fire\/teacher\/([^/?#]+)/);
+  if (!match) {
+    throw new Error(`Unexpected redirect URL after Quick Fire game creation: ${page.url()}`);
+  }
+  return match[1];
+}
+
+// ─── Quick Fire player join ───────────────────────────────────────────────────
+
+/**
+ * Joins a Quick Fire game from the given page (typically an anonymous context).
+ * Optionally selects an icon by its label before submitting (e.g. 'Dog', 'Rocket').
+ * Waits for the pending-approval screen to confirm the join request was sent.
+ */
+export async function joinQuickFireGame(
+  page: Page,
+  gameId: string,
+  playerName: string,
+  iconLabel?: string,
+): Promise<void> {
+  await page.goto(`/game/quick-fire/player/${gameId}`);
+
+  await expect(
+    page.locator('h1', { hasText: 'Join Quick Fire' }),
+  ).toBeVisible({ timeout: 10_000 });
+
+  if (iconLabel) {
+    await page.locator(`button[title="${iconLabel}"]`).click();
+  }
+
+  await page.fill('input[placeholder="Your name"]', playerName);
+  await page.locator('button', { hasText: 'Join Game' }).click();
+
+  await expect(
+    page.locator('text=Waiting for teacher approval'),
+  ).toBeVisible({ timeout: 10_000 });
+}
+
 // ─── Game start ───────────────────────────────────────────────────────────────
 
 /**

@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Tables } from '@/types/database.types';
 import type { UserContextResponse } from '@/app/api/user/context/route';
 import { logger } from '@/lib/logger';
-import { canCreateGame, canAccessCustomQuestionBanks, canAccessCustomTeamNames } from '@/lib/utils/feature-access';
+import { canCreateGame, canAccessCustomQuestionBanks, canAccessCustomTeamNames, canAccessPubTrivia, getMaxPubTriviaPlayers } from '@/lib/utils/feature-access';
 
 type QuestionBank = Tables<'question_banks'>;
 type Profile = Tables<'profiles'>;
@@ -44,11 +44,13 @@ export default function NewGamePage() {
   const [gameLimit, setGameLimit] = useState<number | null>(null);
 
   // Form state
+  const [gameType, setGameType] = useState<'jeopardy' | 'pub_trivia'>('jeopardy');
   const [selectedBankId, setSelectedBankId] = useState<string>('');
   const [numTeams, setNumTeams] = useState<number>(4);
   const [teamNames, setTeamNames] = useState<string[]>(['Team 1', 'Team 2', 'Team 3', 'Team 4']);
   const [timerEnabled, setTimerEnabled] = useState<boolean>(true);
   const [timerSeconds, setTimerSeconds] = useState<number>(10);
+  const [questionTimeSecs, setQuestionTimeSecs] = useState<number>(20);
   const [finalJeopardyEnabled, setFinalJeopardyEnabled] = useState<boolean>(false);
   const [finalJeopardyCategory, setFinalJeopardyCategory] = useState<string>('');
   const [finalJeopardyQuestion, setFinalJeopardyQuestion] = useState<string>('');
@@ -59,6 +61,8 @@ export default function NewGamePage() {
 
   // Check if user has an active paid subscription (BASIC or PREMIUM, ACTIVE or TRIAL)
   const isPremium = canAccessCustomTeamNames(profile);
+  const canUsePubTrivia = canAccessPubTrivia(profile);
+  const maxPubTriviaPlayers = getMaxPubTriviaPlayers(profile);
 
   useEffect(() => {
     const initializePage = async () => {
@@ -246,7 +250,12 @@ export default function NewGamePage() {
       return;
     }
 
-    if (finalJeopardyEnabled) {
+    if (gameType === 'pub_trivia' && !canUsePubTrivia) {
+      setError('Quick Fire requires a BASIC or PREMIUM subscription. Upgrade to access this feature.');
+      return;
+    }
+
+    if (gameType === 'jeopardy' && finalJeopardyEnabled) {
       if (!finalJeopardyCategory.trim()) {
         setError('Final Jeopardy category is required');
         return;
@@ -265,31 +274,32 @@ export default function NewGamePage() {
     setError(null);
 
     try {
-      // Generate Daily Double positions
-      const dailyDoublePositions = generateDailyDoublePositions();
+      const requestBody: Record<string, unknown> = {
+        bank_id: selectedBankId,
+        num_teams: numTeams,
+        timer_enabled: gameType === 'pub_trivia' ? true : timerEnabled,
+        timer_seconds: gameType === 'pub_trivia' ? questionTimeSecs : (timerEnabled ? timerSeconds : null),
+        game_type: gameType,
+        effective_user_id: effectiveUserId !== user.id ? effectiveUserId : undefined,
+      };
+
+      if (gameType === 'jeopardy') {
+        requestBody.daily_double_positions = generateDailyDoublePositions();
+        requestBody.team_names = isPremium ? teamNames : null;
+        requestBody.final_jeopardy_question = finalJeopardyEnabled
+          ? {
+              category: finalJeopardyCategory.trim(),
+              question: finalJeopardyQuestion.trim(),
+              answer: finalJeopardyAnswer.trim(),
+            }
+          : null;
+      }
 
       // Call API to create game (enforces limits server-side)
       const response = await fetch('/api/games', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          bank_id: selectedBankId,
-          num_teams: numTeams,
-          team_names: isPremium ? teamNames : null,
-          timer_enabled: timerEnabled,
-          timer_seconds: timerEnabled ? timerSeconds : null,
-          daily_double_positions: dailyDoublePositions,
-          effective_user_id: effectiveUserId !== user.id ? effectiveUserId : undefined,
-          final_jeopardy_question: finalJeopardyEnabled
-            ? {
-                category: finalJeopardyCategory.trim(),
-                question: finalJeopardyQuestion.trim(),
-                answer: finalJeopardyAnswer.trim(),
-              }
-            : null,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -308,8 +318,12 @@ export default function NewGamePage() {
         return;
       }
 
-      // Redirect to teacher control page
-      router.push(`/game/teacher/${data.game_id}`);
+      // Redirect to the appropriate teacher control page
+      if (gameType === 'pub_trivia') {
+        router.push(`/game/quick-fire/teacher/${data.game_id}`);
+      } else {
+        router.push(`/game/teacher/${data.game_id}`);
+      }
     } catch (err) {
       logger.error('Error creating game', {
         error: err instanceof Error ? err.message : String(err),
@@ -422,6 +436,65 @@ export default function NewGamePage() {
 
         {/* Game Setup Form */}
         <div className="bg-white rounded-lg shadow-sm p-6 space-y-6">
+          {/* Game Type Selector */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Game Mode <span className="text-red-500">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              {/* Jeopardy option */}
+              <button
+                type="button"
+                onClick={() => setGameType('jeopardy')}
+                className={`relative flex flex-col items-start p-4 rounded-lg border-2 text-left transition-colors ${
+                  gameType === 'jeopardy'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <span className="text-base font-semibold text-gray-900">Jeopardy</span>
+                <span className="mt-1 text-xs text-gray-500">Teams select questions from a category/value board. Teacher judges answers.</span>
+                {gameType === 'jeopardy' && (
+                  <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-blue-500" />
+                )}
+              </button>
+
+              {/* Pub Trivia option */}
+              <button
+                type="button"
+                onClick={() => canUsePubTrivia ? setGameType('pub_trivia') : undefined}
+                className={`relative flex flex-col items-start p-4 rounded-lg border-2 text-left transition-colors ${
+                  !canUsePubTrivia
+                    ? 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-60'
+                    : gameType === 'pub_trivia'
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-semibold text-gray-900">Quick Fire</span>
+                  {!canUsePubTrivia && (
+                    <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded">
+                      BASIC+
+                    </span>
+                  )}
+                </div>
+                <span className="mt-1 text-xs text-gray-500">
+                  Up to {canUsePubTrivia ? maxPubTriviaPlayers : 40} individual players. Multiple-choice questions with time-based scoring.
+                </span>
+                {gameType === 'pub_trivia' && (
+                  <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-blue-500" />
+                )}
+              </button>
+            </div>
+            {!canUsePubTrivia && (
+              <p className="mt-2 text-xs text-gray-500">
+                Quick Fire requires a BASIC or PREMIUM subscription.{' '}
+                <a href="/pricing" className="text-blue-600 underline">Upgrade</a>
+              </p>
+            )}
+          </div>
+
           {/* Question Bank Selection */}
           <div>
             <label htmlFor="questionBank" className="block text-sm font-medium text-gray-700 mb-2">
@@ -449,10 +522,10 @@ export default function NewGamePage() {
             </p>
           </div>
 
-          {/* Number of Teams */}
+          {/* Number of Teams / Players */}
           <div>
             <label htmlFor="numTeams" className="block text-sm font-medium text-gray-700 mb-2">
-              Number of Teams
+              {gameType === 'pub_trivia' ? 'Max Players' : 'Number of Teams'}
             </label>
             <select
               id="numTeams"
@@ -460,15 +533,24 @@ export default function NewGamePage() {
               onChange={(e) => setNumTeams(parseInt(e.target.value))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              {Array.from({ length: 9 }, (_, i) => i + 2).map((num) => (
-                <option key={num} value={num}>
-                  {num} Teams
-                </option>
-              ))}
+              {gameType === 'pub_trivia'
+                ? Array.from({ length: maxPubTriviaPlayers - 1 }, (_, i) => i + 2).map((num) => (
+                    <option key={num} value={num}>{num} Players</option>
+                  ))
+                : Array.from({ length: 9 }, (_, i) => i + 2).map((num) => (
+                    <option key={num} value={num}>{num} Teams</option>
+                  ))
+              }
             </select>
+            {gameType === 'pub_trivia' && (
+              <p className="mt-1 text-sm text-gray-500">
+                Players join individually and enter their own name.
+              </p>
+            )}
           </div>
 
-          {/* Custom Team Names (Premium Only) */}
+          {/* Custom Team Names (Jeopardy + Premium Only) */}
+          {gameType === 'jeopardy' && (
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-gray-700">
@@ -501,8 +583,10 @@ export default function NewGamePage() {
                 : 'Upgrade to premium to use custom team names'}
             </p>
           </div>
+          )}
 
-          {/* Timer Configuration */}
+          {/* Timer Configuration — Jeopardy only */}
+          {gameType === 'jeopardy' && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Timer Settings
@@ -531,7 +615,6 @@ export default function NewGamePage() {
                     onChange={(e) => setTimerSeconds(parseInt(e.target.value))}
                     className="w-48 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value={5}>5 seconds</option>
                     <option value={10}>10 seconds</option>
                     <option value={15}>15 seconds</option>
                     <option value={30}>30 seconds</option>
@@ -540,8 +623,35 @@ export default function NewGamePage() {
               )}
             </div>
           </div>
+          )}
 
-          {/* Final Jeopardy Configuration */}
+          {/* Question Time Limit — Quick Fire only */}
+          {gameType === 'pub_trivia' && (
+          <div>
+            <label htmlFor="questionTimeSecs" className="block text-sm font-medium text-gray-700 mb-2">
+              Question Time Limit
+            </label>
+            <select
+              id="questionTimeSecs"
+              value={questionTimeSecs}
+              onChange={(e) => setQuestionTimeSecs(parseInt(e.target.value))}
+              className="w-48 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value={10}>10 seconds</option>
+              <option value={15}>15 seconds</option>
+              <option value={20}>20 seconds</option>
+              <option value={30}>30 seconds</option>
+              <option value={45}>45 seconds</option>
+              <option value={60}>60 seconds</option>
+            </select>
+            <p className="mt-1 text-sm text-gray-500">
+              How long players have to answer each question. Defaults to 20 seconds.
+            </p>
+          </div>
+          )}
+
+          {/* Final Jeopardy Configuration (Jeopardy only) */}
+          {gameType === 'jeopardy' && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Final Jeopardy
@@ -607,16 +717,29 @@ export default function NewGamePage() {
               )}
             </div>
           </div>
+          )}
 
           {/* Summary */}
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Game Summary</h3>
             <ul className="text-sm text-gray-600 space-y-1">
-              <li>• {numTeams} teams will join</li>
-              <li>• Timer: {timerEnabled ? `${timerSeconds} seconds` : 'Disabled'}</li>
-              <li>• 2 Daily Doubles will be randomly placed</li>
-              <li>• Final Jeopardy: {finalJeopardyEnabled ? `Yes (${finalJeopardyCategory || 'category TBD'})` : 'Not included'}</li>
-              <li>• Teams will need approval to join</li>
+              {gameType === 'pub_trivia' ? (
+                <>
+                  <li>• Up to {numTeams} individual players</li>
+                  <li>• Questions presented in random order (multiple choice)</li>
+                  <li>• {questionTimeSecs} seconds per question</li>
+                  <li>• Time-based scoring: faster answers earn more points</li>
+                  <li>• Wrong options eliminated as the timer progresses</li>
+                </>
+              ) : (
+                <>
+                  <li>• {numTeams} teams will join</li>
+                  <li>• Timer: {timerEnabled ? `${timerSeconds} seconds` : 'Disabled'}</li>
+                  <li>• 2 Daily Doubles will be randomly placed</li>
+                  <li>• Final Jeopardy: {finalJeopardyEnabled ? `Yes (${finalJeopardyCategory || 'category TBD'})` : 'Not included'}</li>
+                  <li>• Teams will need approval to join</li>
+                </>
+              )}
             </ul>
           </div>
 

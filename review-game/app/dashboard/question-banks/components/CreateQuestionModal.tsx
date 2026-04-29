@@ -41,6 +41,9 @@ export default function CreateQuestionModal({
     teacherNotes, setTeacherNotes,
     imageUrl, setImageUrl,
     imageAltText, setImageAltText,
+    mcOption1, setMcOption1,
+    mcOption2, setMcOption2,
+    mcOption3, setMcOption3,
     categoryError,
     questionTextError,
     answerTextError,
@@ -330,6 +333,35 @@ export default function CreateQuestionModal({
                       {imageAltTextError && <p className="mt-1 text-sm text-red-600">{imageAltTextError}</p>}
                     </div>
                   )}
+
+                  {/* Wrong Answers (Pub Trivia MC) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Wrong Answers for Quick Fire (optional)
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Fill all 3 to enable this question for Quick Fire multiple-choice mode.
+                    </p>
+                    <div className="space-y-2">
+                      {([
+                        { id: 'create-mc1', value: mcOption1, setter: setMcOption1, label: 'Wrong answer 1' },
+                        { id: 'create-mc2', value: mcOption2, setter: setMcOption2, label: 'Wrong answer 2' },
+                        { id: 'create-mc3', value: mcOption3, setter: setMcOption3, label: 'Wrong answer 3' },
+                      ] as const).map(({ id, value, setter, label }) => (
+                        <input
+                          key={id}
+                          id={id}
+                          type="text"
+                          value={value}
+                          onChange={(e) => setter(e.target.value)}
+                          placeholder={label}
+                          maxLength={QUESTION_VALIDATION.ANSWER_TEXT_MAX_LENGTH}
+                          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                          disabled={isSubmitting}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Error Display */}

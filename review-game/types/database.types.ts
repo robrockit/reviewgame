@@ -70,11 +70,15 @@ export type Database = {
           completed_at: string | null
           created_at: string | null
           current_phase: string | null
+          current_question_index: number
+          current_question_started_at: string | null
           daily_double_positions: Json | null
           final_jeopardy_question: Json | null
+          game_type: string
           final_jeopardy_question_revealed: boolean
           id: string
           num_teams: number
+          pub_trivia_question_order: Json | null
           selected_questions: string[] | null
           started_at: string | null
           status: string | null
@@ -89,11 +93,15 @@ export type Database = {
           completed_at?: string | null
           created_at?: string | null
           current_phase?: string | null
+          current_question_index?: number
+          current_question_started_at?: string | null
           daily_double_positions?: Json | null
           final_jeopardy_question?: Json | null
+          game_type?: string
           final_jeopardy_question_revealed?: boolean
           id?: string
           num_teams: number
+          pub_trivia_question_order?: Json | null
           selected_questions?: string[] | null
           started_at?: string | null
           status?: string | null
@@ -108,11 +116,15 @@ export type Database = {
           completed_at?: string | null
           created_at?: string | null
           current_phase?: string | null
+          current_question_index?: number
+          current_question_started_at?: string | null
           daily_double_positions?: Json | null
           final_jeopardy_question?: Json | null
+          game_type?: string
           final_jeopardy_question_revealed?: boolean
           id?: string
           num_teams?: number
+          pub_trivia_question_order?: Json | null
           selected_questions?: string[] | null
           started_at?: string | null
           status?: string | null
@@ -399,6 +411,64 @@ export type Database = {
           },
         ]
       }
+      pub_trivia_answers: {
+        Row: {
+          answer_text: string
+          answered_at: string
+          created_at: string
+          game_id: string
+          id: string
+          is_correct: boolean
+          player_id: string
+          points_earned: number
+          question_id: string
+        }
+        Insert: {
+          answer_text: string
+          answered_at?: string
+          created_at?: string
+          game_id: string
+          id?: string
+          is_correct?: boolean
+          player_id: string
+          points_earned?: number
+          question_id: string
+        }
+        Update: {
+          answer_text?: string
+          answered_at?: string
+          created_at?: string
+          game_id?: string
+          id?: string
+          is_correct?: boolean
+          player_id?: string
+          points_earned?: number
+          question_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pub_trivia_answers_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pub_trivia_answers_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pub_trivia_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       questions: {
         Row: {
           answer_text: string
@@ -409,6 +479,7 @@ export type Database = {
           image_alt_text: string | null
           image_size_mb: number | null
           image_url: string | null
+          mc_options: Json | null
           point_value: number
           position: number
           question_text: string
@@ -424,6 +495,7 @@ export type Database = {
           image_alt_text?: string | null
           image_size_mb?: number | null
           image_url?: string | null
+          mc_options?: Json | null
           point_value: number
           position: number
           question_text: string
@@ -439,6 +511,7 @@ export type Database = {
           image_alt_text?: string | null
           image_size_mb?: number | null
           image_url?: string | null
+          mc_options?: Json | null
           point_value?: number
           position?: number
           question_text?: string
@@ -520,6 +593,7 @@ export type Database = {
           game_id: string | null
           id: string
           last_seen: string | null
+          player_icon: string | null
           score: number | null
           team_name: string | null
           team_number: number
@@ -535,6 +609,7 @@ export type Database = {
           game_id?: string | null
           id?: string
           last_seen?: string | null
+          player_icon?: string | null
           score?: number | null
           team_name?: string | null
           team_number: number
@@ -550,6 +625,7 @@ export type Database = {
           game_id?: string | null
           id?: string
           last_seen?: string | null
+          player_icon?: string | null
           score?: number | null
           team_name?: string | null
           team_number?: number
@@ -687,6 +763,14 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      get_pub_trivia_answer_tally: {
+        Args: { p_game_id: string; p_question_id: string }
+        Returns: { answer_text: string; answer_count: number }[]
+      }
+      increment_pub_trivia_score: {
+        Args: { p_player_id: string; p_points_earned: number }
+        Returns: number
+      }
       join_game_atomic: {
         Args: { p_device_id: string; p_game_id: string }
         Returns: Json
