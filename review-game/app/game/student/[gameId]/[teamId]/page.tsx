@@ -183,6 +183,7 @@ export default function StudentGamePage() {
     // Reset at the start of each effect lifetime so React Strict Mode's
     // mount→unmount→remount cycle doesn't falsely trigger the reconnect path.
     isInitialGameSubRef.current = true;
+    let mounted = true;
 
     logger.info('Setting up real-time subscriptions for student view', {
       gameId,
@@ -247,7 +248,7 @@ export default function StudentGamePage() {
               .single()
               .then(({ data, error }) => {
                 if (error) logger.warn('Reconnect game refetch failed', { error, gameId, operation: 'reconnectRefetch' });
-                if (data) setGame(data as Game);
+                if (data && mounted) setGame(data as Game);
               });
             supabase
               .from('teams')
@@ -256,7 +257,7 @@ export default function StudentGamePage() {
               .single()
               .then(({ data, error }) => {
                 if (error) logger.warn('Reconnect team refetch failed', { error, teamId, operation: 'reconnectRefetch' });
-                if (data) setTeam(data as Team);
+                if (data && mounted) setTeam(data as Team);
               });
             // Reset transient broadcast state to safe defaults. We intentionally
             // do NOT reset currentQuestion because it is also read by the teacher's
@@ -305,6 +306,7 @@ export default function StudentGamePage() {
 
     // Cleanup
     return () => {
+      mounted = false;
       logger.info('Cleaning up subscriptions', {
         gameId,
         teamId,

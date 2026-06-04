@@ -118,8 +118,9 @@ export async function POST(
     // contains only answer_text — any non-exact submission gets a 400. Pub trivia
     // questions are required to have mc_options, so this is a data integrity guard.
     const mcOptions = Array.isArray(question.mc_options) ? (question.mc_options as string[]) : [];
+    const rawAnswer: string = question.answer_text ?? '';
     const validOptions = new Set<string>(
-      [...mcOptions, question.answer_text].map((o) => o.trim().toLowerCase())
+      [...mcOptions, rawAnswer].filter(Boolean).map((o) => o.trim().toLowerCase())
     );
     if (!validOptions.has(answerText.trim().toLowerCase())) {
       return NextResponse.json({ error: 'Invalid answer option' }, { status: 400 });

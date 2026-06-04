@@ -9,6 +9,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // 10 requests per 10s per IP — allows a student to refresh a few times but
 // blocks runaway rapid-refresh loops from hammering the DB.
 const stateRateLimiter = new RateLimiter(10_000, 10);
+// Clean up expired rate-limit entries every 60s. More frequent than the admin
+// rate limiter (5 min) because this endpoint has a shorter window (10s) and
+// students in an active game will generate more entries. The short window means
+// entries expire quickly and would accumulate fast without pruning.
 let _cleanupScheduled = false;
 if (typeof setInterval !== 'undefined' && !_cleanupScheduled) {
   _cleanupScheduled = true;
@@ -156,7 +160,8 @@ export async function GET(
     // so a fresh shuffle is safe for a reconnecting player.
     // Deduplicate in case mc_options already contains the correct answer (data entry error).
     const mcOptions = Array.isArray(question.mc_options) ? (question.mc_options as string[]) : [];
-    const allOptions = Array.from(new Set([...mcOptions, question.answer_text]));
+    const rawAnswer: string = question.answer_text ?? '';
+    const allOptions = Array.from(new Set([...mcOptions, rawAnswer].filter(Boolean)));
     for (let i = allOptions.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [allOptions[i], allOptions[j]] = [allOptions[j], allOptions[i]];
@@ -182,13 +187,17 @@ export async function GET(
       options: allOptions,
     };
 
-    logger.info('Pub trivia state recovered for reconnecting player', {
-      operation: 'getPubTriviaState',
-      gameId,
-      playerId,
-      phase,
-      questionId,
-    });
+    // Only reached when a question is active — phase is always 'question' or 'answered'
+    // here, never 'lobby' (lobby returns happen early above). Log only for 'question'
+    // to avoid info-level noise when a player who already answered refreshes.
+    if (phase === 'question') {
+      logger.info('Pub trivia state recovered for reconnecting player', {
+        operation: 'getPubTriviaState',
+        gameId,
+        playerId,
+        questionId,
+      });
+    }
 
     return NextResponse.json({
       phase,

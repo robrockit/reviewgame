@@ -28,6 +28,7 @@ export function ConnectionBanner({ status }: ConnectionBannerProps) {
     <div
       role="status"
       aria-live="polite"
+      aria-hidden={status !== 'disconnected'}
       className={`fixed top-0 left-0 right-0 z-50 bg-yellow-500 text-yellow-900 text-sm font-semibold text-center py-2 px-4 transition-opacity duration-300 ${
         status === 'disconnected' ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}

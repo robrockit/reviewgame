@@ -201,8 +201,8 @@ describe('Jeopardy student page — subscription reconnect (RG-187)', () => {
     expect(mockSetRevealedAnswer).toHaveBeenCalledWith(null);
   });
 
-  it('does NOT trigger store reset on second SUBSCRIBED after TIMED_OUT', async () => {
-    // Same behaviour as CHANNEL_ERROR — TIMED_OUT is also a real disconnect
+  it('triggers store reset on SUBSCRIBED after TIMED_OUT (same as CHANNEL_ERROR)', async () => {
+    // TIMED_OUT is a real disconnect — store should reset on the subsequent reconnect
     render(React.createElement(StudentPage));
     await act(async () => {});
 
