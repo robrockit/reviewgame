@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServiceClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { RateLimiter } from '@/lib/utils/rate-limiter';
-import type { PubTriviaQuestionForPlayer } from '@/types/pub-trivia';
+import type { PubTriviaQuestionForPlayer, PubTriviaStatePhase, PubTriviaStateResponse } from '@/types/pub-trivia';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -13,17 +13,6 @@ let _cleanupScheduled = false;
 if (typeof setInterval !== 'undefined' && !_cleanupScheduled) {
   _cleanupScheduled = true;
   setInterval(() => stateRateLimiter.cleanup(), 60_000);
-}
-
-type PubTriviaStatePhase = 'lobby' | 'question' | 'answered' | 'completed';
-
-export interface PubTriviaStateResponse {
-  phase: PubTriviaStatePhase;
-  score: number;
-  question?: PubTriviaQuestionForPlayer;
-  durationMs?: number;
-  /** Epoch ms when the current question round started. */
-  startedAt?: number;
 }
 
 /**
@@ -69,9 +58,11 @@ export async function GET(
       );
     }
 
+    // Prefer x-real-ip (set by Vercel's CDN edge, not spoofable) over
+    // x-forwarded-for (client-controlled, can be set to any value).
     const ip =
-      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
       req.headers.get('x-real-ip') ??
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
       'unknown';
     if (stateRateLimiter.isRateLimited(ip)) {
       return NextResponse.json({ error: 'Too many requests' }, { status: 429 });

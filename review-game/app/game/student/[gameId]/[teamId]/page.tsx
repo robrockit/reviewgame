@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { BuzzButton, BuzzButtonState } from '@/components/student/BuzzButton';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import { useGameStore } from '@/lib/stores/gameStore';
-import { ConnectionBanner } from '@/components/ui/ConnectionBanner';
+import { ConnectionBanner, BANNER_OFFSET_CLASS } from '@/components/ui/ConnectionBanner';
 import type { Tables } from '@/types/database.types';
 import { logger } from '@/lib/logger';
 import { useDeviceId } from '@/hooks/useDeviceId';
@@ -497,9 +497,11 @@ export default function StudentGamePage() {
     );
   }
 
+  const bannerOffset = connectionStatus !== 'connecting' ? ` ${BANNER_OFFSET_CLASS}` : '';
+
   // Render active game interface
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+    <div className={`min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50${bannerOffset}`}>
       <ConnectionBanner status={connectionStatus} />
       <div className="container mx-auto px-4 py-8">
         {/* Header - Team Info */}

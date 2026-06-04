@@ -221,9 +221,10 @@ export async function middleware(req: NextRequest) {
     // Admin route protection
     if (req.nextUrl.pathname.startsWith('/admin')) {
       // Rate limiting for admin routes
+      // Prefer x-real-ip (set by Vercel's CDN edge, not spoofable).
       const ip =
-        req.headers.get('x-forwarded-for')?.split(',')[0] ||
         req.headers.get('x-real-ip') ||
+        req.headers.get('x-forwarded-for')?.split(',')[0] ||
         'unknown';
 
       if (adminRateLimiter.isRateLimited(ip)) {

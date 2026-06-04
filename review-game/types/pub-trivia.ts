@@ -184,3 +184,17 @@ export interface QuestionEndResponse {
   results: PubTriviaRoundResult[];
   hasNextQuestion: boolean;
 }
+
+// ─── Reconnect state recovery ─────────────────────────────────────────────────
+
+export type PubTriviaStatePhase = 'lobby' | 'question' | 'answered' | 'completed';
+
+/** Response shape for GET /api/games/[gameId]/pub-trivia/state */
+export interface PubTriviaStateResponse {
+  phase: PubTriviaStatePhase;
+  score: number;
+  question?: PubTriviaQuestionForPlayer;
+  durationMs?: number;
+  /** Epoch ms when the current question round started. */
+  startedAt?: number;
+}

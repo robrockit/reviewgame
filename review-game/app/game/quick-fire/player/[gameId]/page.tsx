@@ -7,7 +7,7 @@ import { getDeviceId } from '@/hooks/useDeviceId';
 import { logger } from '@/lib/logger';
 import { IconPicker } from '@/components/pub-trivia/IconPicker';
 import { calcPointsEarned } from '@/types/pub-trivia';
-import type { PubTriviaQuestionForPlayer, PubTriviaRoundResult } from '@/types/pub-trivia';
+import type { PubTriviaQuestionForPlayer, PubTriviaRoundResult, PubTriviaStateResponse } from '@/types/pub-trivia';
 import { ConnectionBanner, BANNER_OFFSET_CLASS } from '@/components/ui/ConnectionBanner';
 
 type Phase =
@@ -116,13 +116,7 @@ export default function PubTriviaPlayerPage() {
               );
               if (cancelled) return;
               if (res.ok) {
-                const data = await res.json() as {
-                  phase: 'lobby' | 'question' | 'answered' | 'completed';
-                  score: number;
-                  question?: PubTriviaQuestionForPlayer;
-                  durationMs?: number;
-                  startedAt?: number;
-                };
+                const data = await res.json() as PubTriviaStateResponse;
                 setMyScore(data.score);
                 if (data.phase === 'completed') {
                   setPhase('completed');
@@ -475,7 +469,9 @@ export default function PubTriviaPlayerPage() {
   }
 
   const disconnectBanner = <ConnectionBanner status={connectionStatus} />;
-  const bannerOffset = connectionStatus === 'disconnected' ? ` ${BANNER_OFFSET_CLASS}` : '';
+  // Reserve space once connected (not just when disconnected) so the layout
+  // doesn't jump when the banner appears or dismisses mid-game.
+  const bannerOffset = connectionStatus !== 'connecting' ? ` ${BANNER_OFFSET_CLASS}` : '';
 
   // ── LOBBY (waiting for teacher to start) ──────────────────────────────────
   if (phase === 'lobby') {
