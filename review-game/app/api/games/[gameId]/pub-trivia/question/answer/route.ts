@@ -169,10 +169,14 @@ export async function POST(
     });
 
     if (scoreError) {
-      logger.error('Failed to update player score', scoreError, {
+      // The answer row was inserted but the score RPC failed — player's DB score is
+      // stale. Manual fix: UPDATE teams SET score = score + <pointsEarned> WHERE id = playerId.
+      // Search Sentry for reconcile_needed:true to find affected rows.
+      logger.error('Failed to update player score after answer insert', scoreError, {
         operation: 'submitPubTriviaAnswer',
         gameId,
         playerId,
+        pointsEarned,
         reconcile_needed: true,
       });
     }

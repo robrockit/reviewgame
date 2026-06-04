@@ -9,15 +9,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // 10 requests per 10s per IP — allows a student to refresh a few times but
 // blocks runaway rapid-refresh loops from hammering the DB.
 const stateRateLimiter = new RateLimiter(10_000, 10);
-// Clean up expired rate-limit entries every 60s. More frequent than the admin
-// rate limiter (5 min) because this endpoint has a shorter window (10s) and
-// students in an active game will generate more entries. The short window means
-// entries expire quickly and would accumulate fast without pruning.
-let _cleanupScheduled = false;
-if (typeof setInterval !== 'undefined' && !_cleanupScheduled) {
-  _cleanupScheduled = true;
-  setInterval(() => stateRateLimiter.cleanup(), 60_000);
-}
+// No cleanup interval: unlike middleware.ts (which runs in a long-lived edge
+// runtime), this route is a serverless function that Vercel recycles after
+// each cold-start period — typically well under 60s. A setInterval would fire
+// at most once before recycling, making it a no-op. At classroom scale
+// (≤ 30 students × 10 req / 10s window) the map stays small and the 10s
+// window means entries expire naturally with each new request.
 
 /**
  * GET /api/games/[gameId]/pub-trivia/state?playerId=<uuid>&deviceId=<uuid>
@@ -139,6 +136,15 @@ export async function GET(
     }
 
     const index = game.current_question_index ?? 0;
+    if (index >= questionOrder.length) {
+      logger.warn('current_question_index out of bounds — data integrity issue', {
+        operation: 'getPubTriviaState',
+        gameId,
+        index,
+        orderLength: questionOrder.length,
+      });
+      return NextResponse.json({ phase: 'lobby', score } satisfies PubTriviaStateResponse);
+    }
     const questionId = questionOrder[index];
 
     const { data: question, error: qError } = await serviceClient

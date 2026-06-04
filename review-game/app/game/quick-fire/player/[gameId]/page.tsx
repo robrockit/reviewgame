@@ -91,8 +91,13 @@ export default function PubTriviaPlayerPage() {
     try {
       const stored = localStorage.getItem(PLAYER_KEY(gameId));
       if (stored) {
-        const { playerId: pid, playerName: pname, playerIcon: picon, approvalStatus: cs, score: storedScore } =
-          JSON.parse(stored) as StoredPlayer;
+        // Migration: entries written before the approvalStatus rename may still carry
+        // connectionStatus. Read both and prefer the new key so pre-deploy players
+        // aren't sent back to pending_approval during a live game rollout.
+        type LegacyStoredPlayer = StoredPlayer & { connectionStatus?: StoredPlayer['approvalStatus'] };
+        const parsed = JSON.parse(stored) as LegacyStoredPlayer;
+        const { playerId: pid, playerName: pname, playerIcon: picon, score: storedScore } = parsed;
+        const cs: StoredPlayer['approvalStatus'] = parsed.approvalStatus ?? parsed.connectionStatus ?? 'pending';
 
         setPlayerId(pid);
         playerIdRef.current = pid;
