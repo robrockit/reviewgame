@@ -478,7 +478,7 @@ export default function PubTriviaPlayerPage() {
   // ── LOBBY (waiting for teacher to start) ──────────────────────────────────
   if (phase === 'lobby') {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4">
+      <div className={`min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4${connectionStatus === 'disconnected' ? ' pt-10' : ''}`}>
         {disconnectBanner}
         <div className="text-center text-white">
           <div className="text-4xl font-bold mb-3">{playerName}</div>
@@ -609,7 +609,7 @@ export default function PubTriviaPlayerPage() {
     const myResult = roundResults.find((r) => r.playerId === playerId);
 
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 gap-5">
+      <div className={`min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 gap-5${connectionStatus === 'disconnected' ? ' pt-10' : ''}`}>
         {disconnectBanner}
         {/* My result */}
         <div

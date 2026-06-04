@@ -20,6 +20,14 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+// Always allow in unit tests — rate limiting is tested at integration level
+vi.mock('@/lib/utils/rate-limiter', () => ({
+  RateLimiter: class {
+    isRateLimited() { return false; }
+    cleanup() {}
+  },
+}));
+
 const mockCreateAdminServiceClient = vi.fn();
 
 // ---------------------------------------------------------------------------

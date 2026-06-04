@@ -28,70 +28,10 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
+import { RateLimiter } from '@/lib/utils/rate-limiter';
 
-/**
- * Simple in-memory rate limiter for admin routes.
- *
- * This provides basic protection against brute force attacks and credential stuffing.
- * In production, consider using a distributed rate limiter with Redis or a service
- * like Vercel Rate Limit API.
- *
- * Configuration:
- * - Window: 15 minutes (900,000 ms)
- * - Max requests per window: 20 requests
- * - Applies only to /admin routes
- */
-class RateLimiter {
-  private requests: Map<string, { count: number; resetAt: number }> = new Map();
-  private readonly windowMs = 15 * 60 * 1000; // 15 minutes
-  private readonly maxRequests = 20;
-
-  /**
-   * Checks if a request from the given IP should be rate limited.
-   *
-   * @param ip - The IP address to check
-   * @returns {boolean} True if rate limit exceeded, false otherwise
-   */
-  public isRateLimited(ip: string): boolean {
-    const now = Date.now();
-    const record = this.requests.get(ip);
-
-    // No record or window expired - allow and create new record
-    if (!record || now > record.resetAt) {
-      this.requests.set(ip, {
-        count: 1,
-        resetAt: now + this.windowMs,
-      });
-      return false;
-    }
-
-    // Increment count
-    record.count++;
-
-    // Check if limit exceeded
-    if (record.count > this.maxRequests) {
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Cleans up expired entries from the rate limit map.
-   * Should be called periodically to prevent memory leaks.
-   */
-  public cleanup(): void {
-    const now = Date.now();
-    for (const [ip, record] of this.requests.entries()) {
-      if (now > record.resetAt) {
-        this.requests.delete(ip);
-      }
-    }
-  }
-}
-
-// Global rate limiter instance
-const adminRateLimiter = new RateLimiter();
+// 20 requests per 15-minute window for admin routes
+const adminRateLimiter = new RateLimiter(15 * 60 * 1000, 20);
 
 // Cleanup expired entries every 5 minutes
 if (typeof setInterval !== 'undefined') {

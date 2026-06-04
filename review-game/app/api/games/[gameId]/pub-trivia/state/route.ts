@@ -1,9 +1,17 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServiceClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
+import { RateLimiter } from '@/lib/utils/rate-limiter';
 import type { PubTriviaQuestionForPlayer } from '@/types/pub-trivia';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// 10 requests per 10s per IP — allows a student to refresh a few times but
+// blocks runaway rapid-refresh loops from hammering the DB.
+const stateRateLimiter = new RateLimiter(10_000, 10);
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => stateRateLimiter.cleanup(), 60_000);
+}
 
 type PubTriviaStatePhase = 'lobby' | 'question' | 'answered' | 'completed';
 
@@ -57,6 +65,14 @@ export async function GET(
         { error: 'deviceId query param is required and must be a valid UUID' },
         { status: 400 }
       );
+    }
+
+    const ip =
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+      req.headers.get('x-real-ip') ??
+      'unknown';
+    if (stateRateLimiter.isRateLimited(ip)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
     }
 
     const serviceClient = createAdminServiceClient();

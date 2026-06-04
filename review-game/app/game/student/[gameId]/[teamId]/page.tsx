@@ -180,6 +180,10 @@ export default function StudentGamePage() {
   useEffect(() => {
     if (!gameId || !teamId) return;
 
+    // Reset at the start of each effect lifetime so React Strict Mode's
+    // mount→unmount→remount cycle doesn't falsely trigger the reconnect path.
+    isInitialGameSubRef.current = true;
+
     logger.info('Setting up real-time subscriptions for student view', {
       gameId,
       teamId,
@@ -238,7 +242,7 @@ export default function StudentGamePage() {
             });
             supabase
               .from('games')
-              .select('*')
+              .select('id, status, bank_id, num_teams, teacher_id')
               .eq('id', gameId)
               .single()
               .then(({ data, error }) => {
@@ -247,7 +251,7 @@ export default function StudentGamePage() {
               });
             supabase
               .from('teams')
-              .select('*')
+              .select('id, game_id, team_number, team_name, score, connection_status')
               .eq('id', teamId)
               .single()
               .then(({ data, error }) => {
