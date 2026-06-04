@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger';
 import { IconPicker } from '@/components/pub-trivia/IconPicker';
 import { calcPointsEarned } from '@/types/pub-trivia';
 import type { PubTriviaQuestionForPlayer, PubTriviaRoundResult } from '@/types/pub-trivia';
+import { ConnectionBanner } from '@/components/ui/ConnectionBanner';
 
 type Phase =
   | 'loading'
@@ -105,8 +106,12 @@ export default function PubTriviaPlayerPage() {
           (async () => {
             try {
               const currentDeviceId = getDeviceId();
+              if (!currentDeviceId) {
+                if (!cancelled) setPhase('lobby');
+                return;
+              }
               const res = await fetch(
-                `/api/games/${gameId}/pub-trivia/state?playerId=${pid}&deviceId=${currentDeviceId ?? ''}`
+                `/api/games/${gameId}/pub-trivia/state?playerId=${pid}&deviceId=${currentDeviceId}`
               );
               if (cancelled) return;
               if (res.ok) {
@@ -468,11 +473,7 @@ export default function PubTriviaPlayerPage() {
     );
   }
 
-  const disconnectBanner = connectionStatus === 'disconnected' ? (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-500 text-yellow-900 text-sm font-semibold text-center py-2 px-4">
-      Connection lost — attempting to reconnect…
-    </div>
-  ) : null;
+  const disconnectBanner = <ConnectionBanner status={connectionStatus} />;
 
   // ── LOBBY (waiting for teacher to start) ──────────────────────────────────
   if (phase === 'lobby') {

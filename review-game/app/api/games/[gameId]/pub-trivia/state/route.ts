@@ -17,15 +17,19 @@ export interface PubTriviaStateResponse {
 }
 
 /**
- * GET /api/games/[gameId]/pub-trivia/state?playerId=<uuid>
+ * GET /api/games/[gameId]/pub-trivia/state?playerId=<uuid>&deviceId=<uuid>
  *
  * Returns the current game phase and question (if active) for a reconnecting player.
  * Called by the player page when restoring state from localStorage after a refresh or
  * disconnect, so the player rejoins mid-game in the correct phase rather than being
  * stuck on the lobby screen.
  *
- * If a question is active, options are reshuffled — this is safe because answer
- * comparison is by answer_text, not option index.
+ * Security: deviceId is verified against teams.device_id before any payload is returned.
+ * A null stored device_id (player joined before device binding was enforced) returns 401
+ * rather than silently succeeding or silently 403-ing — the caller falls back to 'lobby'.
+ *
+ * If a question is active, options are reshuffled — safe because answer comparison is by
+ * answer_text, not option index.
  */
 export async function GET(
   req: NextRequest,
@@ -57,13 +61,25 @@ export async function GET(
 
     const serviceClient = createAdminServiceClient();
 
-    const { data: game, error: gameError } = await serviceClient
-      .from('games')
-      .select(
-        'status, game_type, current_question_index, pub_trivia_question_order, current_question_started_at, timer_seconds'
-      )
-      .eq('id', gameId)
-      .single();
+    // Fetch game and player in parallel — independent queries.
+    const [
+      { data: game, error: gameError },
+      { data: player, error: playerError },
+    ] = await Promise.all([
+      serviceClient
+        .from('games')
+        .select(
+          'status, game_type, current_question_index, pub_trivia_question_order, current_question_started_at, timer_seconds'
+        )
+        .eq('id', gameId)
+        .single(),
+      serviceClient
+        .from('teams')
+        .select('score, device_id')
+        .eq('id', playerId)
+        .eq('game_id', gameId)
+        .single(),
+    ]);
 
     if (gameError || !game) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 });
@@ -71,16 +87,19 @@ export async function GET(
     if (game.game_type !== 'pub_trivia') {
       return NextResponse.json({ error: 'Not a pub trivia game' }, { status: 400 });
     }
-
-    const { data: player, error: playerError } = await serviceClient
-      .from('teams')
-      .select('score, device_id')
-      .eq('id', playerId)
-      .eq('game_id', gameId)
-      .single();
-
     if (playerError || !player) {
       return NextResponse.json({ error: 'Player not found in this game' }, { status: 404 });
+    }
+
+    // Verify device ownership. A null stored device_id means the player joined before
+    // device binding was enforced — treat as unbound rather than silently 403-ing.
+    if (player.device_id === null) {
+      logger.warn('Player has no stored device_id during state recovery', {
+        operation: 'getPubTriviaState',
+        gameId,
+        playerId,
+      });
+      return NextResponse.json({ error: 'Device not bound to this player' }, { status: 401 });
     }
     if (player.device_id !== deviceId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

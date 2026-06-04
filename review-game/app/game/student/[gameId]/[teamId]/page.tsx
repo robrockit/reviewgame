@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { BuzzButton, BuzzButtonState } from '@/components/student/BuzzButton';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import { useGameStore } from '@/lib/stores/gameStore';
+import { ConnectionBanner } from '@/components/ui/ConnectionBanner';
 import type { Tables } from '@/types/database.types';
 import { logger } from '@/lib/logger';
 import { useDeviceId } from '@/hooks/useDeviceId';
@@ -240,13 +241,19 @@ export default function StudentGamePage() {
               .select('*')
               .eq('id', gameId)
               .single()
-              .then(({ data }) => { if (data) setGame(data as Game); });
+              .then(({ data, error }) => {
+                if (error) logger.warn('Reconnect game refetch failed', { error, gameId, operation: 'reconnectRefetch' });
+                if (data) setGame(data as Game);
+              });
             supabase
               .from('teams')
               .select('*')
               .eq('id', teamId)
               .single()
-              .then(({ data }) => { if (data) setTeam(data as Team); });
+              .then(({ data, error }) => {
+                if (error) logger.warn('Reconnect team refetch failed', { error, teamId, operation: 'reconnectRefetch' });
+                if (data) setTeam(data as Team);
+              });
             // Reset transient broadcast state to safe defaults. We intentionally
             // do NOT reset currentQuestion because it is also read by the teacher's
             // board page (shared Zustand singleton in same browser process). Clearing
@@ -487,11 +494,7 @@ export default function StudentGamePage() {
   // Render active game interface
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
-      {connectionStatus === 'disconnected' && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-500 text-yellow-900 text-sm font-semibold text-center py-2 px-4">
-          Connection lost — attempting to reconnect…
-        </div>
-      )}
+      <ConnectionBanner status={connectionStatus} />
       <div className="container mx-auto px-4 py-8">
         {/* Header - Team Info */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
