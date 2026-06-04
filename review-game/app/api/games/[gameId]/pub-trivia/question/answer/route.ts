@@ -104,12 +104,26 @@ export async function POST(
 
     const { data: question, error: qError } = await serviceClient
       .from('questions')
-      .select('id, answer_text')
+      .select('id, answer_text, mc_options')
       .eq('id', questionId)
       .single();
 
     if (qError || !question) {
       return NextResponse.json({ error: 'Question not found' }, { status: 500 });
+    }
+
+    // Reject answers that are not one of the four offered options. This prevents
+    // arbitrary strings from polluting the teacher's live tally display.
+    // If mc_options is null (free-text question accidentally routed here), validOptions
+    // contains only answer_text — any non-exact submission gets a 400. Pub trivia
+    // questions are required to have mc_options, so this is a data integrity guard.
+    const mcOptions = Array.isArray(question.mc_options) ? (question.mc_options as string[]) : [];
+    const rawAnswer: string = question.answer_text ?? '';
+    const validOptions = new Set<string>(
+      [...mcOptions, rawAnswer].filter(Boolean).map((o) => o.trim().toLowerCase())
+    );
+    if (!validOptions.has(answerText.trim().toLowerCase())) {
+      return NextResponse.json({ error: 'Invalid answer option' }, { status: 400 });
     }
 
     // Compute time-based score (server-side, immune to client clock manipulation)
@@ -155,12 +169,16 @@ export async function POST(
     });
 
     if (scoreError) {
-      logger.error('Failed to update player score', scoreError, {
+      // The answer row was inserted but the score RPC failed — player's DB score is
+      // stale. Manual fix: UPDATE teams SET score = score + <pointsEarned> WHERE id = playerId.
+      // Search Sentry for reconcile_needed:true to find affected rows.
+      logger.error('Failed to update player score after answer insert', scoreError, {
         operation: 'submitPubTriviaAnswer',
         gameId,
         playerId,
+        pointsEarned,
+        reconcile_needed: true,
       });
-      // Non-fatal: answer is already recorded; score update can be reconciled
     }
 
     const totalScore = (newScoreData as number | null) ?? ((player.score ?? 0) + pointsEarned);

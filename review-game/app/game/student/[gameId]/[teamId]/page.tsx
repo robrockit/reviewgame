@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { BuzzButton, BuzzButtonState } from '@/components/student/BuzzButton';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import { useGameStore } from '@/lib/stores/gameStore';
+import { ConnectionBanner, BANNER_OFFSET_CLASS } from '@/components/ui/ConnectionBanner';
 import type { Tables } from '@/types/database.types';
 import { logger } from '@/lib/logger';
 import { useDeviceId } from '@/hooks/useDeviceId';
@@ -29,6 +30,8 @@ export default function StudentGamePage() {
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [teamClaimed, setTeamClaimed] = useState(false);
   const [claimAttempted, setClaimAttempted] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const isInitialGameSubRef = useRef(true);
 
   // Get device ID for authentication
   const deviceId = useDeviceId();
@@ -177,6 +180,11 @@ export default function StudentGamePage() {
   useEffect(() => {
     if (!gameId || !teamId) return;
 
+    // Reset at the start of each effect lifetime so React Strict Mode's
+    // mount→unmount→remount cycle doesn't falsely trigger the reconnect path.
+    isInitialGameSubRef.current = true;
+    let mounted = true;
+
     logger.info('Setting up real-time subscriptions for student view', {
       gameId,
       teamId,
@@ -221,6 +229,51 @@ export default function StudentGamePage() {
           status,
           operation: 'gameChannelSubscription',
         });
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('connected');
+          if (!isInitialGameSubRef.current) {
+            // Reconnect: re-fetch game and team data to catch any DB changes missed
+            // during the disconnect. Also clear the Zustand store's question and buzz
+            // queue since broadcasts fired during the outage are gone — the teacher
+            // advancing to the next question will re-populate them.
+            logger.info('Reconnected — re-fetching game and team state', {
+              gameId,
+              teamId,
+              operation: 'reconnectRefetch',
+            });
+            supabase
+              .from('games')
+              .select('id, status, bank_id, num_teams, teacher_id')
+              .eq('id', gameId)
+              .single()
+              .then(({ data, error }) => {
+                if (error) logger.warn('Reconnect game refetch failed', { error, gameId, operation: 'reconnectRefetch' });
+                if (data && mounted) setGame(data as Game);
+              });
+            supabase
+              .from('teams')
+              .select('id, game_id, team_number, team_name, score, connection_status')
+              .eq('id', teamId)
+              .single()
+              .then(({ data, error }) => {
+                if (error) logger.warn('Reconnect team refetch failed', { error, teamId, operation: 'reconnectRefetch' });
+                if (data && mounted) setTeam(data as Team);
+              });
+            // Reset transient broadcast state to safe defaults. We intentionally
+            // do NOT reset currentQuestion because it is also read by the teacher's
+            // board page (shared Zustand singleton in same browser process). Clearing
+            // the buzz queue and revealed answer is safe since these are ephemeral
+            // per-question state that the teacher can reset via normal controls.
+            const store = useGameStore.getState();
+            store.clearBuzzQueue();
+            store.setRevealedAnswer(null);
+          }
+          isInitialGameSubRef.current = false;
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          // CLOSED intentionally omitted: it fires on removeChannel() during normal
+          // cleanup and would trigger a setState-on-unmounted-component warning in dev.
+          setConnectionStatus('disconnected');
+        }
       });
 
     // Subscribe to team updates (for score changes)
@@ -253,6 +306,7 @@ export default function StudentGamePage() {
 
     // Cleanup
     return () => {
+      mounted = false;
       logger.info('Cleaning up subscriptions', {
         gameId,
         teamId,
@@ -445,9 +499,12 @@ export default function StudentGamePage() {
     );
   }
 
+  const bannerOffset = connectionStatus !== 'connecting' ? ` ${BANNER_OFFSET_CLASS}` : '';
+
   // Render active game interface
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+    <div className={`min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50${bannerOffset}`}>
+      <ConnectionBanner status={connectionStatus} />
       <div className="container mx-auto px-4 py-8">
         {/* Header - Team Info */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8">

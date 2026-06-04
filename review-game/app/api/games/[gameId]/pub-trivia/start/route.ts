@@ -131,8 +131,10 @@ export async function POST(
       );
     }
 
-    // Persist shuffled order and start the game
-    const { error: updateError } = await serviceClient
+    // Persist shuffled order and start the game — conditional on status='setup' to
+    // prevent a double-click race where two concurrent requests both pass the status
+    // check above but the second silently overwrites the first's question order.
+    const { data: updatedRows, error: updateError } = await serviceClient
       .from('games')
       .update({
         status: 'in_progress',
@@ -140,7 +142,9 @@ export async function POST(
         current_question_index: 0,
         started_at: new Date().toISOString(),
       })
-      .eq('id', gameId);
+      .eq('id', gameId)
+      .eq('status', 'setup')
+      .select('id');
 
     if (updateError) {
       logger.error('Failed to start pub trivia game', updateError, {
@@ -148,6 +152,10 @@ export async function POST(
         gameId,
       });
       return NextResponse.json({ error: 'Failed to start game' }, { status: 500 });
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      return NextResponse.json({ error: 'Game has already started' }, { status: 409 });
     }
 
     logger.info('Pub trivia game started', {

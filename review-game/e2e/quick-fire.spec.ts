@@ -342,3 +342,94 @@ test.describe('quick fire — game flow', () => {
     ).toBeVisible({ timeout: 10_000 });
   });
 });
+
+// ─── Reconnect / state recovery (RG-186) ─────────────────────────────────────
+
+test.describe('quick fire — state recovery on refresh', () => {
+  /**
+   * Verifies that a player who refreshes the page while a question is active
+   * is restored to the question UI (not stuck on the lobby screen).
+   *
+   * This tests the GET /api/games/[gameId]/pub-trivia/state reconnect path.
+   */
+  test('refreshing during an active question restores the question UI', async ({
+    teacherPage,
+    anonymousPage,
+  }) => {
+    test.setTimeout(90_000);
+
+    const gameId = await createQuickFireGame(teacherPage);
+    await joinQuickFireGame(anonymousPage, gameId, 'RefreshPlayer');
+
+    // Teacher approves the player
+    await expect(teacherPage.locator('text=RefreshPlayer')).toBeVisible({ timeout: 15_000 });
+    await teacherPage.locator('button', { hasText: 'Approve' }).first().click();
+    await expect(anonymousPage.locator("text=You're in!")).toBeVisible({ timeout: 15_000 });
+
+    // Teacher starts the game and the first question
+    await teacherPage.locator('button', { hasText: /Start Game/ }).click();
+    await expect(
+      teacherPage.locator('button', { hasText: 'Start Question' }),
+    ).toBeVisible({ timeout: 10_000 });
+    await teacherPage.locator('button', { hasText: 'Start Question' }).click();
+
+    // Confirm the student sees the active question UI before refreshing
+    await expect(anonymousPage.locator('text=A.').first()).toBeVisible({ timeout: 15_000 });
+
+    // Simulate a full page refresh (localStorage is preserved — same as a real browser reload)
+    await anonymousPage.reload();
+
+    // After the reload the state API should return phase:'question' and the player
+    // should land directly on the question UI, not the lobby spinner.
+    await expect(
+      anonymousPage.locator('text=A.').first(),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // The lobby "Waiting for teacher" message must NOT be visible
+    await expect(
+      anonymousPage.locator('text=Waiting for the teacher to start'),
+    ).not.toBeVisible();
+  });
+
+  /**
+   * Verifies that a player who refreshes the page when no question is active
+   * (between rounds or before the game starts) stays on the lobby screen.
+   *
+   * This confirms the state API fallback path (no active question → 'lobby')
+   * doesn't produce a broken UI.
+   */
+  test('refreshing between questions stays on lobby screen', async ({
+    teacherPage,
+    anonymousPage,
+  }) => {
+    test.setTimeout(60_000);
+
+    const gameId = await createQuickFireGame(teacherPage);
+    await joinQuickFireGame(anonymousPage, gameId, 'LobbyRefresher');
+
+    // Teacher approves and starts the game (player reaches lobby, no question yet)
+    await expect(teacherPage.locator('text=LobbyRefresher')).toBeVisible({ timeout: 15_000 });
+    await teacherPage.locator('button', { hasText: 'Approve' }).first().click();
+    await expect(anonymousPage.locator("text=You're in!")).toBeVisible({ timeout: 15_000 });
+
+    await teacherPage.locator('button', { hasText: /Start Game/ }).click();
+    await expect(
+      teacherPage.locator('button', { hasText: 'Start Question' }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // No question has been started — player is in the lobby
+    await expect(
+      anonymousPage.locator('text=Waiting for the teacher to start'),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Reload — state API returns phase:'lobby' (current_question_started_at is null)
+    await anonymousPage.reload();
+
+    await expect(
+      anonymousPage.locator('text=Waiting for the teacher to start'),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // No question UI should have appeared
+    await expect(anonymousPage.locator('text=A.').first()).not.toBeVisible();
+  });
+});
