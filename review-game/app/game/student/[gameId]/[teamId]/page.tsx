@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { BuzzButton, BuzzButtonState } from '@/components/student/BuzzButton';
@@ -29,6 +29,8 @@ export default function StudentGamePage() {
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [teamClaimed, setTeamClaimed] = useState(false);
   const [claimAttempted, setClaimAttempted] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const isInitialGameSubRef = useRef(true);
 
   // Get device ID for authentication
   const deviceId = useDeviceId();
@@ -221,6 +223,41 @@ export default function StudentGamePage() {
           status,
           operation: 'gameChannelSubscription',
         });
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('connected');
+          if (!isInitialGameSubRef.current) {
+            // Reconnect: re-fetch game and team data to catch any DB changes missed
+            // during the disconnect. Also clear the Zustand store's question and buzz
+            // queue since broadcasts fired during the outage are gone — the teacher
+            // advancing to the next question will re-populate them.
+            logger.info('Reconnected — re-fetching game and team state', {
+              gameId,
+              teamId,
+              operation: 'reconnectRefetch',
+            });
+            supabase
+              .from('games')
+              .select('*')
+              .eq('id', gameId)
+              .single()
+              .then(({ data }) => { if (data) setGame(data as Game); });
+            supabase
+              .from('teams')
+              .select('*')
+              .eq('id', teamId)
+              .single()
+              .then(({ data }) => { if (data) setTeam(data as Team); });
+            // Reset in-memory broadcast state to safe defaults — stale data is worse
+            // than showing "Waiting for question" until the teacher advances.
+            const store = useGameStore.getState();
+            store.setCurrentQuestion(null);
+            store.clearBuzzQueue();
+            store.setRevealedAnswer(null);
+          }
+          isInitialGameSubRef.current = false;
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setConnectionStatus('disconnected');
+        }
       });
 
     // Subscribe to team updates (for score changes)
@@ -448,6 +485,11 @@ export default function StudentGamePage() {
   // Render active game interface
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+      {connectionStatus === 'disconnected' && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-500 text-yellow-900 text-sm font-semibold text-center py-2 px-4">
+          Connection lost — attempting to reconnect…
+        </div>
+      )}
       <div className="container mx-auto px-4 py-8">
         {/* Header - Team Info */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-8">

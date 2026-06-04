@@ -104,12 +104,21 @@ export async function POST(
 
     const { data: question, error: qError } = await serviceClient
       .from('questions')
-      .select('id, answer_text')
+      .select('id, answer_text, mc_options')
       .eq('id', questionId)
       .single();
 
     if (qError || !question) {
       return NextResponse.json({ error: 'Question not found' }, { status: 500 });
+    }
+
+    // Reject answers that are not one of the four offered options. This prevents
+    // arbitrary strings from polluting the teacher's live tally display.
+    const validOptions = new Set<string>(
+      [...(question.mc_options as string[] ?? []), question.answer_text].map((o) => o.trim().toLowerCase())
+    );
+    if (!validOptions.has(answerText.trim().toLowerCase())) {
+      return NextResponse.json({ error: 'Invalid answer option' }, { status: 400 });
     }
 
     // Compute time-based score (server-side, immune to client clock manipulation)
@@ -159,8 +168,8 @@ export async function POST(
         operation: 'submitPubTriviaAnswer',
         gameId,
         playerId,
+        reconcile_needed: true,
       });
-      // Non-fatal: answer is already recorded; score update can be reconciled
     }
 
     const totalScore = (newScoreData as number | null) ?? ((player.score ?? 0) + pointsEarned);

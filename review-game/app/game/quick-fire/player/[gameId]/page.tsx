@@ -27,6 +27,7 @@ interface StoredPlayer {
   playerName: string;
   playerIcon: string | null;
   connectionStatus: 'pending' | 'connected';
+  score?: number;
 }
 
 export default function PubTriviaPlayerPage() {
@@ -36,6 +37,7 @@ export default function PubTriviaPlayerPage() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
   // Player identity
   const [playerId, setPlayerId] = useState<string | null>(null);
@@ -77,26 +79,75 @@ export default function PubTriviaPlayerPage() {
   useEffect(() => { questionStartedAtRef.current = questionStartedAt; }, [questionStartedAt]);
   useEffect(() => { questionDurationMsRef.current = questionDurationMs; }, [questionDurationMs]);
 
-  // Check localStorage for existing player identity on mount
+  // Check localStorage for existing player identity on mount. For connected players,
+  // call the state API to recover the current phase and score rather than assuming 'lobby'.
   useEffect(() => {
     if (!gameId) return;
+    let cancelled = false;
+    const cleanup = () => { cancelled = true; };
 
     try {
       const stored = localStorage.getItem(PLAYER_KEY(gameId));
       if (stored) {
-        const { playerId: pid, playerName: pname, playerIcon: picon, connectionStatus: cs } = JSON.parse(stored) as StoredPlayer;
+        const { playerId: pid, playerName: pname, playerIcon: picon, connectionStatus: cs, score: storedScore } =
+          JSON.parse(stored) as StoredPlayer;
+
         setPlayerId(pid);
         playerIdRef.current = pid;
         setPlayerName(pname);
         setMyIcon(picon ?? null);
-        setPhase(cs === 'connected' ? 'lobby' : 'pending_approval');
-        return;
+        // Restore score optimistically while async fetch runs
+        if (storedScore !== undefined) setMyScore(storedScore);
+
+        if (cs === 'connected') {
+          // Fetch current game state so a refresh mid-game lands in the right phase,
+          // not stuck on the lobby screen.
+          (async () => {
+            try {
+              const res = await fetch(`/api/games/${gameId}/pub-trivia/state?playerId=${pid}`);
+              if (cancelled) return;
+              if (res.ok) {
+                const data = await res.json() as {
+                  phase: 'lobby' | 'question' | 'answered' | 'completed';
+                  score: number;
+                  question?: PubTriviaQuestionForPlayer;
+                  durationMs?: number;
+                  startedAt?: number;
+                };
+                setMyScore(data.score);
+                if (data.phase === 'completed') {
+                  setPhase('completed');
+                } else if ((data.phase === 'question' || data.phase === 'answered') && data.question) {
+                  setCurrentQuestion(data.question);
+                  setQuestionStartedAt(data.startedAt ?? 0);
+                  setQuestionDurationMs(data.durationMs ?? 20_000);
+                  const remaining = Math.ceil(
+                    Math.max(0, (data.durationMs ?? 20_000) - (Date.now() - (data.startedAt ?? 0))) / 1000
+                  );
+                  setTimeRemaining(remaining);
+                  setPhase(data.phase);
+                } else {
+                  setPhase('lobby');
+                }
+              } else {
+                if (!cancelled) setPhase('lobby');
+              }
+            } catch {
+              if (!cancelled) setPhase('lobby');
+            }
+          })();
+        } else {
+          setPhase('pending_approval');
+        }
+
+        return cleanup;
       }
     } catch {
       // corrupt storage — proceed to join
     }
 
     setPhase('join');
+    return cleanup;
   }, [gameId]);
 
   // While pending approval, listen for the teacher's approve/reject decision
@@ -114,7 +165,7 @@ export default function PubTriviaPlayerPage() {
             const s = JSON.parse(stored) as StoredPlayer;
             localStorage.setItem(
               PLAYER_KEY(gameId),
-              JSON.stringify({ ...s, connectionStatus: 'connected' } satisfies StoredPlayer),
+              JSON.stringify({ ...s, connectionStatus: 'connected', score: s.score ?? 0 } satisfies StoredPlayer),
             );
           }
         } catch {}
@@ -138,11 +189,11 @@ export default function PubTriviaPlayerPage() {
     };
   }, [gameId, phase, playerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Subscribe to realtime channel once we have a player identity
+  // Subscribe to realtime channel once we have a player identity. Use [gameId, playerId]
+  // as dependencies so the channel is created once and stays alive across all phase
+  // transitions — avoiding the teardown/rebuild window caused by the former boolean dep.
   useEffect(() => {
-    if (!gameId || (phase !== 'lobby' && phase !== 'question' && phase !== 'answered' && phase !== 'round_results')) {
-      return;
-    }
+    if (!gameId || !playerId) return;
 
     const channel = supabase.channel(`pub-trivia:${gameId}`);
 
@@ -199,12 +250,20 @@ export default function PubTriviaPlayerPage() {
         setFinalRankings(p.finalRankings);
         setPhase('completed');
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionStatus('connected');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setConnectionStatus('disconnected');
+        } else if (status === 'CLOSED') {
+          setConnectionStatus('disconnected');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [gameId, phase === 'lobby']); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gameId, playerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Countdown timer for active question
   useEffect(() => {
@@ -263,9 +322,10 @@ export default function PubTriviaPlayerPage() {
         (data.connectionStatus as string) === 'connected' ? 'connected' : 'pending';
 
       try {
+        const initialScore = (data.score as number | undefined) ?? 0;
         localStorage.setItem(
           PLAYER_KEY(gameId),
-          JSON.stringify({ playerId: pid, deviceId, playerName: pname, playerIcon: picon, connectionStatus: connStatus } satisfies StoredPlayer),
+          JSON.stringify({ playerId: pid, deviceId, playerName: pname, playerIcon: picon, connectionStatus: connStatus, score: initialScore } satisfies StoredPlayer),
         );
       } catch {
         // localStorage unavailable — session-only join
@@ -310,7 +370,16 @@ export default function PubTriviaPlayerPage() {
             isCorrect: data.isCorrect as boolean,
             pointsEarned: data.pointsEarned as number,
           });
-          setMyScore(data.totalScore as number);
+          const newScore = data.totalScore as number;
+          setMyScore(newScore);
+          // Keep localStorage score in sync so reconnects see the latest total.
+          try {
+            const stored = localStorage.getItem(PLAYER_KEY(gameId));
+            if (stored) {
+              const s = JSON.parse(stored) as StoredPlayer;
+              localStorage.setItem(PLAYER_KEY(gameId), JSON.stringify({ ...s, score: newScore } satisfies StoredPlayer));
+            }
+          } catch { /* localStorage unavailable */ }
           setPhase('answered');
         }
         // If 409 (already answered), stay in 'answered' phase — result will arrive via broadcast
@@ -396,10 +465,17 @@ export default function PubTriviaPlayerPage() {
     );
   }
 
+  const disconnectBanner = connectionStatus === 'disconnected' ? (
+    <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-500 text-yellow-900 text-sm font-semibold text-center py-2 px-4">
+      Connection lost — attempting to reconnect…
+    </div>
+  ) : null;
+
   // ── LOBBY (waiting for teacher to start) ──────────────────────────────────
   if (phase === 'lobby') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4">
+        {disconnectBanner}
         <div className="text-center text-white">
           <div className="text-4xl font-bold mb-3">{playerName}</div>
           <div className="text-indigo-200 text-lg mb-8">You&apos;re in!</div>
@@ -426,6 +502,7 @@ export default function PubTriviaPlayerPage() {
 
     return (
       <div className="min-h-screen bg-gray-900 text-white flex flex-col">
+        {disconnectBanner}
         {/* Score bar */}
         <div className="bg-gray-800 px-4 py-2 flex items-center justify-between text-sm">
           <span className="text-gray-300 flex items-center gap-1.5">
@@ -529,6 +606,7 @@ export default function PubTriviaPlayerPage() {
 
     return (
       <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 gap-5">
+        {disconnectBanner}
         {/* My result */}
         <div
           className={`w-full max-w-sm p-5 rounded-2xl text-center ${
