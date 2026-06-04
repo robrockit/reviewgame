@@ -40,10 +40,17 @@ export async function GET(
 
     const { searchParams } = new URL(req.url);
     const playerId = searchParams.get('playerId');
+    const deviceId = searchParams.get('deviceId');
 
     if (!playerId || !UUID_RE.test(playerId)) {
       return NextResponse.json(
         { error: 'playerId query param is required and must be a valid UUID' },
+        { status: 400 }
+      );
+    }
+    if (!deviceId || !UUID_RE.test(deviceId)) {
+      return NextResponse.json(
+        { error: 'deviceId query param is required and must be a valid UUID' },
         { status: 400 }
       );
     }
@@ -67,13 +74,16 @@ export async function GET(
 
     const { data: player, error: playerError } = await serviceClient
       .from('teams')
-      .select('score')
+      .select('score, device_id')
       .eq('id', playerId)
       .eq('game_id', gameId)
       .single();
 
     if (playerError || !player) {
       return NextResponse.json({ error: 'Player not found in this game' }, { status: 404 });
+    }
+    if (player.device_id !== deviceId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const score = player.score ?? 0;
@@ -82,7 +92,7 @@ export async function GET(
       return NextResponse.json({ phase: 'completed', score } satisfies PubTriviaStateResponse);
     }
 
-    if (!game.current_question_started_at) {
+    if (game.status !== 'in_progress' || !game.current_question_started_at) {
       return NextResponse.json({ phase: 'lobby', score } satisfies PubTriviaStateResponse);
     }
 
@@ -116,7 +126,9 @@ export async function GET(
 
     // Reshuffle options (Fisher-Yates). Answer comparison is by text, not index,
     // so a fresh shuffle is safe for a reconnecting player.
-    const allOptions = [...(question.mc_options as string[]), question.answer_text];
+    // Deduplicate in case mc_options already contains the correct answer (data entry error).
+    const mcOptions = Array.isArray(question.mc_options) ? (question.mc_options as string[]) : [];
+    const allOptions = Array.from(new Set([...mcOptions, question.answer_text]));
     for (let i = allOptions.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [allOptions[i], allOptions[j]] = [allOptions[j], allOptions[i]];

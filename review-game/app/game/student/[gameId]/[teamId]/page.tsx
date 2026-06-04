@@ -247,10 +247,12 @@ export default function StudentGamePage() {
               .eq('id', teamId)
               .single()
               .then(({ data }) => { if (data) setTeam(data as Team); });
-            // Reset in-memory broadcast state to safe defaults — stale data is worse
-            // than showing "Waiting for question" until the teacher advances.
+            // Reset transient broadcast state to safe defaults. We intentionally
+            // do NOT reset currentQuestion because it is also read by the teacher's
+            // board page (shared Zustand singleton in same browser process). Clearing
+            // the buzz queue and revealed answer is safe since these are ephemeral
+            // per-question state that the teacher can reset via normal controls.
             const store = useGameStore.getState();
-            store.setCurrentQuestion(null);
             store.clearBuzzQueue();
             store.setRevealedAnswer(null);
           }

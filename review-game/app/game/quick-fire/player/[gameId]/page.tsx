@@ -104,7 +104,10 @@ export default function PubTriviaPlayerPage() {
           // not stuck on the lobby screen.
           (async () => {
             try {
-              const res = await fetch(`/api/games/${gameId}/pub-trivia/state?playerId=${pid}`);
+              const currentDeviceId = getDeviceId();
+              const res = await fetch(
+                `/api/games/${gameId}/pub-trivia/state?playerId=${pid}&deviceId=${currentDeviceId ?? ''}`
+              );
               if (cancelled) return;
               if (res.ok) {
                 const data = await res.json() as {
@@ -501,7 +504,7 @@ export default function PubTriviaPlayerPage() {
       timeRemaining <= 5 ? 'bg-red-500' : timeRemaining <= 10 ? 'bg-yellow-500' : 'bg-green-500';
 
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex flex-col">
+      <div className={`min-h-screen bg-gray-900 text-white flex flex-col${connectionStatus === 'disconnected' ? ' pt-8' : ''}`}>
         {disconnectBanner}
         {/* Score bar */}
         <div className="bg-gray-800 px-4 py-2 flex items-center justify-between text-sm">
@@ -552,7 +555,7 @@ export default function PubTriviaPlayerPage() {
 
               return (
                 <button
-                  key={i}
+                  key={opt}
                   onClick={() => handleSubmitAnswer(opt)}
                   disabled={phase === 'answered' || isEliminated || selectedAnswer !== null}
                   className={`

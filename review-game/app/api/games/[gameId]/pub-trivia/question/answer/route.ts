@@ -114,8 +114,9 @@ export async function POST(
 
     // Reject answers that are not one of the four offered options. This prevents
     // arbitrary strings from polluting the teacher's live tally display.
+    const mcOptions = Array.isArray(question.mc_options) ? (question.mc_options as string[]) : [];
     const validOptions = new Set<string>(
-      [...(question.mc_options as string[] ?? []), question.answer_text].map((o) => o.trim().toLowerCase())
+      [...mcOptions, question.answer_text].map((o) => o.trim().toLowerCase())
     );
     if (!validOptions.has(answerText.trim().toLowerCase())) {
       return NextResponse.json({ error: 'Invalid answer option' }, { status: 400 });
