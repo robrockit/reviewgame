@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger';
 import { IconPicker } from '@/components/pub-trivia/IconPicker';
 import { calcPointsEarned } from '@/types/pub-trivia';
 import type { PubTriviaQuestionForPlayer, PubTriviaRoundResult } from '@/types/pub-trivia';
-import { ConnectionBanner } from '@/components/ui/ConnectionBanner';
+import { ConnectionBanner, BANNER_OFFSET_CLASS } from '@/components/ui/ConnectionBanner';
 
 type Phase =
   | 'loading'
@@ -27,7 +27,8 @@ interface StoredPlayer {
   deviceId: string;
   playerName: string;
   playerIcon: string | null;
-  connectionStatus: 'pending' | 'connected';
+  /** Teacher approval state — distinct from WebSocket health (connectionStatus state var). */
+  approvalStatus: 'pending' | 'connected';
   score?: number;
 }
 
@@ -90,7 +91,7 @@ export default function PubTriviaPlayerPage() {
     try {
       const stored = localStorage.getItem(PLAYER_KEY(gameId));
       if (stored) {
-        const { playerId: pid, playerName: pname, playerIcon: picon, connectionStatus: cs, score: storedScore } =
+        const { playerId: pid, playerName: pname, playerIcon: picon, approvalStatus: cs, score: storedScore } =
           JSON.parse(stored) as StoredPlayer;
 
         setPlayerId(pid);
@@ -173,7 +174,7 @@ export default function PubTriviaPlayerPage() {
             const s = JSON.parse(stored) as StoredPlayer;
             localStorage.setItem(
               PLAYER_KEY(gameId),
-              JSON.stringify({ ...s, connectionStatus: 'connected', score: s.score ?? 0 } satisfies StoredPlayer),
+              JSON.stringify({ ...s, approvalStatus: 'connected', score: s.score ?? 0 } satisfies StoredPlayer),
             );
           }
         } catch {}
@@ -262,8 +263,8 @@ export default function PubTriviaPlayerPage() {
         if (status === 'SUBSCRIBED') {
           setConnectionStatus('connected');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          setConnectionStatus('disconnected');
-        } else if (status === 'CLOSED') {
+          // CLOSED intentionally omitted: it fires on removeChannel() during normal
+          // cleanup and would trigger a setState-on-unmounted-component warning in dev.
           setConnectionStatus('disconnected');
         }
       });
@@ -326,14 +327,14 @@ export default function PubTriviaPlayerPage() {
       const pid = data.playerId as string;
       const pname = data.playerName as string;
       const picon = (data.playerIcon as string | null) ?? null;
-      const connStatus: StoredPlayer['connectionStatus'] =
+      const connStatus: StoredPlayer['approvalStatus'] =
         (data.connectionStatus as string) === 'connected' ? 'connected' : 'pending';
 
       try {
         const initialScore = (data.score as number | undefined) ?? 0;
         localStorage.setItem(
           PLAYER_KEY(gameId),
-          JSON.stringify({ playerId: pid, deviceId, playerName: pname, playerIcon: picon, connectionStatus: connStatus, score: initialScore } satisfies StoredPlayer),
+          JSON.stringify({ playerId: pid, deviceId, playerName: pname, playerIcon: picon, approvalStatus: connStatus, score: initialScore } satisfies StoredPlayer),
         );
       } catch {
         // localStorage unavailable — session-only join
@@ -474,11 +475,12 @@ export default function PubTriviaPlayerPage() {
   }
 
   const disconnectBanner = <ConnectionBanner status={connectionStatus} />;
+  const bannerOffset = connectionStatus === 'disconnected' ? ` ${BANNER_OFFSET_CLASS}` : '';
 
   // ── LOBBY (waiting for teacher to start) ──────────────────────────────────
   if (phase === 'lobby') {
     return (
-      <div className={`min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4${connectionStatus === 'disconnected' ? ' pt-10' : ''}`}>
+      <div className={`min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4${bannerOffset}`}>
         {disconnectBanner}
         <div className="text-center text-white">
           <div className="text-4xl font-bold mb-3">{playerName}</div>
@@ -505,7 +507,7 @@ export default function PubTriviaPlayerPage() {
       timeRemaining <= 5 ? 'bg-red-500' : timeRemaining <= 10 ? 'bg-yellow-500' : 'bg-green-500';
 
     return (
-      <div className={`min-h-screen bg-gray-900 text-white flex flex-col${connectionStatus === 'disconnected' ? ' pt-8' : ''}`}>
+      <div className={`min-h-screen bg-gray-900 text-white flex flex-col${bannerOffset}`}>
         {disconnectBanner}
         {/* Score bar */}
         <div className="bg-gray-800 px-4 py-2 flex items-center justify-between text-sm">
@@ -609,7 +611,7 @@ export default function PubTriviaPlayerPage() {
     const myResult = roundResults.find((r) => r.playerId === playerId);
 
     return (
-      <div className={`min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 gap-5${connectionStatus === 'disconnected' ? ' pt-10' : ''}`}>
+      <div className={`min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 gap-5${bannerOffset}`}>
         {disconnectBanner}
         {/* My result */}
         <div

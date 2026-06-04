@@ -9,7 +9,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // 10 requests per 10s per IP — allows a student to refresh a few times but
 // blocks runaway rapid-refresh loops from hammering the DB.
 const stateRateLimiter = new RateLimiter(10_000, 10);
-if (typeof setInterval !== 'undefined') {
+let _cleanupScheduled = false;
+if (typeof setInterval !== 'undefined' && !_cleanupScheduled) {
+  _cleanupScheduled = true;
   setInterval(() => stateRateLimiter.cleanup(), 60_000);
 }
 

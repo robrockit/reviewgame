@@ -268,7 +268,9 @@ export default function StudentGamePage() {
             store.setRevealedAnswer(null);
           }
           isInitialGameSubRef.current = false;
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          // CLOSED intentionally omitted: it fires on removeChannel() during normal
+          // cleanup and would trigger a setState-on-unmounted-component warning in dev.
           setConnectionStatus('disconnected');
         }
       });
