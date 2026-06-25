@@ -20,10 +20,12 @@ import { getOrdinal } from '../../lib/utils/formatters';
  * @interface TeamCardProps
  * @property {Team} team - The team data to display
  * @property {number} index - The team's rank position (0-indexed)
+ * @property {function} [onTeamClick] - Optional callback when a team's score is clicked
  */
 interface TeamCardProps {
   team: Team;
   index: number;
+  onTeamClick?: (team: Team) => void;
 }
 
 /**
@@ -39,7 +41,7 @@ interface TeamCardProps {
  * @param {TeamCardProps} props - Component props
  * @returns {JSX.Element} The rendered team card
  */
-const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
+const TeamCard: React.FC<TeamCardProps> = ({ team, index, onTeamClick }) => {
   const animatedScore = useAnimatedScore(team.score);
   const [flashClass, setFlashClass] = useState('');
   const prevScoreRef = useRef(team.score);
@@ -110,9 +112,20 @@ const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
       </div>
       <div className="text-center">
         <h3 className="font-bold text-lg mb-1">{team.name}</h3>
-        <div className={`text-3xl font-bold ${team.score < 0 ? 'text-red-300' : ''}`}>
-          {animatedScore}
-        </div>
+        {onTeamClick ? (
+          <button
+            type="button"
+            onClick={() => onTeamClick(team)}
+            aria-label={`Adjust ${team.name} score`}
+            className={`text-3xl font-bold ${team.score < 0 ? 'text-red-300' : ''} cursor-pointer hover:opacity-75 hover:underline underline-offset-2 transition-opacity`}
+          >
+            {animatedScore}
+          </button>
+        ) : (
+          <div className={`text-3xl font-bold ${team.score < 0 ? 'text-red-300' : ''}`}>
+            {animatedScore}
+          </div>
+        )}
         <div className="text-xs opacity-75 mt-1">points</div>
       </div>
     </div>
@@ -139,10 +152,15 @@ const TeamCard: React.FC<TeamCardProps> = ({ team, index }) => {
  *
  * @example
  * ```tsx
- * <TeamScoreboard />
+ * <TeamScoreboard onTeamClick={(team) => openScoreModal(team)} />
  * ```
  */
-export const TeamScoreboard: React.FC = () => {
+
+interface TeamScoreboardProps {
+  onTeamClick?: (team: Team) => void;
+}
+
+export const TeamScoreboard: React.FC<TeamScoreboardProps> = ({ onTeamClick }) => {
   const { allTeams } = useGameStore();
 
   // Sort teams by score (descending) for leaderboard view
@@ -161,7 +179,7 @@ export const TeamScoreboard: React.FC = () => {
       <h2 className="text-2xl font-bold mb-4 text-white">Scoreboard</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {sortedTeams.map((team, index) => (
-          <TeamCard key={team.id} team={team} index={index} />
+          <TeamCard key={team.id} team={team} index={index} onTeamClick={onTeamClick} />
         ))}
       </div>
 

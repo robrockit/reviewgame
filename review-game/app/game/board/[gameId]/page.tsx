@@ -10,6 +10,7 @@ import { DailyDoubleModal } from '@/components/game/DailyDoubleModal';
 import { BackButton } from '@/components/navigation/BackButton';
 import GameCompleteModal from '@/components/teacher/GameCompleteModal';
 import FinalJeopardyModal from '@/components/teacher/FinalJeopardyModal';
+import ScoreAdjustModal from '@/components/game/ScoreAdjustModal';
 import { useGameStore } from '@/lib/stores/gameStore';
 import { useBuzzer } from '@/hooks/useBuzzer';
 import type { Tables } from '@/types/database.types';
@@ -47,6 +48,7 @@ export default function GameBoardPage() {
   const [showFinalJeopardyModal, setShowFinalJeopardyModal] = useState(false);
   const [isFjStarting, setIsFjStarting] = useState(false);
   const [fjError, setFjError] = useState<string | null>(null);
+  const [scoreModalTeam, setScoreModalTeam] = useState<Pick<Team, 'id' | 'name' | 'score'> | null>(null);
 
   const {
     setGame: setStoreGame,
@@ -655,6 +657,10 @@ export default function GameBoardPage() {
     }
   };
 
+  const handleScoreUpdated = (teamId: string, newScore: number) => {
+    setTeams((prev) => prev.map((t) => (t.id === teamId ? { ...t, score: newScore } : t)));
+  };
+
   // Handle return to dashboard from game complete modal
   const handleReturnToDashboard = async () => {
     try {
@@ -995,7 +1001,7 @@ export default function GameBoardPage() {
 
         {/* Scoreboard */}
         <div className="mt-8">
-          <TeamScoreboard />
+          <TeamScoreboard onTeamClick={(team) => setScoreModalTeam(team)} />
         </div>
       </div>
 
@@ -1030,6 +1036,17 @@ export default function GameBoardPage() {
         onFinishGame={handleFinishGame}
         onSkip={handleSkipFinalJeopardy}
       />
+
+      {/* Score Adjust Modal */}
+      {scoreModalTeam !== null && (
+        <ScoreAdjustModal
+          isOpen={scoreModalTeam !== null}
+          onClose={() => setScoreModalTeam(null)}
+          team={scoreModalTeam}
+          gameId={gameId}
+          onScoreUpdated={handleScoreUpdated}
+        />
+      )}
 
       {/* Final Jeopardy Error Toast */}
       {fjError && (

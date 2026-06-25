@@ -49,3 +49,17 @@ export interface GameFilters {
   order: SortOrder;
   page: number;
 }
+
+export const SCORE_OVERRIDE_MAX_DELTA = 10_000;
+
+export interface ScoreOverrideRequest {
+  teamId: string;
+  delta: number;
+}
+
+export interface ScoreOverrideResponse {
+  success: boolean;
+  teamId: string;
+  delta: number;
+  newScore: number;
+}
