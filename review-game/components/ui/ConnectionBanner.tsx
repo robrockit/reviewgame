@@ -1,7 +1,11 @@
 'use client';
 
+import type { ReactNode } from 'react';
+
+type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
+
 interface ConnectionBannerProps {
-  status: 'connecting' | 'connected' | 'disconnected';
+  status: ConnectionStatus;
 }
 
 /**
@@ -34,6 +38,28 @@ export function ConnectionBanner({ status }: ConnectionBannerProps) {
       }`}
     >
       Connection lost — attempting to reconnect…
+    </div>
+  );
+}
+
+interface ConnectionBannerLayoutProps {
+  status: ConnectionStatus;
+  /** Base classes for the page's root container — the banner offset is appended automatically. */
+  className: string;
+  children: ReactNode;
+}
+
+/**
+ * Wraps a page's root container with the ConnectionBanner and its required offset.
+ * Centralises the `bannerOffset` ternary so every consumer doesn't have to repeat
+ * it per render branch — easy to do correctly once, easy to forget per call site.
+ */
+export function ConnectionBannerLayout({ status, className, children }: ConnectionBannerLayoutProps) {
+  const offset = status !== 'connecting' ? ` ${BANNER_OFFSET_CLASS}` : '';
+  return (
+    <div className={`${className}${offset}`}>
+      <ConnectionBanner status={status} />
+      {children}
     </div>
   );
 }

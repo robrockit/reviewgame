@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger';
 import { IconPicker } from '@/components/pub-trivia/IconPicker';
 import { calcPointsEarned } from '@/types/pub-trivia';
 import type { PubTriviaQuestionForPlayer, PubTriviaRoundResult, PubTriviaStateResponse } from '@/types/pub-trivia';
-import { ConnectionBanner, BANNER_OFFSET_CLASS } from '@/components/ui/ConnectionBanner';
+import { ConnectionBannerLayout } from '@/components/ui/ConnectionBanner';
 
 type Phase =
   | 'loading'
@@ -40,6 +40,10 @@ export default function PubTriviaPlayerPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  // Distinct from `phase`: flips exactly once (pending_approval -> approved) so the main
+  // realtime-subscription effect can depend on it without re-running on every later phase
+  // transition (lobby/question/answered/round_results/completed all leave this true).
+  const [isApproved, setIsApproved] = useState(false);
 
   // Player identity
   const [playerId, setPlayerId] = useState<string | null>(null);
@@ -107,6 +111,9 @@ export default function PubTriviaPlayerPage() {
         if (storedScore !== undefined) setMyScore(storedScore);
 
         if (cs === 'connected') {
+          // Already approved in an earlier session — open the realtime channel now
+          // rather than waiting on the async state-recovery fetch below.
+          setIsApproved(true);
           // Fetch current game state so a refresh mid-game lands in the right phase,
           // not stuck on the lobby screen.
           (async () => {
@@ -177,6 +184,7 @@ export default function PubTriviaPlayerPage() {
             );
           }
         } catch {}
+        setIsApproved(true);
         setPhase('lobby');
       })
       .on('broadcast', { event: 'pt_player_rejected' }, ({ payload }) => {
@@ -187,6 +195,7 @@ export default function PubTriviaPlayerPage() {
         playerIdRef.current = null;
         setPlayerName('');
         setNameInput('');
+        setIsApproved(false);
         setActionError('Your name was not approved. Please choose a different name and try again.');
         setPhase('join');
       })
@@ -197,11 +206,15 @@ export default function PubTriviaPlayerPage() {
     };
   }, [gameId, phase, playerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Subscribe to realtime channel once we have a player identity. Use [gameId, playerId]
-  // as dependencies so the channel is created once and stays alive across all phase
-  // transitions — avoiding the teardown/rebuild window caused by the former boolean dep.
+  // Subscribe to realtime channel once we have an approved player identity. isApproved
+  // (not `phase`) gates this so the channel is created once approval resolves and then
+  // stays alive across all later phase transitions — using `phase` directly here would
+  // tear down and rebuild the channel on every lobby/question/answered/round_results
+  // transition. Skipping this during 'pending_approval' avoids a second, redundant
+  // concurrent subscription to the same topic alongside the dedicated approval-listener
+  // effect above.
   useEffect(() => {
-    if (!gameId || !playerId) return;
+    if (!gameId || !playerId || !isApproved) return;
 
     const channel = supabase.channel(`pub-trivia:${gameId}`);
 
@@ -271,7 +284,7 @@ export default function PubTriviaPlayerPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [gameId, playerId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gameId, playerId, isApproved]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Countdown timer for active question
   useEffect(() => {
@@ -344,6 +357,7 @@ export default function PubTriviaPlayerPage() {
       setPlayerName(pname);
       setMyIcon(picon);
       setMyScore(data.score ?? 0);
+      setIsApproved(connStatus === 'connected');
       setPhase(connStatus === 'connected' ? 'lobby' : 'pending_approval');
     } catch (err) {
       logger.error('Failed to join pub trivia game', err, { operation: 'joinPubTrivia', gameId });
@@ -409,7 +423,10 @@ export default function PubTriviaPlayerPage() {
   // ── JOIN FORM ──────────────────────────────────────────────────────────────
   if (phase === 'join') {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4">
+      <ConnectionBannerLayout
+        status={connectionStatus}
+        className="min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4"
+      >
         <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
           <h1 className="text-2xl font-bold text-gray-900 text-center mb-2">Join Quick Fire</h1>
           <p className="text-gray-500 text-sm text-center mb-4">Pick an icon and enter your name</p>
@@ -451,14 +468,17 @@ export default function PubTriviaPlayerPage() {
             {isSubmitting ? 'Joining…' : 'Join Game'}
           </button>
         </div>
-      </div>
+      </ConnectionBannerLayout>
     );
   }
 
   // ── PENDING APPROVAL (teacher reviewing name) ─────────────────────────────
   if (phase === 'pending_approval') {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4">
+      <ConnectionBannerLayout
+        status={connectionStatus}
+        className="min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4"
+      >
         <div className="text-center text-white max-w-sm">
           <div className="text-4xl font-bold mb-3">{playerName}</div>
           <div className="text-indigo-200 text-base mb-8">Waiting for teacher approval…</div>
@@ -469,20 +489,17 @@ export default function PubTriviaPlayerPage() {
           </div>
           <p className="text-indigo-200 text-sm">The teacher will review your name before you can join.</p>
         </div>
-      </div>
+      </ConnectionBannerLayout>
     );
   }
-
-  const disconnectBanner = <ConnectionBanner status={connectionStatus} />;
-  // Reserve space once connected (not just when disconnected) so the layout
-  // doesn't jump when the banner appears or dismisses mid-game.
-  const bannerOffset = connectionStatus !== 'connecting' ? ` ${BANNER_OFFSET_CLASS}` : '';
 
   // ── LOBBY (waiting for teacher to start) ──────────────────────────────────
   if (phase === 'lobby') {
     return (
-      <div className={`min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4${bannerOffset}`}>
-        {disconnectBanner}
+      <ConnectionBannerLayout
+        status={connectionStatus}
+        className="min-h-screen bg-gradient-to-b from-indigo-600 to-purple-700 flex items-center justify-center p-4"
+      >
         <div className="text-center text-white">
           <div className="text-4xl font-bold mb-3">{playerName}</div>
           <div className="text-indigo-200 text-lg mb-8">You&apos;re in!</div>
@@ -493,7 +510,7 @@ export default function PubTriviaPlayerPage() {
           </div>
           <p className="text-indigo-200">Waiting for the teacher to start the game…</p>
         </div>
-      </div>
+      </ConnectionBannerLayout>
     );
   }
 
@@ -508,8 +525,7 @@ export default function PubTriviaPlayerPage() {
       timeRemaining <= 5 ? 'bg-red-500' : timeRemaining <= 10 ? 'bg-yellow-500' : 'bg-green-500';
 
     return (
-      <div className={`min-h-screen bg-gray-900 text-white flex flex-col${bannerOffset}`}>
-        {disconnectBanner}
+      <ConnectionBannerLayout status={connectionStatus} className="min-h-screen bg-gray-900 text-white flex flex-col">
         {/* Score bar */}
         <div className="bg-gray-800 px-4 py-2 flex items-center justify-between text-sm">
           <span className="text-gray-300 flex items-center gap-1.5">
@@ -603,7 +619,7 @@ export default function PubTriviaPlayerPage() {
             </div>
           )}
         </div>
-      </div>
+      </ConnectionBannerLayout>
     );
   }
 
@@ -612,8 +628,10 @@ export default function PubTriviaPlayerPage() {
     const myResult = roundResults.find((r) => r.playerId === playerId);
 
     return (
-      <div className={`min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 gap-5${bannerOffset}`}>
-        {disconnectBanner}
+      <ConnectionBannerLayout
+        status={connectionStatus}
+        className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 gap-5"
+      >
         {/* My result */}
         <div
           className={`w-full max-w-sm p-5 rounded-2xl text-center ${
@@ -643,7 +661,7 @@ export default function PubTriviaPlayerPage() {
             ? 'Get ready — next question coming up…'
             : 'Final question done — waiting for teacher to end the game…'}
         </p>
-      </div>
+      </ConnectionBannerLayout>
     );
   }
 
@@ -652,7 +670,10 @@ export default function PubTriviaPlayerPage() {
     const myRank = finalRankings.findIndex((r) => r.id === playerId) + 1;
 
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 gap-5">
+      <ConnectionBannerLayout
+        status={connectionStatus}
+        className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4 gap-5"
+      >
         <h1 className="text-3xl font-bold">Game Over!</h1>
 
         {myRank > 0 && (
@@ -684,7 +705,7 @@ export default function PubTriviaPlayerPage() {
             </div>
           ))}
         </div>
-      </div>
+      </ConnectionBannerLayout>
     );
   }
 

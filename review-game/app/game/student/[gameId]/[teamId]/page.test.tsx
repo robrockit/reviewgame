@@ -95,6 +95,7 @@ vi.mock('@/lib/logger', () => ({
 vi.mock('@/components/ui/ConnectionBanner', () => ({
   ConnectionBanner: () => null,
   BANNER_OFFSET_CLASS: 'pt-10',
+  ConnectionBannerLayout: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 // ---------------------------------------------------------------------------

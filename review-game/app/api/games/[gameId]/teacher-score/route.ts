@@ -3,8 +3,7 @@ import { createAdminServerClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { SCORE_OVERRIDE_MAX_DELTA } from '@/types/game.types';
 import type { ScoreOverrideRequest, ScoreOverrideResponse } from '@/types/game.types';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from '@/lib/utils/uuid';
 
 /**
  * POST /api/games/[gameId]/teacher-score
@@ -31,11 +30,16 @@ export async function POST(
 
     const { gameId } = await context.params;
 
-    if (!UUID_RE.test(gameId)) {
+    if (!isValidUUID(gameId)) {
       return NextResponse.json({ error: 'Invalid game ID format' }, { status: 400 });
     }
 
-    const body = (await req.json()) as Partial<ScoreOverrideRequest>;
+    let body: Partial<ScoreOverrideRequest>;
+    try {
+      body = (await req.json()) as Partial<ScoreOverrideRequest>;
+    } catch {
+      return NextResponse.json({ error: 'Malformed request body' }, { status: 400 });
+    }
     const { teamId, delta } = body;
 
     if (!teamId || delta === undefined || delta === null) {
@@ -45,7 +49,7 @@ export async function POST(
       );
     }
 
-    if (!UUID_RE.test(teamId)) {
+    if (!isValidUUID(teamId)) {
       return NextResponse.json({ error: 'Invalid team ID format' }, { status: 400 });
     }
 

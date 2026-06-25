@@ -51,12 +51,19 @@ export default function ScoreAdjustModal({
     let succeeded = false;
     let newScore = 0;
 
+    // Without a timeout, a hung request leaves isSubmitting true forever — and
+    // handleClose's `if (!isSubmitting)` guard means Cancel is disabled too,
+    // stranding the teacher with no way to dismiss the modal.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
     try {
       const payload: ScoreOverrideRequest = { teamId: team.id, delta };
       const res = await fetch(`/api/games/${gameId}/teacher-score`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
 
       const data = (await res.json()) as ScoreOverrideResponse | { error: string };
@@ -68,9 +75,14 @@ export default function ScoreAdjustModal({
 
       newScore = (data as ScoreOverrideResponse).newScore;
       succeeded = true;
-    } catch {
-      setError('Network error — please try again');
+    } catch (err) {
+      setError(
+        err instanceof DOMException && err.name === 'AbortError'
+          ? 'Request timed out — please try again'
+          : 'Network error — please try again'
+      );
     } finally {
+      clearTimeout(timeoutId);
       inFlightRef.current = false;
       setIsSubmitting(false);
       if (succeeded) {
@@ -85,8 +97,12 @@ export default function ScoreAdjustModal({
   };
 
   const handleCustomApply = () => {
+    if (!/^-?\d+$/.test(customValue.trim())) {
+      setError('Enter a whole number (digits only)');
+      return;
+    }
     const parsed = parseInt(customValue, 10);
-    if (isNaN(parsed) || parsed === 0) {
+    if (parsed === 0) {
       setError('Enter a non-zero whole number');
       return;
     }
