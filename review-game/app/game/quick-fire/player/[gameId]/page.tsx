@@ -493,6 +493,11 @@ export default function PubTriviaPlayerPage() {
     );
   }
 
+  const disconnectBanner = <ConnectionBanner status={connectionStatus} />;
+  // Reserve space once connected (not just when disconnected) so the layout
+  // doesn't jump when the banner appears or dismisses mid-game.
+  const bannerOffset = connectionStatus !== 'connecting' ? ` ${BANNER_OFFSET_CLASS}` : '';
+
   // ── LOBBY (waiting for teacher to start) ──────────────────────────────────
   if (phase === 'lobby') {
     return (
