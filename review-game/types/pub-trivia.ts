@@ -22,6 +22,38 @@ export interface PubTriviaQuestion {
 /** Question as sent to players — correct answer omitted. */
 export type PubTriviaQuestionForPlayer = Omit<PubTriviaQuestion, 'correctAnswer'>;
 
+/**
+ * Builds the multiple-choice option set from a question's stored `mc_options`
+ * + `answer_text`, deduplicating by trim+lowercase so a whitespace/casing
+ * variant of the correct answer (e.g. "Paris " vs "Paris") collapses to one
+ * entry instead of showing as two near-identical options.
+ *
+ * `mode: 'display'` keeps the first-seen original string per dedup key (for
+ * showing options to players). `mode: 'compare'` returns the normalized
+ * (trim+lowercase) strings (for building an answer-validation set) — both
+ * routes that reconstruct this set from the same columns must use the same
+ * dedup key or a variant can validate as correct while showing as a separate
+ * option.
+ */
+export function buildMcOptionSet(
+  mcOptions: unknown,
+  answerText: string | null | undefined,
+  mode: 'display' | 'compare'
+): string[] {
+  const options = Array.isArray(mcOptions) ? (mcOptions as string[]) : [];
+  const rawAnswer = answerText ?? '';
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const opt of [...options, rawAnswer]) {
+    if (!opt) continue;
+    const key = opt.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(mode === 'compare' ? key : opt);
+  }
+  return result;
+}
+
 // ─── Scoring ─────────────────────────────────────────────────────────────────
 
 /** Point value awarded based on elapsed percentage of the question timer. */

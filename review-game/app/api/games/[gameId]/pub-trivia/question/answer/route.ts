@@ -1,11 +1,10 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServiceClient } from '@/lib/admin/auth';
-import { calcPointsEarned } from '@/types/pub-trivia';
+import { buildMcOptionSet, calcPointsEarned } from '@/types/pub-trivia';
 import { logger } from '@/lib/logger';
 import type { SubmitAnswerRequest, SubmitAnswerResponse } from '@/types/pub-trivia';
 import { QUESTION_VALIDATION } from '@/lib/constants/question-banks';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { isValidUUID } from '@/lib/utils/uuid';
 
 /**
  * POST /api/games/[gameId]/pub-trivia/question/answer
@@ -27,7 +26,7 @@ export async function POST(
   try {
     const { gameId } = await context.params;
 
-    if (!UUID_RE.test(gameId)) {
+    if (!isValidUUID(gameId)) {
       return NextResponse.json({ error: 'Invalid game ID' }, { status: 400 });
     }
 
@@ -40,7 +39,7 @@ export async function POST(
         { status: 400 }
       );
     }
-    if (!UUID_RE.test(playerId) || !UUID_RE.test(deviceId) || !UUID_RE.test(submittedQuestionId)) {
+    if (!isValidUUID(playerId) || !isValidUUID(deviceId) || !isValidUUID(submittedQuestionId)) {
       return NextResponse.json({ error: 'Invalid ID format' }, { status: 400 });
     }
     if (typeof answerText !== 'string' || answerText.trim().length === 0) {
@@ -117,11 +116,10 @@ export async function POST(
     // If mc_options is null (free-text question accidentally routed here), validOptions
     // contains only answer_text — any non-exact submission gets a 400. Pub trivia
     // questions are required to have mc_options, so this is a data integrity guard.
-    const mcOptions = Array.isArray(question.mc_options) ? (question.mc_options as string[]) : [];
-    const rawAnswer: string = question.answer_text ?? '';
-    const validOptions = new Set<string>(
-      [...mcOptions, rawAnswer].filter(Boolean).map((o) => o.trim().toLowerCase())
-    );
+    // Uses the same trim+lowercase dedup key as the state route's display-option
+    // builder, so a whitespace/casing variant of the answer can't validate here
+    // while showing as a separate (also-correct) button there.
+    const validOptions = new Set(buildMcOptionSet(question.mc_options, question.answer_text, 'compare'));
     if (!validOptions.has(answerText.trim().toLowerCase())) {
       return NextResponse.json({ error: 'Invalid answer option' }, { status: 400 });
     }

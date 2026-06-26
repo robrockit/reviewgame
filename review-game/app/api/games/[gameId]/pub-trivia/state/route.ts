@@ -2,9 +2,9 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createAdminServiceClient } from '@/lib/admin/auth';
 import { logger } from '@/lib/logger';
 import { RateLimiter } from '@/lib/utils/rate-limiter';
+import { isValidUUID } from '@/lib/utils/uuid';
+import { buildMcOptionSet } from '@/types/pub-trivia';
 import type { PubTriviaQuestionForPlayer, PubTriviaStatePhase, PubTriviaStateResponse } from '@/types/pub-trivia';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // 10 requests per 10s per IP — allows a student to refresh a few times but
 // blocks runaway rapid-refresh loops from hammering the DB.
@@ -38,7 +38,7 @@ export async function GET(
   try {
     const { gameId } = await context.params;
 
-    if (!UUID_RE.test(gameId)) {
+    if (!isValidUUID(gameId)) {
       return NextResponse.json({ error: 'Invalid game ID' }, { status: 400 });
     }
 
@@ -46,13 +46,13 @@ export async function GET(
     const playerId = searchParams.get('playerId');
     const deviceId = searchParams.get('deviceId');
 
-    if (!playerId || !UUID_RE.test(playerId)) {
+    if (!playerId || !isValidUUID(playerId)) {
       return NextResponse.json(
         { error: 'playerId query param is required and must be a valid UUID' },
         { status: 400 }
       );
     }
-    if (!deviceId || !UUID_RE.test(deviceId)) {
+    if (!deviceId || !isValidUUID(deviceId)) {
       return NextResponse.json(
         { error: 'deviceId query param is required and must be a valid UUID' },
         { status: 400 }
@@ -147,11 +147,24 @@ export async function GET(
     }
     const questionId = questionOrder[index];
 
-    const { data: question, error: qError } = await serviceClient
-      .from('questions')
-      .select('id, question_text, answer_text, category, mc_options')
-      .eq('id', questionId)
-      .single();
+    // Question fetch and the "already answered" lookup are independent — run in parallel.
+    const [
+      { data: question, error: qError },
+      { data: existingAnswer },
+    ] = await Promise.all([
+      serviceClient
+        .from('questions')
+        .select('id, question_text, answer_text, category, mc_options')
+        .eq('id', questionId)
+        .single(),
+      serviceClient
+        .from('pub_trivia_answers')
+        .select('id')
+        .eq('game_id', gameId)
+        .eq('player_id', playerId)
+        .eq('question_id', questionId)
+        .maybeSingle(),
+    ]);
 
     if (qError || !question) {
       logger.error('Failed to fetch active pub trivia question during state recovery', qError, {
@@ -163,24 +176,15 @@ export async function GET(
     }
 
     // Reshuffle options (Fisher-Yates). Answer comparison is by text, not index,
-    // so a fresh shuffle is safe for a reconnecting player.
-    // Deduplicate in case mc_options already contains the correct answer (data entry error).
-    const mcOptions = Array.isArray(question.mc_options) ? (question.mc_options as string[]) : [];
-    const rawAnswer: string = question.answer_text ?? '';
-    const allOptions = Array.from(new Set([...mcOptions, rawAnswer].filter(Boolean)));
+    // so a fresh shuffle is safe for a reconnecting player. buildMcOptionSet dedupes
+    // by trim+lowercase so a whitespace/casing variant of the answer doesn't show as
+    // a second, separately-clickable option (see the 'compare' mode used by the
+    // answer-validation route for the matching dedup key).
+    const allOptions = buildMcOptionSet(question.mc_options, question.answer_text, 'display');
     for (let i = allOptions.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [allOptions[i], allOptions[j]] = [allOptions[j], allOptions[i]];
     }
-
-    // Check if this player already answered this round.
-    const { data: existingAnswer } = await serviceClient
-      .from('pub_trivia_answers')
-      .select('id')
-      .eq('game_id', gameId)
-      .eq('player_id', playerId)
-      .eq('question_id', questionId)
-      .maybeSingle();
 
     const phase: PubTriviaStatePhase = existingAnswer ? 'answered' : 'question';
     const durationMs = (game.timer_seconds ?? 20) * 1_000;
