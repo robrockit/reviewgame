@@ -499,8 +499,6 @@ export default function StudentGamePage() {
     );
   }
 
-  const bannerOffset = connectionStatus !== 'connecting' ? ` ${BANNER_OFFSET_CLASS}` : '';
-
   // Render active game interface
   return (
     <ConnectionBannerLayout
